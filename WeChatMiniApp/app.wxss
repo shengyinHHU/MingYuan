@@ -1,0 +1,12 @@
+page {
+  box-sizing: border-box;
+}
+
+view,
+scroll-view,
+image,
+text,
+button,
+input {
+  box-sizing: border-box;
+}

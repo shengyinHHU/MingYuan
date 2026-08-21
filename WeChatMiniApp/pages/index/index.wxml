@@ -1,0 +1,84 @@
+<scroll-view class="home" scroll-y enhanced show-scrollbar="{{false}}">
+  <view class="hero">
+    <view class="hero-top">
+      <image class="logo" src="{{logoUrl}}" mode="widthFix"></image>
+      <view class="tag">{{tag}}</view>
+    </view>
+
+    <view class="role-switch">
+      <view
+        class="role-chip {{currentRole === item.key ? 'active' : ''}}"
+        wx:for="{{roles}}"
+        wx:key="key"
+        data-role="{{item.key}}"
+        bindtap="switchRole"
+      >
+        {{item.name}}
+      </view>
+    </view>
+
+    <view class="hero-copy">
+      <view class="eyebrow">{{eyebrow}}</view>
+      <view class="title">{{title}}</view>
+      <view class="subtitle">{{subtitle}}</view>
+    </view>
+
+    <view class="stats">
+      <view class="stat" wx:for="{{stats}}" wx:key="label">
+        <view class="stat-value">{{item.value}}<text>{{item.suffix}}</text></view>
+        <view class="stat-label">{{item.label}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-head">
+      <view>
+        <view class="section-title">{{currentRoleName}}功能</view>
+        <view class="section-subtitle">入口按角色权限展示，暂不创建二级页面</view>
+      </view>
+    </view>
+
+    <view class="action-grid">
+      <view
+        class="action-card {{item.tone}}"
+        wx:for="{{quickActions}}"
+        wx:key="title"
+        data-title="{{item.title}}"
+        bindtap="handleAction"
+      >
+        <view class="action-icon">{{item.icon}}</view>
+        <view class="action-title">{{item.title}}</view>
+        <view class="action-desc">{{item.desc}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="section split">
+    <view class="panel">
+      <view class="section-title">{{agendaTitle}}</view>
+      <view class="course" wx:for="{{schedule}}" wx:key="time">
+        <view class="course-time">{{item.time}}</view>
+        <view class="course-main">
+          <view class="course-name">{{item.name}}</view>
+          <view class="course-meta">{{item.room}} · {{item.teacher}}</view>
+        </view>
+        <view class="course-status">{{item.status}}</view>
+      </view>
+    </view>
+
+    <view class="panel growth-panel">
+      <view class="section-title">{{insightTitle}}</view>
+      <view class="growth-item" wx:for="{{insight}}" wx:key="label">
+        <view class="growth-row">
+          <text>{{item.label}}</text>
+          <text>{{item.value}}%</text>
+        </view>
+        <view class="progress">
+          <view class="progress-bar" style="width: {{item.value}}%;"></view>
+        </view>
+      </view>
+      <view class="note">{{note}}</view>
+    </view>
+  </view>
+</scroll-view>

@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.EduCourseScheduleMapper">
+    
+    <resultMap type="EduCourseSchedule" id="EduCourseScheduleResult">
+        <result property="scheduleId"    column="schedule_id"    />
+        <result property="scheduleCode"    column="schedule_code"    />
+        <result property="classroomId"    column="classroom_id"    />
+        <result property="courseYear"    column="course_year"    />
+        <result property="termName"    column="term_name"    />
+        <result property="periodName"    column="period_name"    />
+        <result property="timeSlot"    column="time_slot"    />
+        <result property="startTime"    column="start_time"    />
+        <result property="endTime"    column="end_time"    />
+        <result property="gradeName"    column="grade_name"    />
+        <result property="subjectName"    column="subject_name"    />
+        <result property="teacherName"    column="teacher_name"    />
+        <result property="classType"    column="class_type"    />
+        <result property="enrolledCount"    column="enrolled_count"    />
+        <result property="recruitStatus"    column="recruit_status"    />
+        <result property="courseClassName"    column="course_class_name"    />
+        <result property="sourceSheet"    column="source_sheet"    />
+        <result property="sourceRow"    column="source_row"    />
+        <result property="sourceCol"    column="source_col"    />
+        <result property="status"    column="status"    />
+        <result property="delFlag"    column="del_flag"    />
+        <result property="createBy"    column="create_by"    />
+        <result property="createTime"    column="create_time"    />
+        <result property="updateBy"    column="update_by"    />
+        <result property="updateTime"    column="update_time"    />
+        <result property="remark"    column="remark"    />
+    </resultMap>
+
+    <sql id="selectEduCourseScheduleVo">
+        select schedule_id, schedule_code, classroom_id, course_year, term_name, period_name, time_slot, start_time, end_time, grade_name, subject_name, teacher_name, class_type, enrolled_count, recruit_status, course_class_name, source_sheet, source_row, source_col, status, del_flag, create_by, create_time, update_by, update_time, remark from edu_course_schedule
+    </sql>
+
+    <select id="selectEduCourseScheduleList" parameterType="EduCourseSchedule" resultMap="EduCourseScheduleResult">
+        <include refid="selectEduCourseScheduleVo"/>
+        <where>  
+            <if test="scheduleCode != null  and scheduleCode != ''"> and schedule_code = #{scheduleCode}</if>
+            <if test="classroomId != null "> and classroom_id = #{classroomId}</if>
+            <if test="courseYear != null "> and course_year = #{courseYear}</if>
+            <if test="termName != null  and termName != ''"> and term_name like concat('%', #{termName}, '%')</if>
+            <if test="periodName != null  and periodName != ''"> and period_name like concat('%', #{periodName}, '%')</if>
+            <if test="timeSlot != null  and timeSlot != ''"> and time_slot = #{timeSlot}</if>
+            <if test="startTime != null "> and start_time = #{startTime}</if>
+            <if test="endTime != null "> and end_time = #{endTime}</if>
+            <if test="gradeName != null  and gradeName != ''"> and grade_name like concat('%', #{gradeName}, '%')</if>
+            <if test="subjectName != null  and subjectName != ''"> and subject_name like concat('%', #{subjectName}, '%')</if>
+            <if test="teacherName != null  and teacherName != ''"> and teacher_name like concat('%', #{teacherName}, '%')</if>
+            <if test="classType != null  and classType != ''"> and class_type = #{classType}</if>
+            <if test="enrolledCount != null "> and enrolled_count = #{enrolledCount}</if>
+            <if test="recruitStatus != null  and recruitStatus != ''"> and recruit_status = #{recruitStatus}</if>
+            <if test="courseClassName != null  and courseClassName != ''"> and course_class_name like concat('%', #{courseClassName}, '%')</if>
+            <if test="sourceSheet != null  and sourceSheet != ''"> and source_sheet = #{sourceSheet}</if>
+            <if test="sourceRow != null "> and source_row = #{sourceRow}</if>
+            <if test="sourceCol != null  and sourceCol != ''"> and source_col = #{sourceCol}</if>
+            <if test="status != null  and status != ''"> and status = #{status}</if>
+        </where>
+    </select>
+    
+    <select id="selectEduCourseScheduleByScheduleId" parameterType="Long" resultMap="EduCourseScheduleResult">
+        <include refid="selectEduCourseScheduleVo"/>
+        where schedule_id = #{scheduleId}
+    </select>
+
+    <insert id="insertEduCourseSchedule" parameterType="EduCourseSchedule" useGeneratedKeys="true" keyProperty="scheduleId">
+        insert into edu_course_schedule
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="scheduleCode != null and scheduleCode != ''">schedule_code,</if>
+            <if test="classroomId != null">classroom_id,</if>
+            <if test="courseYear != null">course_year,</if>
+            <if test="termName != null and termName != ''">term_name,</if>
+            <if test="periodName != null and periodName != ''">period_name,</if>
+            <if test="timeSlot != null and timeSlot != ''">time_slot,</if>
+            <if test="startTime != null">start_time,</if>
+            <if test="endTime != null">end_time,</if>
+            <if test="gradeName != null and gradeName != ''">grade_name,</if>
+            <if test="subjectName != null and subjectName != ''">subject_name,</if>
+            <if test="teacherName != null">teacher_name,</if>
+            <if test="classType != null">class_type,</if>
+            <if test="enrolledCount != null">enrolled_count,</if>
+            <if test="recruitStatus != null">recruit_status,</if>
+            <if test="courseClassName != null and courseClassName != ''">course_class_name,</if>
+            <if test="sourceSheet != null">source_sheet,</if>
+            <if test="sourceRow != null">source_row,</if>
+            <if test="sourceCol != null">source_col,</if>
+            <if test="status != null">status,</if>
+            <if test="delFlag != null">del_flag,</if>
+            <if test="createBy != null">create_by,</if>
+            <if test="createTime != null">create_time,</if>
+            <if test="updateBy != null">update_by,</if>
+            <if test="updateTime != null">update_time,</if>
+            <if test="remark != null">remark,</if>
+         </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            <if test="scheduleCode != null and scheduleCode != ''">#{scheduleCode},</if>
+            <if test="classroomId != null">#{classroomId},</if>
+            <if test="courseYear != null">#{courseYear},</if>
+            <if test="termName != null and termName != ''">#{termName},</if>
+            <if test="periodName != null and periodName != ''">#{periodName},</if>
+            <if test="timeSlot != null and timeSlot != ''">#{timeSlot},</if>
+            <if test="startTime != null">#{startTime},</if>
+            <if test="endTime != null">#{endTime},</if>
+            <if test="gradeName != null and gradeName != ''">#{gradeName},</if>
+            <if test="subjectName != null and subjectName != ''">#{subjectName},</if>
+            <if test="teacherName != null">#{teacherName},</if>
+            <if test="classType != null">#{classType},</if>
+            <if test="enrolledCount != null">#{enrolledCount},</if>
+            <if test="recruitStatus != null">#{recruitStatus},</if>
+            <if test="courseClassName != null and courseClassName != ''">#{courseClassName},</if>
+            <if test="sourceSheet != null">#{sourceSheet},</if>
+            <if test="sourceRow != null">#{sourceRow},</if>
+            <if test="sourceCol != null">#{sourceCol},</if>
+            <if test="status != null">#{status},</if>
+            <if test="delFlag != null">#{delFlag},</if>
+            <if test="createBy != null">#{createBy},</if>
+            <if test="createTime != null">#{createTime},</if>
+            <if test="updateBy != null">#{updateBy},</if>
+            <if test="updateTime != null">#{updateTime},</if>
+            <if test="remark != null">#{remark},</if>
+         </trim>
+    </insert>
+
+    <update id="updateEduCourseSchedule" parameterType="EduCourseSchedule">
+        update edu_course_schedule
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="scheduleCode != null and scheduleCode != ''">schedule_code = #{scheduleCode},</if>
+            <if test="classroomId != null">classroom_id = #{classroomId},</if>
+            <if test="courseYear != null">course_year = #{courseYear},</if>
+            <if test="termName != null and termName != ''">term_name = #{termName},</if>
+            <if test="periodName != null and periodName != ''">period_name = #{periodName},</if>
+            <if test="timeSlot != null and timeSlot != ''">time_slot = #{timeSlot},</if>
+            <if test="startTime != null">start_time = #{startTime},</if>
+            <if test="endTime != null">end_time = #{endTime},</if>
+            <if test="gradeName != null and gradeName != ''">grade_name = #{gradeName},</if>
+            <if test="subjectName != null and subjectName != ''">subject_name = #{subjectName},</if>
+            <if test="teacherName != null">teacher_name = #{teacherName},</if>
+            <if test="classType != null">class_type = #{classType},</if>
+            <if test="enrolledCount != null">enrolled_count = #{enrolledCount},</if>
+            <if test="recruitStatus != null">recruit_status = #{recruitStatus},</if>
+            <if test="courseClassName != null and courseClassName != ''">course_class_name = #{courseClassName},</if>
+            <if test="sourceSheet != null">source_sheet = #{sourceSheet},</if>
+            <if test="sourceRow != null">source_row = #{sourceRow},</if>
+            <if test="sourceCol != null">source_col = #{sourceCol},</if>
+            <if test="status != null">status = #{status},</if>
+            <if test="delFlag != null">del_flag = #{delFlag},</if>
+            <if test="createBy != null">create_by = #{createBy},</if>
+            <if test="createTime != null">create_time = #{createTime},</if>
+            <if test="updateBy != null">update_by = #{updateBy},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+            <if test="remark != null">remark = #{remark},</if>
+        </trim>
+        where schedule_id = #{scheduleId}
+    </update>
+
+    <delete id="deleteEduCourseScheduleByScheduleId" parameterType="Long">
+        delete from edu_course_schedule where schedule_id = #{scheduleId}
+    </delete>
+
+    <delete id="deleteEduCourseScheduleByScheduleIds" parameterType="String">
+        delete from edu_course_schedule where schedule_id in 
+        <foreach item="scheduleId" collection="array" open="(" separator="," close=")">
+            #{scheduleId}
+        </foreach>
+    </delete>
+</mapper>
