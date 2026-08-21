@@ -1,0 +1,83 @@
+<view class="page">
+  <view class="header">
+    <view class="header-title">资料管理</view>
+    <view class="header-subtitle">上传 PDF 资料 · 自动上架</view>
+    <view class="header-action" bindtap="openForm">+ 新增资料</view>
+  </view>
+
+  <view class="list" wx:if="{{!showEmpty}}">
+    <view class="m-card" wx:for="{{list}}" wx:key="materialId">
+      <view class="m-main">
+        <view class="m-title">{{item.title}}</view>
+        <view class="m-meta">
+          <text class="tag">{{item.subjectText}}</text>
+          <text class="tag">{{item.gradeText}}</text>
+          <text class="shelf {{item.shelfClass}}">{{item.shelfText}}</text>
+        </view>
+        <view class="m-sub">
+          <text class="price {{item.priceText === '免费' ? 'free' : ''}}">{{item.priceText}}</text>
+          <text class="sale">已售 {{item.saleCount || 0}}</text>
+          <text class="size" wx:if="{{item.sizeText}}">{{item.sizeText}}</text>
+        </view>
+      </view>
+      <view class="m-action" data-id="{{item.materialId}}" bindtap="remove">删除</view>
+    </view>
+  </view>
+
+  <view class="empty" wx:if="{{showEmpty && !loading}}">
+    <view class="empty-icon">📄</view>
+    <view class="empty-text">你还没有上传过资料</view>
+    <view class="empty-action" bindtap="openForm">立即上传</view>
+  </view>
+
+  <view class="loading" wx:if="{{loading}}">加载中...</view>
+
+  <!-- 新增资料抽屉 -->
+  <view class="sheet-mask" wx:if="{{showForm}}" bindtap="closeForm"></view>
+  <view class="sheet" wx:if="{{showForm}}">
+    <view class="sheet-head">
+      <view class="sheet-title">新增资料</view>
+      <view class="sheet-close" bindtap="closeForm">×</view>
+    </view>
+    <view class="form">
+      <view class="form-row">
+        <view class="form-label">标题</view>
+        <input class="form-input" placeholder="请输入资料标题（必填）" value="{{form.title}}" bindinput="onTitleInput" />
+      </view>
+      <view class="form-row">
+        <view class="form-label">学科</view>
+        <picker bindchange="onSubjectChange" value="{{subjectIndex < 0 ? 0 : subjectIndex}}" range="{{subjects}}" range-key="dictLabel">
+          <view class="form-picker {{subjectIndex >= 0 ? 'filled' : ''}}">
+            {{subjectIndex >= 0 ? subjects[subjectIndex].dictLabel : '请选择学科'}}
+          </view>
+        </picker>
+      </view>
+      <view class="form-row">
+        <view class="form-label">年级</view>
+        <picker bindchange="onGradeChange" value="{{gradeIndex < 0 ? 0 : gradeIndex}}" range="{{grades}}" range-key="dictLabel">
+          <view class="form-picker {{gradeIndex >= 0 ? 'filled' : ''}}">
+            {{gradeIndex >= 0 ? grades[gradeIndex].dictLabel : '请选择年级'}}
+          </view>
+        </picker>
+      </view>
+      <view class="form-row">
+        <view class="form-label">价格（元）</view>
+        <input class="form-input" type="digit" placeholder="0 表示免费" value="{{form.price}}" bindinput="onPriceInput" />
+      </view>
+      <view class="form-row">
+        <view class="form-label">简介</view>
+        <textarea class="form-textarea" placeholder="选填，资料内容/适用对象等" value="{{form.intro}}" bindinput="onIntroInput" />
+      </view>
+      <view class="form-row">
+        <view class="form-label">PDF 文件</view>
+        <view class="file-picker" bindtap="chooseFile">
+          <text wx:if="{{file}}">{{file.name}}</text>
+          <text wx:else class="placeholder">点击选择 PDF（≤10MB）</text>
+        </view>
+      </view>
+    </view>
+    <view class="sheet-footer">
+      <button class="btn" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submit">发布资料</button>
+    </view>
+  </view>
+</view>

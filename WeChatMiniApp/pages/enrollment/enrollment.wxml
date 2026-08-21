@@ -1,0 +1,63 @@
+<view class="page">
+  <view class="header">
+    <image class="logo" src="/images/logo.png" mode="widthFix"></image>
+    <view class="header-title">课程报名</view>
+  </view>
+
+  <view class="filter-bar">
+    <input class="filter-input" value="{{filters.gradeName}}" data-field="gradeName" bindinput="handleFilterInput" placeholder="年级" />
+    <input class="filter-input" value="{{filters.subjectName}}" data-field="subjectName" bindinput="handleFilterInput" placeholder="科目" />
+    <button class="icon-btn primary" bindtap="applyFilters">查</button>
+    <button class="icon-btn" bindtap="resetFilters">清</button>
+  </view>
+
+  <view class="section">
+    <view class="section-title">可报名课次</view>
+    <view class="empty" wx:if="{{showScheduleEmpty}}">暂无可报名课程</view>
+    <view class="schedule-card" wx:for="{{schedules}}" wx:key="scheduleId" data-id="{{item.scheduleId}}" bindtap="openEnroll">
+      <view class="card-main">
+        <view class="course-name">{{item.courseClassName}}</view>
+        <view class="meta">{{item.gradeName}} · {{item.subjectName}} · {{item.teacherName}}</view>
+        <view class="meta">{{item.timeText}}</view>
+        <view class="meta">{{item.placeText}}</view>
+      </view>
+      <view class="card-side">
+        <view class="count">{{item.countText}}</view>
+        <view class="status {{item.statusClass}}">{{item.statusText}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">我的报名</view>
+    <view class="empty" wx:if="{{showEnrollmentEmpty}}">还没有报名记录</view>
+    <view class="enroll-card" wx:for="{{enrollments}}" wx:key="enrollmentId">
+      <view>
+        <view class="course-name">{{item.courseClassName}}</view>
+        <view class="meta">{{item.studentName}} · {{item.gradeName}} · {{item.subjectName}}</view>
+        <view class="meta">{{item.timeText}}</view>
+      </view>
+      <view class="done">{{item.statusText}}</view>
+    </view>
+  </view>
+
+  <view class="mask" wx:if="{{showSheet}}" bindtap="closeEnroll"></view>
+  <view class="sheet" wx:if="{{showSheet}}">
+    <view class="sheet-title">确认报名</view>
+    <view class="sheet-course">{{selectedSchedule.courseClassName}}</view>
+    <view class="sheet-meta">{{selectedSchedule.timeText}}</view>
+    <view class="sheet-meta">{{selectedSchedule.placeText}}</view>
+    <view class="field">
+      <view class="label">学生姓名</view>
+      <input class="input" value="{{form.studentName}}" data-field="studentName" bindinput="handleFormInput" placeholder="请输入孩子姓名" />
+    </view>
+    <view class="field">
+      <view class="label">联系电话</view>
+      <input class="input" type="number" maxlength="11" value="{{form.contactPhone}}" data-field="contactPhone" bindinput="handleFormInput" placeholder="默认使用家长手机号" />
+    </view>
+    <view class="sheet-actions">
+      <button class="cancel-btn" bindtap="closeEnroll">取消</button>
+      <button class="submit-btn" loading="{{submitting}}" bindtap="submitEnroll">提交报名</button>
+    </view>
+  </view>
+</view>

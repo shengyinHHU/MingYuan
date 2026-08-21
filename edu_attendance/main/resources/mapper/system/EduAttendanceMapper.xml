@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.EduAttendanceMapper">
+    
+    <resultMap type="EduAttendance" id="EduAttendanceResult">
+        <result property="attendanceId"    column="attendance_id"    />
+        <result property="attendanceCode"    column="attendance_code"    />
+        <result property="scheduleId"    column="schedule_id"    />
+        <result property="enrollmentId"    column="enrollment_id"    />
+        <result property="parentId"    column="parent_id"    />
+        <result property="studentName"    column="student_name"    />
+        <result property="attendanceStatus"    column="attendance_status"    />
+        <result property="attendedTime"    column="attended_time"    />
+        <result property="confirmBy"    column="confirm_by"    />
+        <result property="confirmName"    column="confirm_name"    />
+        <result property="status"    column="status"    />
+        <result property="delFlag"    column="del_flag"    />
+        <result property="createBy"    column="create_by"    />
+        <result property="createTime"    column="create_time"    />
+        <result property="updateBy"    column="update_by"    />
+        <result property="updateTime"    column="update_time"    />
+        <result property="remark"    column="remark"    />
+    </resultMap>
+
+    <sql id="selectEduAttendanceVo">
+        select attendance_id, attendance_code, schedule_id, enrollment_id, parent_id, student_name, attendance_status, attended_time, confirm_by, confirm_name, status, del_flag, create_by, create_time, update_by, update_time, remark from edu_attendance
+    </sql>
+
+    <select id="selectEduAttendanceList" parameterType="EduAttendance" resultMap="EduAttendanceResult">
+        <include refid="selectEduAttendanceVo"/>
+        <where>  
+            <if test="attendanceCode != null  and attendanceCode != ''"> and attendance_code = #{attendanceCode}</if>
+            <if test="scheduleId != null "> and schedule_id = #{scheduleId}</if>
+            <if test="enrollmentId != null "> and enrollment_id = #{enrollmentId}</if>
+            <if test="parentId != null "> and parent_id = #{parentId}</if>
+            <if test="studentName != null  and studentName != ''"> and student_name like concat('%', #{studentName}, '%')</if>
+            <if test="attendanceStatus != null  and attendanceStatus != ''"> and attendance_status = #{attendanceStatus}</if>
+            <if test="attendedTime != null "> and attended_time = #{attendedTime}</if>
+            <if test="confirmBy != null "> and confirm_by = #{confirmBy}</if>
+            <if test="confirmName != null  and confirmName != ''"> and confirm_name like concat('%', #{confirmName}, '%')</if>
+            <if test="status != null  and status != ''"> and status = #{status}</if>
+        </where>
+    </select>
+    
+    <select id="selectEduAttendanceByAttendanceId" parameterType="Long" resultMap="EduAttendanceResult">
+        <include refid="selectEduAttendanceVo"/>
+        where attendance_id = #{attendanceId}
+    </select>
+
+    <insert id="insertEduAttendance" parameterType="EduAttendance" useGeneratedKeys="true" keyProperty="attendanceId">
+        insert into edu_attendance
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="attendanceCode != null and attendanceCode != ''">attendance_code,</if>
+            <if test="scheduleId != null">schedule_id,</if>
+            <if test="enrollmentId != null">enrollment_id,</if>
+            <if test="parentId != null">parent_id,</if>
+            <if test="studentName != null and studentName != ''">student_name,</if>
+            <if test="attendanceStatus != null">attendance_status,</if>
+            <if test="attendedTime != null">attended_time,</if>
+            <if test="confirmBy != null">confirm_by,</if>
+            <if test="confirmName != null">confirm_name,</if>
+            <if test="status != null">status,</if>
+            <if test="delFlag != null">del_flag,</if>
+            <if test="createBy != null">create_by,</if>
+            <if test="createTime != null">create_time,</if>
+            <if test="updateBy != null">update_by,</if>
+            <if test="updateTime != null">update_time,</if>
+            <if test="remark != null">remark,</if>
+         </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            <if test="attendanceCode != null and attendanceCode != ''">#{attendanceCode},</if>
+            <if test="scheduleId != null">#{scheduleId},</if>
+            <if test="enrollmentId != null">#{enrollmentId},</if>
+            <if test="parentId != null">#{parentId},</if>
+            <if test="studentName != null and studentName != ''">#{studentName},</if>
+            <if test="attendanceStatus != null">#{attendanceStatus},</if>
+            <if test="attendedTime != null">#{attendedTime},</if>
+            <if test="confirmBy != null">#{confirmBy},</if>
+            <if test="confirmName != null">#{confirmName},</if>
+            <if test="status != null">#{status},</if>
+            <if test="delFlag != null">#{delFlag},</if>
+            <if test="createBy != null">#{createBy},</if>
+            <if test="createTime != null">#{createTime},</if>
+            <if test="updateBy != null">#{updateBy},</if>
+            <if test="updateTime != null">#{updateTime},</if>
+            <if test="remark != null">#{remark},</if>
+         </trim>
+    </insert>
+
+    <update id="updateEduAttendance" parameterType="EduAttendance">
+        update edu_attendance
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="attendanceCode != null and attendanceCode != ''">attendance_code = #{attendanceCode},</if>
+            <if test="scheduleId != null">schedule_id = #{scheduleId},</if>
+            <if test="enrollmentId != null">enrollment_id = #{enrollmentId},</if>
+            <if test="parentId != null">parent_id = #{parentId},</if>
+            <if test="studentName != null and studentName != ''">student_name = #{studentName},</if>
+            <if test="attendanceStatus != null">attendance_status = #{attendanceStatus},</if>
+            <if test="attendedTime != null">attended_time = #{attendedTime},</if>
+            <if test="confirmBy != null">confirm_by = #{confirmBy},</if>
+            <if test="confirmName != null">confirm_name = #{confirmName},</if>
+            <if test="status != null">status = #{status},</if>
+            <if test="delFlag != null">del_flag = #{delFlag},</if>
+            <if test="createBy != null">create_by = #{createBy},</if>
+            <if test="createTime != null">create_time = #{createTime},</if>
+            <if test="updateBy != null">update_by = #{updateBy},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+            <if test="remark != null">remark = #{remark},</if>
+        </trim>
+        where attendance_id = #{attendanceId}
+    </update>
+
+    <delete id="deleteEduAttendanceByAttendanceId" parameterType="Long">
+        delete from edu_attendance where attendance_id = #{attendanceId}
+    </delete>
+
+    <delete id="deleteEduAttendanceByAttendanceIds" parameterType="String">
+        delete from edu_attendance where attendance_id in 
+        <foreach item="attendanceId" collection="array" open="(" separator="," close=")">
+            #{attendanceId}
+        </foreach>
+    </delete>
+</mapper>

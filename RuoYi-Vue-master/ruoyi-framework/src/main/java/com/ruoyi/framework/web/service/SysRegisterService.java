@@ -4,7 +4,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import com.ruoyi.common.constant.CacheConstants;
 import com.ruoyi.common.constant.Constants;
+import com.ruoyi.common.constant.EduRoleConstants;
 import com.ruoyi.common.constant.UserConstants;
+import com.ruoyi.common.core.domain.entity.SysRole;
 import com.ruoyi.common.core.domain.entity.SysUser;
 import com.ruoyi.common.core.domain.model.RegisterBody;
 import com.ruoyi.common.core.redis.RedisCache;
@@ -16,6 +18,7 @@ import com.ruoyi.common.utils.SecurityUtils;
 import com.ruoyi.common.utils.StringUtils;
 import com.ruoyi.framework.manager.AsyncManager;
 import com.ruoyi.framework.manager.factory.AsyncFactory;
+import com.ruoyi.system.mapper.SysRoleMapper;
 import com.ruoyi.system.service.ISysConfigService;
 import com.ruoyi.system.service.ISysUserService;
 
@@ -32,6 +35,9 @@ public class SysRegisterService
 
     @Autowired
     private ISysConfigService configService;
+
+    @Autowired
+    private SysRoleMapper roleMapper;
 
     @Autowired
     private RedisCache redisCache;
@@ -74,12 +80,29 @@ public class SysRegisterService
         {
             msg = "保存用户'" + username + "'失败，注册账号已存在";
         }
-        else
+        else if (StringUtils.isNotEmpty(registerBody.getPhonenumber()))
         {
-            sysUser.setNickName(username);
+            sysUser.setPhonenumber(registerBody.getPhonenumber());
+            if (!userService.checkPhoneUnique(sysUser))
+            {
+                msg = "保存用户'" + username + "'失败，手机号码已存在";
+            }
+        }
+        if (StringUtils.isEmpty(msg))
+        {
+            SysRole parentRole = roleMapper.checkRoleKeyUnique(EduRoleConstants.PARENT);
+            if (StringUtils.isNull(parentRole))
+            {
+                return "家长角色不存在，请先执行 sql/edu_roles.sql 初始化角色";
+            }
+            sysUser.setNickName(StringUtils.isEmpty(registerBody.getNickName()) ? username : registerBody.getNickName());
+            sysUser.setPhonenumber(registerBody.getPhonenumber());
+            sysUser.setStatus("0");
+            sysUser.setCreateBy("miniapp");
+            sysUser.setRoleIds(new Long[] { parentRole.getRoleId() });
             sysUser.setPwdUpdateDate(DateUtils.getNowDate());
             sysUser.setPassword(SecurityUtils.encryptPassword(password));
-            boolean regFlag = userService.registerUser(sysUser);
+            boolean regFlag = userService.insertUser(sysUser) > 0;
             if (!regFlag)
             {
                 msg = "注册失败,请联系系统管理人员";
@@ -104,7 +127,6 @@ public class SysRegisterService
     {
         String verifyKey = CacheConstants.CAPTCHA_CODE_KEY + StringUtils.nvl(uuid, "");
         String captcha = redisCache.getCacheObject(verifyKey);
-        redisCache.deleteObject(verifyKey);
         if (captcha == null)
         {
             throw new CaptchaExpireException();

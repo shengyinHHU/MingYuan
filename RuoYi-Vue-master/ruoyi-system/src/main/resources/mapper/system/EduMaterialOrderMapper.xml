@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.EduMaterialOrderMapper">
+
+    <resultMap type="EduMaterialOrder" id="EduMaterialOrderResult">
+        <result property="orderId"          column="order_id"           />
+        <result property="orderCode"         column="order_code"         />
+        <result property="materialId"        column="material_id"        />
+        <result property="parentId"          column="parent_id"         />
+        <result property="amount"             column="amount"            />
+        <result property="payStatus"         column="pay_status"        />
+        <result property="payTime"           column="pay_time"          />
+        <result property="payWay"             column="pay_way"           />
+        <result property="wxTransactionId"   column="wx_transaction_id" />
+        <result property="refundTime"       column="refund_time"       />
+        <result property="refundReason"      column="refund_reason"      />
+        <result property="status"             column="status"            />
+        <result property="delFlag"           column="del_flag"          />
+        <result property="createBy"          column="create_by"         />
+        <result property="createTime"        column="create_time"       />
+        <result property="updateBy"          column="update_by"         />
+        <result property="updateTime"        column="update_time"       />
+        <result property="remark"            column="remark"            />
+        <result property="materialTitle"     column="material_title"    />
+        <result property="materialFilePath" column="material_file_path" />
+        <result property="materialFileName" column="material_file_name" />
+        <result property="parentName"        column="parent_name"       />
+    </resultMap>
+
+    <sql id="selectEduMaterialOrderVo">
+        select order_id, order_code, material_id, parent_id, amount, pay_status, pay_time, pay_way,
+               wx_transaction_id, refund_time, refund_reason, status, del_flag,
+               create_by, create_time, update_by, update_time, remark
+        from edu_material_order
+    </sql>
+
+    <select id="selectEduMaterialOrderList" parameterType="EduMaterialOrder" resultMap="EduMaterialOrderResult">
+        select o.order_id, o.order_code, o.material_id, o.parent_id, o.amount, o.pay_status, o.pay_time, o.pay_way,
+               o.wx_transaction_id, o.refund_time, o.refund_reason, o.status, o.del_flag,
+               o.create_by, o.create_time, o.update_by, o.update_time, o.remark,
+               m.title as material_title,
+               u.nick_name as parent_name
+        from edu_material_order o
+        left join edu_material m on m.material_id = o.material_id
+        left join sys_user u     on u.user_id = o.parent_id
+        <where>
+            o.del_flag = '0'
+            <if test="orderCode       != null and orderCode       != ''"> and o.order_code      like concat('%', #{orderCode}, '%')</if>
+            <if test="materialId      != null">                          and o.material_id = #{materialId}</if>
+            <if test="parentId         != null">                          and o.parent_id   = #{parentId}</if>
+            <if test="payStatus        != null and payStatus        != ''"> and o.pay_status   = #{payStatus}</if>
+            <if test="payWay           != null and payWay           != ''"> and o.pay_way      = #{payWay}</if>
+            <if test="status            != null and status            != ''"> and o.status      = #{status}</if>
+        </where>
+        order by o.create_time desc
+    </select>
+
+    <select id="selectEduMaterialOrderByOrderId" parameterType="Long" resultMap="EduMaterialOrderResult">
+        <include refid="selectEduMaterialOrderVo"/>
+        where order_id = #{orderId} and del_flag = '0'
+    </select>
+
+    <select id="selectOrderByMaterialAndParent" resultMap="EduMaterialOrderResult">
+        <include refid="selectEduMaterialOrderVo"/>
+        where material_id = #{materialId} and parent_id = #{parentId} and del_flag = '0'
+        limit 1
+    </select>
+
+    <select id="selectParentOrders" parameterType="Long" resultMap="EduMaterialOrderResult">
+        select o.order_id, o.order_code, o.material_id, o.parent_id, o.amount, o.pay_status, o.pay_time, o.pay_way,
+               o.refund_time, o.refund_reason, o.status, o.del_flag, o.create_by, o.create_time, o.update_by,
+               o.update_time, o.remark,
+               m.title as material_title
+        from edu_material_order o
+        left join edu_material m on m.material_id = o.material_id
+        where o.parent_id = #{parentId} and o.del_flag = '0'
+        order by o.create_time desc
+    </select>
+
+    <select id="selectDownloadableOrder" resultMap="EduMaterialOrderResult">
+        select o.order_id, o.order_code, o.material_id, o.parent_id, o.amount, o.pay_status, o.pay_time, o.pay_way,
+               o.wx_transaction_id, o.refund_time, o.refund_reason, o.status, o.del_flag,
+               o.create_by, o.create_time, o.update_by, o.update_time, o.remark,
+               m.title           as material_title,
+               m.file_path       as material_file_path,
+               m.file_name       as material_file_name
+        from edu_material_order o
+        inner join edu_material m on m.material_id = o.material_id
+        where o.order_id = #{orderId} and o.parent_id = #{parentId}
+          and o.pay_status = '1' and o.del_flag = '0'
+        limit 1
+    </select>
+
+    <insert id="insertEduMaterialOrder" parameterType="EduMaterialOrder" useGeneratedKeys="true" keyProperty="orderId">
+        insert into edu_material_order
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="orderCode         != null and orderCode         != ''">order_code,</if>
+            <if test="materialId        != null">material_id,</if>
+            <if test="parentId           != null">parent_id,</if>
+            <if test="amount             != null">amount,</if>
+            <if test="payStatus          != null and payStatus          != ''">pay_status,</if>
+            <if test="payTime            != null">pay_time,</if>
+            <if test="payWay              != null and payWay              != ''">pay_way,</if>
+            <if test="wxTransactionId    != null">wx_transaction_id,</if>
+            <if test="refundTime         != null">refund_time,</if>
+            <if test="refundReason        != null">refund_reason,</if>
+            <if test="status              != null and status              != ''">status,</if>
+            <if test="delFlag             != null and delFlag             != ''">del_flag,</if>
+            <if test="createBy           != null and createBy           != ''">create_by,</if>
+            <if test="createTime          != null">create_time,</if>
+            <if test="updateBy           != null and updateBy           != ''">update_by,</if>
+            <if test="updateTime          != null">update_time,</if>
+            <if test="remark              != null">remark,</if>
+        </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            <if test="orderCode         != null and orderCode         != ''">#{orderCode},</if>
+            <if test="materialId        != null">#{materialId},</if>
+            <if test="parentId           != null">#{parentId},</if>
+            <if test="amount             != null">#{amount},</if>
+            <if test="payStatus          != null and payStatus          != ''">#{payStatus},</if>
+            <if test="payTime            != null">#{payTime},</if>
+            <if test="payWay              != null and payWay              != ''">#{payWay},</if>
+            <if test="wxTransactionId    != null">#{wxTransactionId},</if>
+            <if test="refundTime         != null">#{refundTime},</if>
+            <if test="refundReason        != null">#{refundReason},</if>
+            <if test="status              != null and status              != ''">#{status},</if>
+            <if test="delFlag             != null and delFlag             != ''">#{delFlag},</if>
+            <if test="createBy           != null and createBy           != ''">#{createBy},</if>
+            <if test="createTime          != null">#{createTime},</if>
+            <if test="updateBy           != null and updateBy           != ''">#{updateBy},</if>
+            <if test="updateTime          != null">#{updateTime},</if>
+            <if test="remark              != null">#{remark},</if>
+        </trim>
+    </insert>
+
+    <update id="updateEduMaterialOrder" parameterType="EduMaterialOrder">
+        update edu_material_order
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="orderCode         != null and orderCode         != ''">order_code = #{orderCode},</if>
+            <if test="materialId        != null">material_id = #{materialId},</if>
+            <if test="parentId           != null">parent_id = #{parentId},</if>
+            <if test="amount             != null">amount = #{amount},</if>
+            <if test="payStatus          != null and payStatus          != ''">pay_status = #{payStatus},</if>
+            <if test="payTime            != null">pay_time = #{payTime},</if>
+            <if test="payWay              != null and payWay              != ''">pay_way = #{payWay},</if>
+            <if test="wxTransactionId    != null">wx_transaction_id = #{wxTransactionId},</if>
+            <if test="refundTime         != null">refund_time = #{refundTime},</if>
+            <if test="refundReason        != null">refund_reason = #{refundReason},</if>
+            <if test="status              != null and status              != ''">status = #{status},</if>
+            <if test="delFlag             != null and delFlag             != ''">del_flag = #{delFlag},</if>
+            <if test="updateBy           != null and updateBy           != ''">update_by = #{updateBy},</if>
+            <if test="updateTime          != null">update_time = #{updateTime},</if>
+            <if test="remark              != null">remark = #{remark},</if>
+        </trim>
+        where order_id = #{orderId}
+    </update>
+
+    <delete id="deleteEduMaterialOrderByOrderId" parameterType="Long">
+        update edu_material_order set del_flag = '2' where order_id = #{orderId}
+    </delete>
+
+    <delete id="deleteEduMaterialOrderByOrderIds" parameterType="Long">
+        update edu_material_order set del_flag = '2' where order_id in
+        <foreach item="orderId" collection="array" open="(" separator="," close=")">
+            #{orderId}
+        </foreach>
+    </delete>
+</mapper>

@@ -1,0 +1,274 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.MiniAppParentMapper">
+
+    <select id="selectAvailableSchedules" resultType="java.util.HashMap">
+        select
+            s.schedule_id as scheduleId,
+            s.schedule_code as scheduleCode,
+            s.course_year as courseYear,
+            s.term_name as termName,
+            s.period_name as periodName,
+            s.time_slot as timeSlot,
+            s.start_time as startTime,
+            s.end_time as endTime,
+            s.grade_name as gradeName,
+            s.subject_name as subjectName,
+            s.teacher_name as teacherName,
+            s.class_type as classType,
+            s.course_class_name as courseClassName,
+            c.campus_name as campusName,
+            c.classroom_name as classroomName,
+            c.capacity as capacity,
+            ifnull(s.enrolled_count, 0) as enrolledCount,
+            greatest(ifnull(c.capacity, 999999) - ifnull(s.enrolled_count, 0), 0) as remainingCount,
+            case when e.enrollment_id is null then 0 else 1 end as enrolled
+        from edu_course_schedule s
+        inner join edu_classroom c on c.classroom_id = s.classroom_id
+        left join edu_enrollment e
+          on e.schedule_id = s.schedule_id
+         and e.parent_id = #{parentId}
+         and e.del_flag = '0'
+         and e.enrollment_status != '2'
+        <where>
+            s.del_flag = '0'
+            and s.status = '0'
+            and s.recruit_status = '0'
+            and c.status = '0'
+            <if test="gradeName != null and gradeName != ''">
+                and s.grade_name like concat('%', #{gradeName}, '%')
+            </if>
+            <if test="subjectName != null and subjectName != ''">
+                and s.subject_name like concat('%', #{subjectName}, '%')
+            </if>
+            <if test="termName != null and termName != ''">
+                and s.term_name = #{termName}
+            </if>
+        </where>
+        order by s.course_year, s.term_name, s.period_name, s.start_time, s.grade_name, s.subject_name, s.schedule_id
+    </select>
+
+    <select id="selectParentEnrollments" resultType="java.util.HashMap">
+        select
+            e.enrollment_id as enrollmentId,
+            e.enrollment_code as enrollmentCode,
+            e.schedule_id as scheduleId,
+            e.student_name as studentName,
+            e.contact_phone as contactPhone,
+            e.enrollment_status as enrollmentStatus,
+            e.pay_status as payStatus,
+            e.create_time as createTime,
+            s.course_class_name as courseClassName,
+            s.term_name as termName,
+            s.period_name as periodName,
+            s.time_slot as timeSlot,
+            s.grade_name as gradeName,
+            s.subject_name as subjectName,
+            s.teacher_name as teacherName,
+            c.campus_name as campusName,
+            c.classroom_name as classroomName
+        from edu_enrollment e
+        inner join edu_course_schedule s on s.schedule_id = e.schedule_id
+        inner join edu_classroom c on c.classroom_id = s.classroom_id
+        where e.parent_id = #{parentId}
+          and e.del_flag = '0'
+        order by e.create_time desc, e.enrollment_id desc
+    </select>
+
+    <select id="selectParentTimetable" resultType="java.util.HashMap">
+        select
+            e.enrollment_id as enrollmentId,
+            e.schedule_id as scheduleId,
+            e.student_name as studentName,
+            e.enrollment_status as enrollmentStatus,
+            e.pay_status as payStatus,
+            s.schedule_code as scheduleCode,
+            s.course_year as courseYear,
+            s.course_class_name as courseClassName,
+            s.term_name as termName,
+            s.period_name as periodName,
+            s.time_slot as timeSlot,
+            s.start_time as startTime,
+            s.end_time as endTime,
+            s.grade_name as gradeName,
+            s.subject_name as subjectName,
+            s.teacher_name as teacherName,
+            s.class_type as classType,
+            c.campus_name as campusName,
+            c.classroom_name as classroomName
+        from edu_enrollment e
+        inner join edu_course_schedule s on s.schedule_id = e.schedule_id
+        inner join edu_classroom c on c.classroom_id = s.classroom_id
+        where e.parent_id = #{parentId}
+          and e.del_flag = '0'
+          and e.enrollment_status = '1'
+          and s.del_flag = '0'
+          and s.status = '0'
+        order by s.course_year, s.term_name, s.period_name, s.start_time, s.schedule_id
+    </select>
+
+    <select id="selectParentAttendanceSummary" resultType="java.util.HashMap">
+        select
+            s.course_class_name as courseClassName,
+            max(s.grade_name) as gradeName,
+            max(s.subject_name) as subjectName,
+            max(s.teacher_name) as teacherName,
+            max(s.term_name) as termName,
+            max(e.student_name) as studentName,
+            count(e.enrollment_id) as totalCount,
+            sum(case when ifnull(a.attendance_status, '0') = '1' then 1 else 0 end) as attendedCount,
+            sum(case when ifnull(a.attendance_status, '0') = '0' then 1 else 0 end) as pendingCount,
+            sum(case when ifnull(a.attendance_status, '0') = '2' then 1 else 0 end) as canceledCount
+        from edu_enrollment e
+        inner join edu_course_schedule s on s.schedule_id = e.schedule_id
+        left join edu_attendance a
+          on a.enrollment_id = e.enrollment_id
+         and a.del_flag = '0'
+        where e.parent_id = #{parentId}
+          and e.del_flag = '0'
+          and e.enrollment_status = '1'
+          and s.del_flag = '0'
+          and s.status = '0'
+        group by s.course_class_name
+        order by max(s.course_year), max(s.term_name), max(s.period_name), max(s.start_time), max(s.schedule_id)
+    </select>
+
+    <select id="selectParentAttendanceDetails" resultType="java.util.HashMap">
+        select
+            e.enrollment_id as enrollmentId,
+            e.schedule_id as scheduleId,
+            e.student_name as studentName,
+            s.course_class_name as courseClassName,
+            s.term_name as termName,
+            s.period_name as periodName,
+            s.time_slot as timeSlot,
+            s.start_time as startTime,
+            s.end_time as endTime,
+            s.grade_name as gradeName,
+            s.subject_name as subjectName,
+            s.teacher_name as teacherName,
+            c.campus_name as campusName,
+            c.classroom_name as classroomName,
+            ifnull(a.attendance_status, '0') as attendanceStatus,
+            a.attended_time as attendedTime,
+            a.confirm_name as confirmName
+        from edu_enrollment e
+        inner join edu_course_schedule s on s.schedule_id = e.schedule_id
+        inner join edu_classroom c on c.classroom_id = s.classroom_id
+        left join edu_attendance a
+          on a.enrollment_id = e.enrollment_id
+         and a.del_flag = '0'
+        where e.parent_id = #{parentId}
+          and e.del_flag = '0'
+          and e.enrollment_status = '1'
+          and s.del_flag = '0'
+          and s.status = '0'
+          and s.course_class_name = #{courseClassName}
+        order by s.course_year, s.term_name, s.period_name, s.start_time, s.schedule_id
+    </select>
+
+    <select id="countScheduleAvailable" resultType="int">
+        select count(1)
+        from edu_course_schedule s
+        inner join edu_classroom c on c.classroom_id = s.classroom_id
+        where s.schedule_id = #{scheduleId}
+          and s.del_flag = '0'
+          and s.status = '0'
+          and s.recruit_status = '0'
+          and c.status = '0'
+          and ifnull(s.enrolled_count, 0) <![CDATA[<]]> ifnull(c.capacity, 999999)
+    </select>
+
+    <select id="countActiveEnrollment" resultType="int">
+        select count(1)
+        from edu_enrollment
+        where schedule_id = #{scheduleId}
+          and parent_id = #{parentId}
+          and student_name = #{studentName}
+          and del_flag = '0'
+          and enrollment_status != '2'
+    </select>
+
+    <update id="increaseScheduleEnrollment">
+        update edu_course_schedule s
+        inner join edu_classroom c on c.classroom_id = s.classroom_id
+        set s.enrolled_count = ifnull(s.enrolled_count, 0) + 1,
+            s.recruit_status = case
+                when ifnull(s.enrolled_count, 0) + 1 >= ifnull(c.capacity, 999999) then '2'
+                else s.recruit_status
+            end,
+            s.update_by = 'miniapp',
+            s.update_time = now()
+        where s.schedule_id = #{scheduleId}
+          and s.del_flag = '0'
+          and s.status = '0'
+          and s.recruit_status = '0'
+          and c.status = '0'
+          and ifnull(s.enrolled_count, 0) <![CDATA[<]]> ifnull(c.capacity, 999999)
+    </update>
+
+    <insert id="insertParentEnrollment">
+        insert into edu_enrollment (
+            enrollment_code,
+            schedule_id,
+            parent_id,
+            student_name,
+            student_phone,
+            contact_phone,
+            enrollment_status,
+            pay_status,
+            status,
+            del_flag,
+            create_by,
+            create_time
+        ) values (
+            #{enrollmentCode},
+            #{scheduleId},
+            #{parentId},
+            #{studentName},
+            #{studentPhone},
+            #{contactPhone},
+            '1',
+            '0',
+            '0',
+            '0',
+            #{createBy},
+            now()
+        )
+    </insert>
+
+    <select id="selectEnrollmentIdByCode" resultType="Long">
+        select enrollment_id
+        from edu_enrollment
+        where enrollment_code = #{enrollmentCode}
+        limit 1
+    </select>
+
+    <insert id="insertInitialAttendance">
+        insert into edu_attendance (
+            attendance_code,
+            schedule_id,
+            enrollment_id,
+            parent_id,
+            student_name,
+            attendance_status,
+            status,
+            del_flag,
+            create_by,
+            create_time
+        ) values (
+            #{attendanceCode},
+            #{scheduleId},
+            #{enrollmentId},
+            #{parentId},
+            #{studentName},
+            '0',
+            '0',
+            '0',
+            #{createBy},
+            now()
+        )
+    </insert>
+</mapper>

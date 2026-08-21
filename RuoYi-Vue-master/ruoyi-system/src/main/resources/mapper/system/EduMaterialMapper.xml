@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.EduMaterialMapper">
+
+    <resultMap type="EduMaterial" id="EduMaterialResult">
+        <result property="materialId"      column="material_id"      />
+        <result property="materialCode"   column="material_code"    />
+        <result property="title"          column="title"             />
+        <result property="subjectName"    column="subject_name"      />
+        <result property="gradeName"      column="grade_name"        />
+        <result property="price"          column="price"             />
+        <result property="intro"          column="intro"             />
+        <result property="filePath"      column="file_path"          />
+        <result property="fileName"      column="file_name"          />
+        <result property="fileSize"      column="file_size"          />
+        <result property="coverUrl"      column="cover_url"          />
+        <result property="shelfStatus"   column="shelf_status"       />
+        <result property="saleCount"     column="sale_count"         />
+        <result property="uploadUserId"  column="upload_user_id"     />
+        <result property="status"         column="status"            />
+        <result property="delFlag"       column="del_flag"          />
+        <result property="createBy"      column="create_by"         />
+        <result property="createTime"    column="create_time"       />
+        <result property="updateBy"      column="update_by"         />
+        <result property="updateTime"    column="update_time"       />
+        <result property="remark"        column="remark"             />
+        <result property="uploadUserName" column="upload_user_name" />
+        <result property="bought"        column="bought"            />
+    </resultMap>
+
+    <sql id="selectEduMaterialVo">
+        select material_id, material_code, title, subject_name, grade_name, price, intro,
+               file_path, file_name, file_size, cover_url, shelf_status, sale_count,
+               upload_user_id, status, del_flag, create_by, create_time, update_by, update_time, remark
+        from edu_material
+    </sql>
+
+    <select id="selectEduMaterialList" parameterType="EduMaterial" resultMap="EduMaterialResult">
+        <include refid="selectEduMaterialVo"/>
+        <where>
+            del_flag = '0'
+            <if test="materialCode  != null and materialCode  != ''"> and material_code like concat('%', #{materialCode}, '%')</if>
+            <if test="title         != null and title         != ''"> and title        like concat('%', #{title}, '%')</if>
+            <if test="subjectName   != null and subjectName   != ''"> and subject_name = #{subjectName}</if>
+            <if test="gradeName      != null and gradeName      != ''"> and grade_name   = #{gradeName}</if>
+            <if test="shelfStatus    != null and shelfStatus    != ''"> and shelf_status = #{shelfStatus}</if>
+            <if test="uploadUserId   != null">                       and upload_user_id = #{uploadUserId}</if>
+            <if test="status          != null and status          != ''"> and status = #{status}</if>
+        </where>
+        order by create_time desc
+    </select>
+
+    <select id="selectEduMaterialByMaterialId" parameterType="Long" resultMap="EduMaterialResult">
+        <include refid="selectEduMaterialVo"/>
+        where material_id = #{materialId} and del_flag = '0'
+    </select>
+
+    <select id="selectEduMaterialDetail" resultMap="EduMaterialResult">
+        select m.material_id, m.material_code, m.title, m.subject_name, m.grade_name, m.price, m.intro,
+               m.file_path, m.file_name, m.file_size, m.cover_url, m.shelf_status, m.sale_count,
+               m.upload_user_id, m.status, m.del_flag, m.create_by, m.create_time, m.update_by, m.update_time, m.remark,
+               u.nick_name as upload_user_name,
+               <if test="parentId != null">
+                   case when exists (
+                       select 1 from edu_material_order o
+                       where o.material_id = m.material_id and o.parent_id = #{parentId}
+                         and o.pay_status = '1' and o.del_flag = '0'
+                   ) then '1' else '0' end
+               </if>
+               <if test="parentId == null"> '0' </if>
+               as bought
+        from edu_material m
+        left join sys_user u on u.user_id = m.upload_user_id
+        where m.material_id = #{materialId} and m.del_flag = '0'
+    </select>
+
+    <select id="selectOnSaleMaterials" parameterType="EduMaterial" resultMap="EduMaterialResult">
+        <include refid="selectEduMaterialVo"/>
+        <where>
+            del_flag = '0' and status = '0' and shelf_status = '1'
+            <if test="title       != null and title       != ''"> and title        like concat('%', #{title}, '%')</if>
+            <if test="subjectName != null and subjectName != ''"> and subject_name = #{subjectName}</if>
+            <if test="gradeName    != null and gradeName    != ''"> and grade_name   = #{gradeName}</if>
+        </where>
+        order by sale_count desc, create_time desc
+    </select>
+
+    <select id="selectOnSaleMaterialsForParent" resultMap="EduMaterialResult">
+        select m.material_id, m.material_code, m.title, m.subject_name, m.grade_name, m.price, m.intro,
+               m.file_path, m.file_name, m.file_size, m.cover_url, m.shelf_status, m.sale_count,
+               m.upload_user_id, m.status, m.del_flag, m.create_by, m.create_time, m.update_by, m.update_time, m.remark,
+               case when exists (
+                   select 1 from edu_material_order o
+                   where o.material_id = m.material_id and o.parent_id = #{parentId}
+                     and o.pay_status = '1' and o.del_flag = '0'
+               ) then '1' else '0' end as bought
+        from edu_material m
+        <where>
+            m.del_flag = '0' and m.status = '0' and m.shelf_status = '1'
+            <if test="title       != null and title       != ''"> and m.title        like concat('%', #{title}, '%')</if>
+            <if test="subjectName != null and subjectName != ''"> and m.subject_name = #{subjectName}</if>
+            <if test="gradeName    != null and gradeName    != ''"> and m.grade_name   = #{gradeName}</if>
+        </where>
+        order by m.sale_count desc, m.create_time desc
+    </select>
+
+    <insert id="insertEduMaterial" parameterType="EduMaterial" useGeneratedKeys="true" keyProperty="materialId">
+        insert into edu_material
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="materialCode  != null and materialCode  != ''">material_code,</if>
+            <if test="title          != null and title          != ''">title,</if>
+            <if test="subjectName    != null and subjectName    != ''">subject_name,</if>
+            <if test="gradeName       != null and gradeName       != ''">grade_name,</if>
+            <if test="price           != null">price,</if>
+            <if test="intro           != null">intro,</if>
+            <if test="filePath       != null and filePath       != ''">file_path,</if>
+            <if test="fileName       != null and fileName       != ''">file_name,</if>
+            <if test="fileSize       != null">file_size,</if>
+            <if test="coverUrl       != null">cover_url,</if>
+            <if test="shelfStatus    != null and shelfStatus    != ''">shelf_status,</if>
+            <if test="saleCount       != null">sale_count,</if>
+            <if test="uploadUserId   != null">upload_user_id,</if>
+            <if test="status          != null and status          != ''">status,</if>
+            <if test="delFlag         != null and delFlag         != ''">del_flag,</if>
+            <if test="createBy        != null and createBy        != ''">create_by,</if>
+            <if test="createTime      != null">create_time,</if>
+            <if test="updateBy        != null and updateBy        != ''">update_by,</if>
+            <if test="updateTime      != null">update_time,</if>
+            <if test="remark          != null">remark,</if>
+        </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            <if test="materialCode  != null and materialCode  != ''">#{materialCode},</if>
+            <if test="title          != null and title          != ''">#{title},</if>
+            <if test="subjectName    != null and subjectName    != ''">#{subjectName},</if>
+            <if test="gradeName       != null and gradeName       != ''">#{gradeName},</if>
+            <if test="price           != null">#{price},</if>
+            <if test="intro           != null">#{intro},</if>
+            <if test="filePath       != null and filePath       != ''">#{filePath},</if>
+            <if test="fileName       != null and fileName       != ''">#{fileName},</if>
+            <if test="fileSize       != null">#{fileSize},</if>
+            <if test="coverUrl       != null">#{coverUrl},</if>
+            <if test="shelfStatus    != null and shelfStatus    != ''">#{shelfStatus},</if>
+            <if test="saleCount       != null">#{saleCount},</if>
+            <if test="uploadUserId   != null">#{uploadUserId},</if>
+            <if test="status          != null and status          != ''">#{status},</if>
+            <if test="delFlag         != null and delFlag         != ''">#{delFlag},</if>
+            <if test="createBy        != null and createBy        != ''">#{createBy},</if>
+            <if test="createTime      != null">#{createTime},</if>
+            <if test="updateBy        != null and updateBy        != ''">#{updateBy},</if>
+            <if test="updateTime      != null">#{updateTime},</if>
+            <if test="remark          != null">#{remark},</if>
+        </trim>
+    </insert>
+
+    <update id="updateEduMaterial" parameterType="EduMaterial">
+        update edu_material
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="materialCode  != null and materialCode  != ''">material_code = #{materialCode},</if>
+            <if test="title          != null and title          != ''">title = #{title},</if>
+            <if test="subjectName    != null and subjectName    != ''">subject_name = #{subjectName},</if>
+            <if test="gradeName       != null and gradeName       != ''">grade_name = #{gradeName},</if>
+            <if test="price           != null">price = #{price},</if>
+            <if test="intro           != null">intro = #{intro},</if>
+            <if test="filePath       != null and filePath       != ''">file_path = #{filePath},</if>
+            <if test="fileName       != null and fileName       != ''">file_name = #{fileName},</if>
+            <if test="fileSize       != null">file_size = #{fileSize},</if>
+            <if test="coverUrl       != null">cover_url = #{coverUrl},</if>
+            <if test="shelfStatus    != null and shelfStatus    != ''">shelf_status = #{shelfStatus},</if>
+            <if test="saleCount       != null">sale_count = #{saleCount},</if>
+            <if test="uploadUserId   != null">upload_user_id = #{uploadUserId},</if>
+            <if test="status          != null and status          != ''">status = #{status},</if>
+            <if test="delFlag         != null and delFlag         != ''">del_flag = #{delFlag},</if>
+            <if test="updateBy        != null and updateBy        != ''">update_by = #{updateBy},</if>
+            <if test="updateTime      != null">update_time = #{updateTime},</if>
+            <if test="remark          != null">remark = #{remark},</if>
+        </trim>
+        where material_id = #{materialId}
+    </update>
+
+    <update id="incrSaleCount" parameterType="Long">
+        update edu_material set sale_count = sale_count + 1 where material_id = #{materialId}
+    </update>
+
+    <delete id="deleteEduMaterialByMaterialId" parameterType="Long">
+        update edu_material set del_flag = '2' where material_id = #{materialId}
+    </delete>
+
+    <delete id="deleteEduMaterialByMaterialIds" parameterType="Long">
+        update edu_material set del_flag = '2' where material_id in
+        <foreach item="materialId" collection="array" open="(" separator="," close=")">
+            #{materialId}
+        </foreach>
+    </delete>
+</mapper>

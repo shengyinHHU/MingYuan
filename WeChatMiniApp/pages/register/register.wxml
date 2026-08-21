@@ -1,0 +1,36 @@
+<view class="auth-page">
+  <view class="brand">
+    <image class="logo" src="/images/logo.png" mode="widthFix"></image>
+    <view class="badge">开发登录</view>
+    <view class="title">选择角色进入小程序</view>
+    <view class="subtitle">开发阶段可直接切换家长、教师、管理员，并获得对应若依鉴权 token。</view>
+  </view>
+
+  <view class="panel">
+    <view class="role-tabs">
+      <view
+        class="role-tab {{item.className}}"
+        wx:for="{{devRoles}}"
+        wx:key="key"
+        data-role="{{item.key}}"
+        bindtap="chooseDevRole"
+      >
+        {{item.name}}
+      </view>
+    </view>
+
+    <view class="notice">
+      <view class="notice-title">名远教育</view>
+      <view class="notice-text">当前开发模式会向若依后端申请所选角色的真实登录 token，方便继续联调角色权限和接口。</view>
+    </view>
+
+    <button
+      class="wechat-btn"
+      open-type="getPhoneNumber"
+      bindgetphonenumber="handlePhoneLogin"
+      loading="{{submitting}}"
+    >手机号授权登录</button>
+
+    <button class="dev-btn" bindtap="handleDevLogin" loading="{{submitting}}">开发模拟登录</button>
+  </view>
+</view>

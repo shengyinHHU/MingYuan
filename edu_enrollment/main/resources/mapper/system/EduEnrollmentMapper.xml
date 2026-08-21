@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.EduEnrollmentMapper">
+    
+    <resultMap type="EduEnrollment" id="EduEnrollmentResult">
+        <result property="enrollmentId"    column="enrollment_id"    />
+        <result property="enrollmentCode"    column="enrollment_code"    />
+        <result property="scheduleId"    column="schedule_id"    />
+        <result property="parentId"    column="parent_id"    />
+        <result property="studentName"    column="student_name"    />
+        <result property="studentPhone"    column="student_phone"    />
+        <result property="contactPhone"    column="contact_phone"    />
+        <result property="enrollmentStatus"    column="enrollment_status"    />
+        <result property="payStatus"    column="pay_status"    />
+        <result property="cancelTime"    column="cancel_time"    />
+        <result property="cancelReason"    column="cancel_reason"    />
+        <result property="status"    column="status"    />
+        <result property="delFlag"    column="del_flag"    />
+        <result property="createBy"    column="create_by"    />
+        <result property="createTime"    column="create_time"    />
+        <result property="updateBy"    column="update_by"    />
+        <result property="updateTime"    column="update_time"    />
+        <result property="remark"    column="remark"    />
+    </resultMap>
+
+    <sql id="selectEduEnrollmentVo">
+        select enrollment_id, enrollment_code, schedule_id, parent_id, student_name, student_phone, contact_phone, enrollment_status, pay_status, cancel_time, cancel_reason, status, del_flag, create_by, create_time, update_by, update_time, remark from edu_enrollment
+    </sql>
+
+    <select id="selectEduEnrollmentList" parameterType="EduEnrollment" resultMap="EduEnrollmentResult">
+        <include refid="selectEduEnrollmentVo"/>
+        <where>  
+            <if test="enrollmentCode != null  and enrollmentCode != ''"> and enrollment_code = #{enrollmentCode}</if>
+            <if test="scheduleId != null "> and schedule_id = #{scheduleId}</if>
+            <if test="parentId != null "> and parent_id = #{parentId}</if>
+            <if test="studentName != null  and studentName != ''"> and student_name like concat('%', #{studentName}, '%')</if>
+            <if test="studentPhone != null  and studentPhone != ''"> and student_phone = #{studentPhone}</if>
+            <if test="contactPhone != null  and contactPhone != ''"> and contact_phone = #{contactPhone}</if>
+            <if test="enrollmentStatus != null  and enrollmentStatus != ''"> and enrollment_status = #{enrollmentStatus}</if>
+            <if test="payStatus != null  and payStatus != ''"> and pay_status = #{payStatus}</if>
+            <if test="cancelTime != null "> and cancel_time = #{cancelTime}</if>
+            <if test="cancelReason != null  and cancelReason != ''"> and cancel_reason = #{cancelReason}</if>
+            <if test="status != null  and status != ''"> and status = #{status}</if>
+        </where>
+    </select>
+    
+    <select id="selectEduEnrollmentByEnrollmentId" parameterType="Long" resultMap="EduEnrollmentResult">
+        <include refid="selectEduEnrollmentVo"/>
+        where enrollment_id = #{enrollmentId}
+    </select>
+
+    <insert id="insertEduEnrollment" parameterType="EduEnrollment" useGeneratedKeys="true" keyProperty="enrollmentId">
+        insert into edu_enrollment
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="enrollmentCode != null and enrollmentCode != ''">enrollment_code,</if>
+            <if test="scheduleId != null">schedule_id,</if>
+            <if test="parentId != null">parent_id,</if>
+            <if test="studentName != null and studentName != ''">student_name,</if>
+            <if test="studentPhone != null">student_phone,</if>
+            <if test="contactPhone != null">contact_phone,</if>
+            <if test="enrollmentStatus != null">enrollment_status,</if>
+            <if test="payStatus != null">pay_status,</if>
+            <if test="cancelTime != null">cancel_time,</if>
+            <if test="cancelReason != null">cancel_reason,</if>
+            <if test="status != null">status,</if>
+            <if test="delFlag != null">del_flag,</if>
+            <if test="createBy != null">create_by,</if>
+            <if test="createTime != null">create_time,</if>
+            <if test="updateBy != null">update_by,</if>
+            <if test="updateTime != null">update_time,</if>
+            <if test="remark != null">remark,</if>
+         </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            <if test="enrollmentCode != null and enrollmentCode != ''">#{enrollmentCode},</if>
+            <if test="scheduleId != null">#{scheduleId},</if>
+            <if test="parentId != null">#{parentId},</if>
+            <if test="studentName != null and studentName != ''">#{studentName},</if>
+            <if test="studentPhone != null">#{studentPhone},</if>
+            <if test="contactPhone != null">#{contactPhone},</if>
+            <if test="enrollmentStatus != null">#{enrollmentStatus},</if>
+            <if test="payStatus != null">#{payStatus},</if>
+            <if test="cancelTime != null">#{cancelTime},</if>
+            <if test="cancelReason != null">#{cancelReason},</if>
+            <if test="status != null">#{status},</if>
+            <if test="delFlag != null">#{delFlag},</if>
+            <if test="createBy != null">#{createBy},</if>
+            <if test="createTime != null">#{createTime},</if>
+            <if test="updateBy != null">#{updateBy},</if>
+            <if test="updateTime != null">#{updateTime},</if>
+            <if test="remark != null">#{remark},</if>
+         </trim>
+    </insert>
+
+    <update id="updateEduEnrollment" parameterType="EduEnrollment">
+        update edu_enrollment
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="enrollmentCode != null and enrollmentCode != ''">enrollment_code = #{enrollmentCode},</if>
+            <if test="scheduleId != null">schedule_id = #{scheduleId},</if>
+            <if test="parentId != null">parent_id = #{parentId},</if>
+            <if test="studentName != null and studentName != ''">student_name = #{studentName},</if>
+            <if test="studentPhone != null">student_phone = #{studentPhone},</if>
+            <if test="contactPhone != null">contact_phone = #{contactPhone},</if>
+            <if test="enrollmentStatus != null">enrollment_status = #{enrollmentStatus},</if>
+            <if test="payStatus != null">pay_status = #{payStatus},</if>
+            <if test="cancelTime != null">cancel_time = #{cancelTime},</if>
+            <if test="cancelReason != null">cancel_reason = #{cancelReason},</if>
+            <if test="status != null">status = #{status},</if>
+            <if test="delFlag != null">del_flag = #{delFlag},</if>
+            <if test="createBy != null">create_by = #{createBy},</if>
+            <if test="createTime != null">create_time = #{createTime},</if>
+            <if test="updateBy != null">update_by = #{updateBy},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+            <if test="remark != null">remark = #{remark},</if>
+        </trim>
+        where enrollment_id = #{enrollmentId}
+    </update>
+
+    <delete id="deleteEduEnrollmentByEnrollmentId" parameterType="Long">
+        delete from edu_enrollment where enrollment_id = #{enrollmentId}
+    </delete>
+
+    <delete id="deleteEduEnrollmentByEnrollmentIds" parameterType="String">
+        delete from edu_enrollment where enrollment_id in 
+        <foreach item="enrollmentId" collection="array" open="(" separator="," close=")">
+            #{enrollmentId}
+        </foreach>
+    </delete>
+</mapper>

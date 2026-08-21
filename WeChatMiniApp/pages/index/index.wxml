@@ -7,7 +7,7 @@
 
     <view class="role-switch">
       <view
-        class="role-chip {{currentRole === item.key ? 'active' : ''}}"
+        class="role-chip {{item.className}}"
         wx:for="{{roles}}"
         wx:key="key"
         data-role="{{item.key}}"
@@ -20,7 +20,6 @@
     <view class="hero-copy">
       <view class="eyebrow">{{eyebrow}}</view>
       <view class="title">{{title}}</view>
-      <view class="subtitle">{{subtitle}}</view>
     </view>
 
     <view class="stats">
@@ -35,7 +34,6 @@
     <view class="section-head">
       <view>
         <view class="section-title">{{currentRoleName}}功能</view>
-        <view class="section-subtitle">入口按角色权限展示，暂不创建二级页面</view>
       </view>
     </view>
 
@@ -45,11 +43,11 @@
         wx:for="{{quickActions}}"
         wx:key="title"
         data-title="{{item.title}}"
+        data-route="{{item.route}}"
         bindtap="handleAction"
       >
         <view class="action-icon">{{item.icon}}</view>
         <view class="action-title">{{item.title}}</view>
-        <view class="action-desc">{{item.desc}}</view>
       </view>
     </view>
   </view>
@@ -65,20 +63,6 @@
         </view>
         <view class="course-status">{{item.status}}</view>
       </view>
-    </view>
-
-    <view class="panel growth-panel">
-      <view class="section-title">{{insightTitle}}</view>
-      <view class="growth-item" wx:for="{{insight}}" wx:key="label">
-        <view class="growth-row">
-          <text>{{item.label}}</text>
-          <text>{{item.value}}%</text>
-        </view>
-        <view class="progress">
-          <view class="progress-bar" style="width: {{item.value}}%;"></view>
-        </view>
-      </view>
-      <view class="note">{{note}}</view>
     </view>
   </view>
 </scroll-view>

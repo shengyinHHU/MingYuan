@@ -1,0 +1,43 @@
+<view class="page" wx:if="{{detail}}">
+  <view class="hero">
+    <view class="hero-tag">{{subjectText}} · {{gradeText}}</view>
+    <view class="hero-title">{{detail.title}}</view>
+    <view class="hero-price">{{priceText}}</view>
+    <view class="hero-meta">
+      <text>已售 {{detail.saleCount || 0}} 份</text>
+      <text wx:if="{{sizeText}}"> · {{sizeText}}</text>
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">资料简介</view>
+    <view class="intro">{{detail.intro || '暂无简介'}}</view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">文件信息</view>
+    <view class="file-row">
+      <view class="file-name">{{detail.fileName || '—'}}</view>
+      <view class="file-size" wx:if="{{sizeText}}">{{sizeText}}</view>
+    </view>
+  </view>
+
+  <view class="section" wx:if="{{detail.uploadUserName}}">
+    <view class="section-title">上传者</view>
+    <view class="uploader">{{detail.uploadUserName}}</view>
+  </view>
+
+  <view class="footer">
+    <block wx:if="{{bought}}">
+      <button class="btn primary" bindtap="download">下载资料</button>
+    </block>
+    <block wx:elif="{{role === 'parent'}}">
+      <button class="btn primary" loading="{{buying}}" disabled="{{buying}}" bindtap="buy">立即购买（模拟支付）</button>
+    </block>
+    <block wx:else>
+      <view class="hint">教师/管理员身份无法购买，请使用家长身份</view>
+    </block>
+  </view>
+</view>
+
+<view class="loading" wx:if="{{loading && !detail}}">加载中...</view>

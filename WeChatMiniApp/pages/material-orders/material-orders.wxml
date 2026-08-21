@@ -1,0 +1,31 @@
+<view class="page">
+  <view class="header">
+    <view class="header-title">我的资料</view>
+    <view class="header-subtitle">已购买的资料可随时下载</view>
+  </view>
+
+  <view class="list" wx:if="{{!showEmpty}}">
+    <view class="order-card" wx:for="{{orders}}" wx:key="orderId">
+      <view class="order-main">
+        <view class="title">{{item.materialTitle || '资料已删除'}}</view>
+        <view class="meta">
+          <text class="code">{{item.orderCode}}</text>
+          <text class="time" wx:if="{{item.timeText}}">{{item.timeText}}</text>
+        </view>
+      </view>
+      <view class="order-right">
+        <view class="amount {{item.statusClass === 'paid' ? 'free' : ''}}">{{item.amountText}}</view>
+        <view class="status {{item.statusClass}}">{{item.statusText}}</view>
+        <view class="btn-download" wx:if="{{item.payStatus === '1'}}" data-id="{{item.orderId}}" bindtap="download">下载</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="empty" wx:if="{{showEmpty && !loading}}">
+    <view class="empty-icon">📭</view>
+    <view class="empty-text">还没有购买记录</view>
+    <navigator class="empty-action" url="/pages/material/material" open-type="navigate">去逛商城</navigator>
+  </view>
+
+  <view class="loading" wx:if="{{loading}}">加载中...</view>
+</view>
