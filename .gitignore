@@ -1,0 +1,33 @@
+# ===== IDE =====
+.idea/
+*.iml
+.vscode/
+
+# ===== Java / Maven 编译产物 =====
+target/
+*.class
+*.jar
+*.war
+
+# ===== Node / 前端依赖 =====
+node_modules/
+dist/
+.cache/
+
+# ===== 微信开发者工具缓存 =====
+miniprogram_npm/
+project.private.config.json
+
+# ===== 上传/日志/临时文件 =====
+logs/
+*.log
+uploadPath/
+D:/ruoyi/uploadPath/
+
+# ===== 大文件 / 压缩包（项目里这些不该入库）=====
+*.zip
+*.lnk
+
+# ===== 系统 =====
+Thumbs.db
+.DS_Store
