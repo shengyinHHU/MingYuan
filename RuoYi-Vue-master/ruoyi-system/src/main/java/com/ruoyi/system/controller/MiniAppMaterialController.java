@@ -48,7 +48,7 @@ public class MiniAppMaterialController extends BaseController
     /**
      * 资料商城字典：返回学科、年级选项。家长、教师、管理员均可访问。
      */
-    @PreAuthorize("@ss.hasAnyRole('parent','teacher','admin')")
+    @PreAuthorize("@ss.hasAnyRoles('parent,teacher,admin')")
     @GetMapping("/material/dict")
     public AjaxResult dict()
     {
@@ -150,7 +150,7 @@ public class MiniAppMaterialController extends BaseController
 
     // ============== 教师 / 管理员端 ==============
 
-    @PreAuthorize("@ss.hasAnyRole('teacher','admin')")
+    @PreAuthorize("@ss.hasAnyRoles('teacher,admin')")
     @GetMapping("/teacher/material/list")
     public AjaxResult myUploads(@RequestParam(value = "title", required = false) String title,
             @RequestParam(value = "subjectName", required = false) String subjectName,
@@ -159,21 +159,21 @@ public class MiniAppMaterialController extends BaseController
         return success(miniAppMaterialService.selectMyUploads(title, subjectName, gradeName));
     }
 
-    @PreAuthorize("@ss.hasAnyRole('teacher','admin')")
+    @PreAuthorize("@ss.hasAnyRoles('teacher,admin')")
     @PostMapping("/teacher/material")
     public AjaxResult upload(@RequestBody MiniAppMaterialUploadBody body)
     {
         return toAjax(miniAppMaterialService.uploadMaterial(body));
     }
 
-    @PreAuthorize("@ss.hasAnyRole('teacher','admin')")
+    @PreAuthorize("@ss.hasAnyRoles('teacher,admin')")
     @PutMapping("/teacher/material")
     public AjaxResult edit(@RequestBody EduMaterial material)
     {
         return toAjax(miniAppMaterialService.updateMyMaterial(material));
     }
 
-    @PreAuthorize("@ss.hasAnyRole('teacher','admin')")
+    @PreAuthorize("@ss.hasAnyRoles('teacher,admin')")
     @DeleteMapping("/teacher/material/{materialId}")
     public AjaxResult remove(@PathVariable("materialId") Long materialId)
     {

@@ -10,6 +10,10 @@ server:
   port: 8080
   servlet:
     context-path: /
+    encoding:
+      charset: UTF-8
+      force: true
+      enabled: true
   tomcat:
     uri-encoding: UTF-8
     accept-count: 1000

@@ -99,9 +99,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         from edu_material m
         <where>
             m.del_flag = '0' and m.status = '0' and m.shelf_status = '1'
-            <if test="title       != null and title       != ''"> and m.title        like concat('%', #{title}, '%')</if>
-            <if test="subjectName != null and subjectName != ''"> and m.subject_name = #{subjectName}</if>
-            <if test="gradeName    != null and gradeName    != ''"> and m.grade_name   = #{gradeName}</if>
+            <if test="eduMaterial.title       != null and eduMaterial.title       != ''"> and m.title        like concat('%', #{eduMaterial.title}, '%')</if>
+            <if test="eduMaterial.subjectName != null and eduMaterial.subjectName != ''"> and m.subject_name = #{eduMaterial.subjectName}</if>
+            <if test="eduMaterial.gradeName    != null and eduMaterial.gradeName    != ''"> and m.grade_name   = #{eduMaterial.gradeName}</if>
         </where>
         order by m.sale_count desc, m.create_time desc
     </select>

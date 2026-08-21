@@ -1,6 +1,7 @@
 package com.ruoyi.system.mapper;
 
 import java.util.List;
+import org.apache.ibatis.annotations.Param;
 import com.ruoyi.system.domain.EduMaterial;
 
 /**
@@ -26,7 +27,7 @@ public interface EduMaterialMapper
      * @param parentId     家长ID（用于 bought 字段计算，可为 null）
      * @return 资料商品
      */
-    public EduMaterial selectEduMaterialDetail(Long materialId, Long parentId);
+    public EduMaterial selectEduMaterialDetail(@Param("materialId") Long materialId, @Param("parentId") Long parentId);
 
     /**
      * 查询资料商品列表
@@ -51,7 +52,7 @@ public interface EduMaterialMapper
      * @param parentId    家长ID
      * @return 资料商品集合
      */
-    public List<EduMaterial> selectOnSaleMaterialsForParent(EduMaterial eduMaterial, Long parentId);
+    public List<EduMaterial> selectOnSaleMaterialsForParent(@Param("eduMaterial") EduMaterial eduMaterial, @Param("parentId") Long parentId);
 
     /**
      * 新增资料商品

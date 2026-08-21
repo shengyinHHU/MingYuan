@@ -204,7 +204,7 @@ Page({
           price: priceVal,
           intro: form.intro || '',
           filePath: uploadRes.fileName,
-          fileName: uploadRes.originalFilename || file.name,
+          fileName: file.name || uploadRes.originalFilename,
           fileSize: file.size
         }
       })

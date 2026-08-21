@@ -1,6 +1,7 @@
 package com.ruoyi.system.mapper;
 
 import java.util.List;
+import org.apache.ibatis.annotations.Param;
 import com.ruoyi.system.domain.EduMaterialOrder;
 
 /**
@@ -26,7 +27,7 @@ public interface EduMaterialOrderMapper
      * @param parentId   家长ID
      * @return 订单
      */
-    public EduMaterialOrder selectOrderByMaterialAndParent(Long materialId, Long parentId);
+    public EduMaterialOrder selectOrderByMaterialAndParent(@Param("materialId") Long materialId, @Param("parentId") Long parentId);
 
     /**
      * 查询资料订单列表
@@ -42,7 +43,7 @@ public interface EduMaterialOrderMapper
      * @param parentId 家长ID
      * @return 订单集合
      */
-    public List<EduMaterialOrder> selectParentOrders(Long parentId);
+    public List<EduMaterialOrder> selectParentOrders(@Param("parentId") Long parentId);
 
     /**
      * 查询家长已支付的可下载订单（含资料文件路径）
@@ -51,7 +52,7 @@ public interface EduMaterialOrderMapper
      * @param parentId  家长ID
      * @return 订单（含文件路径）
      */
-    public EduMaterialOrder selectDownloadableOrder(Long orderId, Long parentId);
+    public EduMaterialOrder selectDownloadableOrder(@Param("orderId") Long orderId, @Param("parentId") Long parentId);
 
     /**
      * 新增资料订单
