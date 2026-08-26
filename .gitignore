@@ -28,6 +28,10 @@ D:/ruoyi/uploadPath/
 *.zip
 *.lnk
 
+# ===== 数据库工具会话文件 =====
+*.session.sql
+*.sqp
+
 # ===== 系统 =====
 Thumbs.db
 .DS_Store
