@@ -39,7 +39,19 @@ public class MiniAppParentServiceImpl implements IMiniAppParentService
     @Override
     public List<Map<String, Object>> selectMyTimetable()
     {
-        return miniAppParentMapper.selectParentTimetable(SecurityUtils.getUserId());
+        List<Map<String, Object>> list = miniAppParentMapper.selectParentTimetable(SecurityUtils.getUserId());
+        if (list != null)
+        {
+            for (Map<String, Object> item : list)
+            {
+                Object scheduleId = item.get("scheduleId");
+                if (scheduleId != null)
+                {
+                    item.put("adjustments", miniAppParentMapper.selectScheduleAdjustments(scheduleId));
+                }
+            }
+        }
+        return list;
     }
 
     @Override
@@ -98,6 +110,51 @@ public class MiniAppParentServiceImpl implements IMiniAppParentService
                     + IdUtils.fastSimpleUUID().substring(0, 6).toUpperCase();
             miniAppParentMapper.insertInitialAttendance(attendanceCode, body.getScheduleId(), enrollmentId, parentId,
                     studentName, SecurityUtils.getUsername());
+        }
+        return rows;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int cancelEnrollment(Long enrollmentId)
+    {
+        if (enrollmentId == null)
+        {
+            throw new ServiceException("请选择要取消的课程");
+        }
+        Long parentId = SecurityUtils.getUserId();
+        Map<String, Object> owner = miniAppParentMapper.selectEnrollmentOwnerInfo(enrollmentId);
+        if (owner == null)
+        {
+            throw new ServiceException("报名记录不存在或已取消");
+        }
+        Object recordParentId = owner.get("parentId");
+        Object delFlag = owner.get("delFlag");
+        if (recordParentId == null || !parentId.equals(Long.valueOf(String.valueOf(recordParentId))))
+        {
+            throw new ServiceException("无权取消他人的报名");
+        }
+        if (delFlag != null && !"0".equals(String.valueOf(delFlag)))
+        {
+            throw new ServiceException("该报名已取消，请勿重复操作");
+        }
+        String createBy = SecurityUtils.getUsername();
+
+        // 1. 逻辑删除考勤记录（无考勤也不报错）
+        miniAppParentMapper.cancelAttendanceByEnrollmentId(enrollmentId, createBy);
+
+        // 2. 释放排课名额
+        Object scheduleId = owner.get("scheduleId");
+        if (scheduleId != null)
+        {
+            miniAppParentMapper.decreaseScheduleEnrollment(Long.valueOf(String.valueOf(scheduleId)), createBy);
+        }
+
+        // 3. 逻辑删除报名记录（enrollment_status='2', del_flag='2'）
+        int rows = miniAppParentMapper.cancelEnrollmentById(enrollmentId, createBy);
+        if (rows == 0)
+        {
+            throw new ServiceException("取消失败，报名状态已变更，请刷新后重试");
         }
         return rows;
     }

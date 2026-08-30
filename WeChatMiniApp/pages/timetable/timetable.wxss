@@ -84,6 +84,7 @@ page {
 .course-card {
   position: relative;
   display: flex;
+  flex-wrap: wrap;
   gap: 18rpx;
   margin-bottom: 18rpx;
   padding: 22rpx;
@@ -91,6 +92,46 @@ page {
   border-radius: 16rpx;
   background: #ffffff;
   box-shadow: 0 12rpx 26rpx rgba(24, 43, 77, 0.05);
+}
+
+.next-class {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  width: 100%;
+  padding: 10rpx 14rpx;
+  border-radius: 12rpx;
+  background: linear-gradient(90deg, #fff7e6 0%, #eef5ff 100%);
+  font-size: 23rpx;
+}
+
+.next-class.ended {
+  background: #f1f3f7;
+}
+
+.next-class.pending {
+  background: #f5f5f5;
+  color: #909399;
+}
+
+.next-label {
+  color: #6e7a8c;
+  font-weight: 700;
+}
+
+.next-date {
+  color: #b87308;
+  font-weight: 800;
+  font-size: 25rpx;
+}
+
+.next-weekday {
+  padding: 2rpx 12rpx;
+  border-radius: 999rpx;
+  background: #0f58a8;
+  color: #ffffff;
+  font-size: 21rpx;
+  font-weight: 700;
 }
 
 .time-pill {
@@ -126,9 +167,16 @@ page {
   line-height: 1.35;
 }
 
+.course-footer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  width: 100%;
+  margin-top: 14rpx;
+}
+
 .student {
   display: inline-flex;
-  margin-top: 14rpx;
   padding: 8rpx 14rpx;
   border-radius: 999rpx;
   background: #fff3dc;
@@ -163,4 +211,20 @@ page {
   color: #778397;
   font-size: 27rpx;
   font-weight: 700;
+}
+
+.cancel-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  height: 56rpx;
+  padding: 0 26rpx;
+  border: 1rpx solid #f3c2c2;
+  border-radius: 12rpx;
+  background: #fff5f5;
+  color: #c84444;
+  font-size: 24rpx;
+  font-weight: 700;
+  line-height: 1;
 }

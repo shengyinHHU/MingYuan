@@ -54,6 +54,20 @@ public class EduCourseSchedule extends BaseEntity
     @Excel(name = "结束时间", width = 30, dateFormat = "yyyy-MM-dd")
     private Date endTime;
 
+    /** 开课日期（本期第一次上课日） */
+    @JsonFormat(pattern = "yyyy-MM-dd")
+    @Excel(name = "开课日期", width = 30, dateFormat = "yyyy-MM-dd")
+    private Date startDate;
+
+    /** 结课日期（本期最后一次上课日） */
+    @JsonFormat(pattern = "yyyy-MM-dd")
+    @Excel(name = "结课日期", width = 30, dateFormat = "yyyy-MM-dd")
+    private Date endDate;
+
+    /** 上课模式（WEEKLY每周/DAILY_5_1上5休1） */
+    @Excel(name = "上课模式", readConverterExp = "WEEKLY=每周一次,DAILY_5_1=上5天休1天")
+    private String classPattern;
+
     /** 年级 */
     @Excel(name = "年级")
     private String gradeName;
@@ -191,6 +205,36 @@ public class EduCourseSchedule extends BaseEntity
         return endTime;
     }
 
+    public void setStartDate(Date startDate)
+    {
+        this.startDate = startDate;
+    }
+
+    public Date getStartDate()
+    {
+        return startDate;
+    }
+
+    public void setEndDate(Date endDate)
+    {
+        this.endDate = endDate;
+    }
+
+    public Date getEndDate()
+    {
+        return endDate;
+    }
+
+    public void setClassPattern(String classPattern)
+    {
+        this.classPattern = classPattern;
+    }
+
+    public String getClassPattern()
+    {
+        return classPattern;
+    }
+
     public void setGradeName(String gradeName) 
     {
         this.gradeName = gradeName;
@@ -323,6 +367,9 @@ public class EduCourseSchedule extends BaseEntity
             .append("timeSlot", getTimeSlot())
             .append("startTime", getStartTime())
             .append("endTime", getEndTime())
+            .append("startDate", getStartDate())
+            .append("endDate", getEndDate())
+            .append("classPattern", getClassPattern())
             .append("gradeName", getGradeName())
             .append("subjectName", getSubjectName())
             .append("teacherName", getTeacherName())

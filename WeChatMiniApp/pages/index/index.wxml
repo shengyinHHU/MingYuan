@@ -56,12 +56,18 @@
     <view class="panel">
       <view class="section-title">{{agendaTitle}}</view>
       <view class="course" wx:for="{{schedule}}" wx:key="time">
-        <view class="course-time">{{item.time}}</view>
+        <view class="course-time-wrap">
+          <view class="course-meta-date" wx:if="{{item.dateReady}}">
+            <text>{{item.date}}</text>
+            <text class="course-meta-sep">·</text>
+            <text>{{item.weekday}}</text>
+          </view>
+          <view class="course-time">{{item.time}}</view>
+        </view>
         <view class="course-main">
           <view class="course-name">{{item.name}}</view>
           <view class="course-meta">{{item.room}} · {{item.teacher}}</view>
         </view>
-        <view class="course-status">{{item.status}}</view>
       </view>
     </view>
   </view>

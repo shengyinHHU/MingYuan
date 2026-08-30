@@ -48,8 +48,8 @@ public class EduEnrollment extends BaseEntity
     @Excel(name = "报名状态", readConverterExp = "0=待确认,1=报名成功,2=已取消")
     private String enrollmentStatus;
 
-    /** 支付状态（0未支付 1已支付 2已退款） */
-    @Excel(name = "支付状态", readConverterExp = "0=未支付,1=已支付,2=已退款")
+    /** 支付状态（未支付/已支付/已退款） */
+    @Excel(name = "支付状态", readConverterExp = "未支付=未支付,已支付=已支付,已退款=已退款")
     private String payStatus;
 
     /** 取消时间 */
@@ -67,6 +67,21 @@ public class EduEnrollment extends BaseEntity
 
     /** 删除标志（0代表存在 2代表删除） */
     private String delFlag;
+
+    /** 排课-年级（关联查询，非表字段） */
+    private String gradeName;
+
+    /** 排课-学科（关联查询，非表字段） */
+    private String subjectName;
+
+    /** 排课-班型（关联查询，非表字段） */
+    private String classType;
+
+    /** 排课-教师（关联查询，非表字段） */
+    private String teacherName;
+
+    /** 排课-招生状态（关联查询，非表字段：0招生中 1停招 2满班） */
+    private String recruitStatus;
 
     public void setEnrollmentId(Long enrollmentId) 
     {
@@ -196,6 +211,56 @@ public class EduEnrollment extends BaseEntity
     public String getDelFlag() 
     {
         return delFlag;
+    }
+
+    public void setGradeName(String gradeName)
+    {
+        this.gradeName = gradeName;
+    }
+
+    public String getGradeName()
+    {
+        return gradeName;
+    }
+
+    public void setSubjectName(String subjectName)
+    {
+        this.subjectName = subjectName;
+    }
+
+    public String getSubjectName()
+    {
+        return subjectName;
+    }
+
+    public void setClassType(String classType)
+    {
+        this.classType = classType;
+    }
+
+    public String getClassType()
+    {
+        return classType;
+    }
+
+    public void setTeacherName(String teacherName)
+    {
+        this.teacherName = teacherName;
+    }
+
+    public String getTeacherName()
+    {
+        return teacherName;
+    }
+
+    public void setRecruitStatus(String recruitStatus)
+    {
+        this.recruitStatus = recruitStatus;
+    }
+
+    public String getRecruitStatus()
+    {
+        return recruitStatus;
     }
 
     @Override

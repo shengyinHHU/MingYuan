@@ -14,6 +14,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="timeSlot"    column="time_slot"    />
         <result property="startTime"    column="start_time"    />
         <result property="endTime"    column="end_time"    />
+        <result property="startDate"    column="start_date"    />
+        <result property="endDate"    column="end_date"    />
+        <result property="classPattern"    column="class_pattern"    />
         <result property="gradeName"    column="grade_name"    />
         <result property="subjectName"    column="subject_name"    />
         <result property="teacherName"    column="teacher_name"    />
@@ -34,7 +37,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     </resultMap>
 
     <sql id="selectEduCourseScheduleVo">
-        select schedule_id, schedule_code, classroom_id, course_year, term_name, period_name, time_slot, start_time, end_time, grade_name, subject_name, teacher_name, class_type, enrolled_count, recruit_status, course_class_name, source_sheet, source_row, source_col, status, del_flag, create_by, create_time, update_by, update_time, remark from edu_course_schedule
+        select schedule_id, schedule_code, classroom_id, course_year, term_name, period_name, time_slot, start_time, end_time, start_date, end_date, class_pattern, grade_name, subject_name, teacher_name, class_type, enrolled_count, recruit_status, course_class_name, source_sheet, source_row, source_col, status, del_flag, create_by, create_time, update_by, update_time, remark from edu_course_schedule
     </sql>
 
     <select id="selectEduCourseScheduleList" parameterType="EduCourseSchedule" resultMap="EduCourseScheduleResult">
@@ -78,6 +81,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="timeSlot != null and timeSlot != ''">time_slot,</if>
             <if test="startTime != null">start_time,</if>
             <if test="endTime != null">end_time,</if>
+            <if test="startDate != null">start_date,</if>
+            <if test="endDate != null">end_date,</if>
+            <if test="classPattern != null and classPattern != ''">class_pattern,</if>
             <if test="gradeName != null and gradeName != ''">grade_name,</if>
             <if test="subjectName != null and subjectName != ''">subject_name,</if>
             <if test="teacherName != null">teacher_name,</if>
@@ -105,6 +111,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="timeSlot != null and timeSlot != ''">#{timeSlot},</if>
             <if test="startTime != null">#{startTime},</if>
             <if test="endTime != null">#{endTime},</if>
+            <if test="startDate != null">#{startDate},</if>
+            <if test="endDate != null">#{endDate},</if>
+            <if test="classPattern != null and classPattern != ''">#{classPattern},</if>
             <if test="gradeName != null and gradeName != ''">#{gradeName},</if>
             <if test="subjectName != null and subjectName != ''">#{subjectName},</if>
             <if test="teacherName != null">#{teacherName},</if>
@@ -136,6 +145,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="timeSlot != null and timeSlot != ''">time_slot = #{timeSlot},</if>
             <if test="startTime != null">start_time = #{startTime},</if>
             <if test="endTime != null">end_time = #{endTime},</if>
+            <if test="startDate != null">start_date = #{startDate},</if>
+            <if test="endDate != null">end_date = #{endDate},</if>
+            <if test="classPattern != null and classPattern != ''">class_pattern = #{classPattern},</if>
             <if test="gradeName != null and gradeName != ''">grade_name = #{gradeName},</if>
             <if test="subjectName != null and subjectName != ''">subject_name = #{subjectName},</if>
             <if test="teacherName != null">teacher_name = #{teacherName},</if>
@@ -162,9 +174,35 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     </delete>
 
     <delete id="deleteEduCourseScheduleByScheduleIds" parameterType="String">
-        delete from edu_course_schedule where schedule_id in 
+        delete from edu_course_schedule where schedule_id in
         <foreach item="scheduleId" collection="array" open="(" separator="," close=")">
             #{scheduleId}
         </foreach>
     </delete>
+
+    <!-- 可视化课表：按 年+学期+期次 查询所有排课，可联教室表按校区过滤 -->
+    <select id="selectTimetableGrid" parameterType="EduCourseSchedule" resultMap="EduCourseScheduleResult">
+        SELECT s.schedule_id, s.schedule_code, s.classroom_id, s.course_year, s.term_name, s.period_name,
+               s.time_slot, s.start_time, s.end_time, s.start_date, s.end_date, s.class_pattern,
+               s.grade_name, s.subject_name, s.teacher_name,
+               s.class_type, s.enrolled_count, s.recruit_status, s.course_class_name,
+               s.status, s.del_flag, s.create_by, s.create_time, s.update_by, s.update_time, s.remark
+        FROM edu_course_schedule s
+        LEFT JOIN edu_classroom c ON c.classroom_id = s.classroom_id
+        <where>
+            s.del_flag = '0' AND s.status = '0'
+            <if test="courseYear != null "> and s.course_year = #{courseYear}</if>
+            <if test="termName   != null and termName   != ''"> and s.term_name   = #{termName}</if>
+            <if test="periodName != null and periodName != ''"> and s.period_name = #{periodName}</if>
+            <if test="classroomId != null "> and s.classroom_id = #{classroomId}</if>
+            <if test="timeSlot    != null and timeSlot    != ''"> and s.time_slot    = #{timeSlot}</if>
+            <if test="gradeName   != null and gradeName   != ''"> and s.grade_name   = #{gradeName}</if>
+            <if test="subjectName != null and subjectName != ''"> and s.subject_name = #{subjectName}</if>
+            <if test="teacherName != null and teacherName != ''"> and s.teacher_name = #{teacherName}</if>
+            <if test="classType   != null and classType   != ''"> and s.class_type   = #{classType}</if>
+            <!-- 用 classroom 表按校区过滤 -->
+            <if test="remark != null and remark != ''"> and c.campus_name = #{remark}</if>
+        </where>
+        ORDER BY s.course_year, s.term_name, s.period_name, c.campus_name, c.classroom_id, s.time_slot
+    </select>
 </mapper>

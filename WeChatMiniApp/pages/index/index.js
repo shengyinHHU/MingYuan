@@ -98,6 +98,109 @@ function normalizeRole(roleKey) {
   return roleProfiles[roleKey] ? roleKey : 'parent'
 }
 
+// 日期解析（兼容 SQL DATE/时间戳/字符串多种格式）
+function parseDate(val) {
+  if (!val) return null
+  if (val instanceof Date) return val
+  if (typeof val === 'number') {
+    const d = new Date(val)
+    if (!isNaN(d.getTime())) return d
+  }
+  const s = String(val)
+  if (s.indexOf('T') >= 0 || s.indexOf(' ') >= 0) {
+    const d = new Date(s)
+    if (!isNaN(d.getTime())) return d
+  }
+  const m = s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/)
+  if (m) {
+    const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+    if (!isNaN(d.getTime())) return d
+  }
+  return null
+}
+function fmtDate(d) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+function weekdayShort(d) {
+  const names = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+  return names[d.getDay()]
+}
+
+// 按排课信息计算下一次上课日期（与 timetable 页面算法一致）
+function computeNextDate(item) {
+  const start = parseDate(item.startDate)
+  const end = parseDate(item.endDate)
+  if (!start || !end) return null
+  if (start.getTime() > end.getTime()) return null
+
+  let pattern = item.classPattern
+  if (!pattern) {
+    pattern = (item.periodName === '周六' || item.periodName === '周日') ? 'WEEKLY' : 'DAILY_5_1'
+  }
+  let dates = []
+  if (pattern === 'WEEKLY') {
+    const targetDay = item.periodName === '周日' ? 0 : 6
+    let cur = new Date(start)
+    while (cur <= end && cur.getDay() !== targetDay) {
+      cur.setDate(cur.getDate() + 1)
+    }
+    while (cur <= end) {
+      dates.push(new Date(cur.getFullYear(), cur.getMonth(), cur.getDate()))
+      cur.setDate(cur.getDate() + 7)
+    }
+  } else if (pattern === 'DAILY_5_1') {
+    let cur = new Date(start.getFullYear(), start.getMonth(), start.getDate())
+    let cnt = 0
+    const stop = new Date(end.getFullYear(), end.getMonth(), end.getDate())
+    while (cur <= stop) {
+      if (cnt % 6 < 5) dates.push(new Date(cur.getFullYear(), cur.getMonth(), cur.getDate()))
+      cur.setDate(cur.getDate() + 1)
+      cnt++
+    }
+  }
+
+  // 应用调课表
+  const adj = item.adjustments || []
+  const adjByOrig = {}
+  adj.forEach((a) => {
+    if (a.originalDate) {
+      const d = parseDate(a.originalDate)
+      if (d) adjByOrig[fmtDate(d)] = a
+    }
+  })
+  let result = []
+  dates.forEach((d) => {
+    const key = fmtDate(d)
+    const a = adjByOrig[key]
+    if (a) {
+      if (a.adjustedDate) {
+        const ad = parseDate(a.adjustedDate)
+        if (ad) result.push(ad)
+      }
+    } else {
+      result.push(d)
+    }
+  })
+
+  const seen = {}
+  result = result.filter((d) => {
+    const k = fmtDate(d)
+    if (seen[k]) return false
+    seen[k] = true
+    return true
+  }).sort((a, b) => a - b)
+
+  if (!result.length) return null
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const future = result.find((d) => d >= today)
+  if (future) return { date: fmtDate(future).slice(5), weekday: weekdayShort(future) } // 只显示 MM-DD
+  return { date: '已结课', weekday: '' }
+}
+
 function buildRoleState(roleKey, visibleRoles) {
   const normalizedRole = normalizeRole(roleKey)
   const profile = roleProfiles[normalizedRole]
@@ -165,6 +268,41 @@ Page({
 
     if (role === 'parent') {
       this.loadParentTag()
+      this.loadParentSchedule()
+    }
+  },
+
+  async loadParentSchedule() {
+    try {
+      const res = await request({ url: '/miniapp/parent/timetable' })
+      const list = res.data || []
+      // 取前 3 条，取最近 3 次课，按下次上课日期排序
+      const decorated = list.map((item) => {
+        const next = computeNextDate(item)
+        const start = item.startTime ? String(item.startTime).slice(0, 5) : ''
+        const end = item.endTime ? String(item.endTime).slice(0, 5) : ''
+        return {
+          time: (start && end) ? `${start}-${end}` : (item.timeSlot || '—'),
+          date: next ? next.date : '',
+          weekday: next ? next.weekday : '',
+          dateReady: !!next,
+          name: item.courseClassName || '未命名课程',
+          room: item.classroomName || '',
+          teacher: item.teacherName || '',
+          status: (item.payStatus === '未支付') ? '待支付' : '待上课'
+        }
+      })
+      decorated.sort((a, b) => {
+        if (!a.date) return 1
+        if (!b.date) return -1
+        if (a.date === '已结课') return 1
+        if (b.date === '已结课') return -1
+        return a.date.localeCompare(b.date)
+      })
+      const schedule = decorated.slice(0, 3)
+      this.setData({ schedule: schedule.length ? schedule : roleProfiles.parent.schedule })
+    } catch (error) {
+      // 接口失败时保留原假数据占位
     }
   },
 

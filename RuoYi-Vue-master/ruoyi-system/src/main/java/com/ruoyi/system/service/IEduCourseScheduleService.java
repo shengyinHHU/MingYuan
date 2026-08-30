@@ -53,9 +53,14 @@ public interface IEduCourseScheduleService
 
     /**
      * 删除课程排课信息
-     * 
+     *
      * @param scheduleId 课程排课主键
      * @return 结果
      */
     public int deleteEduCourseScheduleByScheduleId(Long scheduleId);
+
+    /**
+     * 可视化课表：网格查询
+     */
+    public List<EduCourseSchedule> selectTimetableGrid(EduCourseSchedule eduCourseSchedule);
 }

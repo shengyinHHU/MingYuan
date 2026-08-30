@@ -20,12 +20,30 @@
   <view class="period" wx:for="{{groupedTimetable}}" wx:key="key">
     <view class="period-title">{{item.key}}</view>
     <view class="course-card" wx:for="{{item.items}}" wx:for-item="course" wx:key="enrollmentId">
+      <view class="next-class" wx:if="{{course.nextClassDate}}">
+        <text class="next-label">下一次课</text>
+        <text class="next-date">{{course.nextClassDate}}</text>
+        <text class="next-weekday">{{course.nextClassWeekday}}</text>
+      </view>
+      <view class="next-class ended" wx:elif="{{course.nextClassEnded}}">
+        <text class="next-label">本期已结课</text>
+      </view>
+      <view class="next-class pending" wx:else>
+        <text class="next-label">排课日期待配置</text>
+      </view>
       <view class="time-pill">{{course.timeText}}</view>
       <view class="course-main">
         <view class="course-name">{{course.courseClassName}}</view>
         <view class="course-meta">{{course.subjectTag}} · {{course.teacherName}}</view>
         <view class="course-meta">{{course.placeText}}</view>
-        <view class="student">学生：{{course.studentName}}</view>
+        <view class="course-footer">
+          <view class="student">学生：{{course.studentName}}</view>
+          <view class="cancel-btn"
+                catchtap="handleCancel"
+                data-enrollment-id="{{course.enrollmentId}}"
+                data-course-name="{{course.courseClassName}}"
+                data-student-name="{{course.studentName}}">取消</view>
+        </view>
       </view>
       <view class="pay-tag">{{course.payText}}</view>
     </view>

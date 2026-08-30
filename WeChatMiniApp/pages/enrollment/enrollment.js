@@ -9,10 +9,12 @@ Page({
     showScheduleEmpty: false,
     showEnrollmentEmpty: false,
     showSheet: false,
-    filters: {
-      gradeName: '',
-      subjectName: ''
-    },
+    subjects: [],
+    grades: [],
+    subjectOptions: ['全部科目'],
+    gradeOptions: ['全部年级'],
+    subjectIndex: 0,
+    gradeIndex: 0,
     selectedSchedule: null,
     form: {
       studentName: '',
@@ -21,11 +23,29 @@ Page({
   },
 
   onLoad() {
-    this.loadPage()
+    this.loadDict().then(() => this.loadPage())
   },
 
   onPullDownRefresh() {
-    this.loadPage().finally(() => wx.stopPullDownRefresh())
+    Promise.all([this.loadDict(), this.loadPage()])
+      .finally(() => wx.stopPullDownRefresh())
+  },
+
+  async loadDict() {
+    try {
+      const res = await request({ url: '/miniapp/material/dict' })
+      const data = res.data || {}
+      const subjects = data.subjects || []
+      const grades = data.grades || []
+      this.setData({
+        subjects,
+        grades,
+        subjectOptions: ['全部科目'].concat(subjects.map((i) => i.dictLabel)),
+        gradeOptions: ['全部年级'].concat(grades.map((i) => i.dictLabel))
+      })
+    } catch (error) {
+      // 字典加载失败不阻断主流程
+    }
   },
 
   async loadPage() {
@@ -40,9 +60,17 @@ Page({
   },
 
   async loadSchedules() {
+    const params = {}
+    if (this.data.subjectIndex > 0) {
+      // 排课表 grade_name/subject_name 存储的是字典 dictLabel（中文），故传 dictLabel 精确匹配
+      params.subjectName = this.data.subjects[this.data.subjectIndex - 1].dictLabel
+    }
+    if (this.data.gradeIndex > 0) {
+      params.gradeName = this.data.grades[this.data.gradeIndex - 1].dictLabel
+    }
     const res = await request({
       url: '/miniapp/parent/schedules',
-      data: this.data.filters
+      data: params
     })
     const schedules = this.decorateSchedules(res.data || [])
     this.setData({
@@ -66,6 +94,8 @@ Page({
       const canEnroll = !enrolled && Number(item.remainingCount) > 0
       return {
         ...item,
+        subjectText: this.labelOf(this.data.subjects, item.subjectName) || item.subjectName,
+        gradeText: this.labelOf(this.data.grades, item.gradeName) || item.gradeName,
         timeText: this.buildTimeText(item),
         placeText: this.buildPlaceText(item),
         countText: `${item.enrolledCount || 0}/${item.capacity || '不限'}`,
@@ -79,10 +109,17 @@ Page({
   decorateEnrollments(list) {
     return list.map((item) => ({
       ...item,
+      subjectText: this.labelOf(this.data.subjects, item.subjectName) || item.subjectName,
+      gradeText: this.labelOf(this.data.grades, item.gradeName) || item.gradeName,
       timeText: this.buildTimeText(item),
       placeText: this.buildPlaceText(item),
       statusText: item.enrollmentStatus === '2' ? '已取消' : '报名成功'
     }))
+  },
+
+  labelOf(list, value) {
+    const hit = list.find((i) => i.dictValue === value)
+    return hit ? hit.dictLabel : ''
   },
 
   buildPlaceText(item) {
@@ -96,25 +133,25 @@ Page({
     return `${item.termName || ''} ${item.periodName || ''} ${clock}`.trim()
   },
 
-  handleFilterInput(e) {
-    const field = e.currentTarget.dataset.field
-    this.setData({ [`filters.${field}`]: e.detail.value })
+  onSubjectChange(e) {
+    this.setData({ subjectIndex: Number(e.detail.value) })
+    this.loadSchedules().catch((error) => {
+      wx.showToast({ title: error.message || '筛选失败', icon: 'none' })
+    })
   },
 
-  applyFilters() {
+  onGradeChange(e) {
+    this.setData({ gradeIndex: Number(e.detail.value) })
     this.loadSchedules().catch((error) => {
       wx.showToast({ title: error.message || '筛选失败', icon: 'none' })
     })
   },
 
   resetFilters() {
-    this.setData({
-      filters: {
-        gradeName: '',
-        subjectName: ''
-      }
+    this.setData({ subjectIndex: 0, gradeIndex: 0 })
+    this.loadSchedules().catch((error) => {
+      wx.showToast({ title: error.message || '筛选失败', icon: 'none' })
     })
-    this.applyFilters()
   },
 
   openEnroll(e) {

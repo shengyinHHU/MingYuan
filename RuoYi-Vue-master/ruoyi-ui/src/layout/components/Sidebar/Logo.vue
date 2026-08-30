@@ -14,7 +14,6 @@
 </template>
 
 <script>
-import logoImg from '@/assets/logo/logo.png'
 import variables from '@/assets/styles/variables.scss'
 
 export default {
@@ -39,7 +38,7 @@ export default {
   data() {
     return {
       title: process.env.VUE_APP_TITLE,
-      logo: logoImg
+      logo: '/mingyuan.png'
     }
   }
 }
@@ -62,6 +61,8 @@ export default {
   background: #2b2f3a;
   text-align: center;
   overflow: hidden;
+  border-bottom: 1px solid rgba(0,0,0,0.05);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 
   & .sidebar-logo-link {
     height: 100%;

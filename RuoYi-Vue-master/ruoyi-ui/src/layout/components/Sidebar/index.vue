@@ -3,12 +3,13 @@
         <logo v-if="showLogo" :collapse="isCollapse" />
         <el-scrollbar :class="settings.sideTheme" wrap-class="scrollbar-wrapper">
             <el-menu
+                class="custom-menu"
                 :default-active="activeMenu"
                 :collapse="isCollapse"
                 :background-color="settings.sideTheme === 'theme-dark' ? variables.menuBackground : variables.menuLightBackground"
                 :text-color="settings.sideTheme === 'theme-dark' ? variables.menuColor : variables.menuLightColor"
                 :unique-opened="true"
-                :active-text-color="settings.theme"
+                :active-text-color="'#0f58a8'"
                 :collapse-transition="false"
                 mode="vertical"
             >
@@ -55,3 +56,28 @@ export default {
     }
 }
 </script>
+
+<style scoped>
+.custom-menu {
+  border-right: none;
+  transition: all 0.3s ease;
+}
+.custom-menu .el-menu-item,
+.custom-menu .el-submenu__title {
+  transition: all 0.3s ease;
+  border-bottom: 3px solid transparent;
+}
+.custom-menu .el-menu-item:hover,
+.custom-menu .el-submenu__title:hover {
+  background-color: rgba(15, 88, 168, 0.05) !important;
+  color: #0f58a8 !important;
+}
+.custom-menu .el-menu-item.is-active {
+  background-color: rgba(15, 88, 168, 0.08) !important;
+  border-bottom: 3px solid #0f58a8;
+  font-weight: 600;
+}
+.sidebar-theme-wrapper.has-logo .logo-container {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+</style>

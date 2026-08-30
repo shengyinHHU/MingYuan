@@ -39,21 +39,28 @@ page {
   display: flex;
   gap: 12rpx;
   margin: 0 24rpx 22rpx;
+  align-items: center;
 }
 
-.filter-input {
+.filter-picker {
   flex: 1;
   height: 72rpx;
   padding: 0 18rpx;
   border: 1rpx solid #dce5f2;
   border-radius: 14rpx;
   background: #ffffff;
-  font-size: 25rpx;
   box-sizing: border-box;
 }
 
+.filter-text {
+  height: 72rpx;
+  line-height: 72rpx;
+  font-size: 25rpx;
+  color: #172033;
+}
+
 .icon-btn {
-  width: 72rpx;
+  width: 88rpx;
   height: 72rpx;
   padding: 0;
   border-radius: 14rpx;
@@ -61,11 +68,11 @@ page {
   color: #526175;
   font-size: 24rpx;
   line-height: 72rpx;
+  text-align: center;
 }
 
-.icon-btn.primary {
-  background: #0f58a8;
-  color: #ffffff;
+.icon-btn.reset {
+  border: 1rpx solid #dce5f2;
 }
 
 .section {

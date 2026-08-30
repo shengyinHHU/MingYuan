@@ -38,10 +38,10 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             and s.recruit_status = '0'
             and c.status = '0'
             <if test="gradeName != null and gradeName != ''">
-                and s.grade_name like concat('%', #{gradeName}, '%')
+                and s.grade_name = #{gradeName}
             </if>
             <if test="subjectName != null and subjectName != ''">
-                and s.subject_name like concat('%', #{subjectName}, '%')
+                and s.subject_name = #{subjectName}
             </if>
             <if test="termName != null and termName != ''">
                 and s.term_name = #{termName}
@@ -92,6 +92,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             s.time_slot as timeSlot,
             s.start_time as startTime,
             s.end_time as endTime,
+            s.start_date as startDate,
+            s.end_date as endDate,
+            s.class_pattern as classPattern,
             s.grade_name as gradeName,
             s.subject_name as subjectName,
             s.teacher_name as teacherName,
@@ -107,6 +110,18 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
           and s.del_flag = '0'
           and s.status = '0'
         order by s.course_year, s.term_name, s.period_name, s.start_time, s.schedule_id
+    </select>
+
+    <select id="selectScheduleAdjustments" resultType="java.util.HashMap">
+        select
+            adjustment_id as adjustmentId,
+            schedule_id as scheduleId,
+            original_date as originalDate,
+            adjusted_date as adjustedDate,
+            reason
+        from edu_schedule_adjustment
+        where schedule_id = #{scheduleId}
+        order by original_date
     </select>
 
     <select id="selectParentAttendanceSummary" resultType="java.util.HashMap">
@@ -271,4 +286,53 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             now()
         )
     </insert>
+
+    <select id="selectEnrollmentOwnerInfo" resultType="java.util.HashMap">
+        select enrollment_id as enrollmentId,
+               parent_id as parentId,
+               schedule_id as scheduleId,
+               del_flag as delFlag,
+               enrollment_status as enrollmentStatus
+        from edu_enrollment
+        where enrollment_id = #{enrollmentId}
+        limit 1
+    </select>
+
+    <update id="cancelEnrollmentById">
+        update edu_enrollment
+        set del_flag = '2',
+            enrollment_status = '2',
+            cancel_time = now(),
+            update_by = #{updateBy},
+            update_time = now()
+        where enrollment_id = #{enrollmentId}
+          and del_flag = '0'
+    </update>
+
+    <update id="decreaseScheduleEnrollment">
+        update edu_course_schedule s
+        inner join edu_classroom c on c.classroom_id = s.classroom_id
+        set s.enrolled_count = greatest(ifnull(s.enrolled_count, 0) - 1, 0),
+            s.recruit_status = case
+                when s.recruit_status = '2'
+                     and greatest(ifnull(s.enrolled_count, 0) - 1, 0) <![CDATA[<]]> ifnull(c.capacity, 999999)
+                then '0'
+                else s.recruit_status
+            end,
+            s.update_by = #{updateBy},
+            s.update_time = now()
+        where s.schedule_id = #{scheduleId}
+          and s.del_flag = '0'
+          and s.status = '0'
+          and ifnull(s.enrolled_count, 0) > 0
+    </update>
+
+    <update id="cancelAttendanceByEnrollmentId">
+        update edu_attendance
+        set del_flag = '2',
+            update_by = #{updateBy},
+            update_time = now()
+        where enrollment_id = #{enrollmentId}
+          and del_flag = '0'
+    </update>
 </mapper>

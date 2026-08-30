@@ -121,13 +121,49 @@
       <el-table-column type="selection" width="55" align="center" />
       <el-table-column label="报名ID" align="center" prop="enrollmentId" />
       <el-table-column label="报名编码" align="center" prop="enrollmentCode" />
-      <el-table-column label="排课ID" align="center" prop="scheduleId" />
-      <el-table-column label="家长用户ID" align="center" prop="parentId" />
+      <el-table-column label="报名信息" align="center" width="130">
+        <template slot-scope="scope">
+          <div v-if="scope.row.subjectName" class="schedule-info">
+            <div class="info-grade">{{ scope.row.gradeName || '-' }}</div>
+            <div class="info-subject">
+              {{ scope.row.subjectName || '-' }}
+              <span v-if="scope.row.classType" class="info-type">{{ scope.row.classType }}</span>
+            </div>
+            <div class="info-teacher">{{ scope.row.teacherName || '-' }}</div>
+            <div class="info-status" :class="'rs-' + scope.row.recruitStatus">
+              {{ getRecruitLabel(scope.row.recruitStatus) }}
+            </div>
+          </div>
+          <span v-else class="text-muted">暂无排课信息</span>
+        </template>
+      </el-table-column>
       <el-table-column label="学生姓名" align="center" prop="studentName" />
       <el-table-column label="学生手机号" align="center" prop="studentPhone" />
       <el-table-column label="联系电话" align="center" prop="contactPhone" />
       <el-table-column label="报名状态" align="center" prop="enrollmentStatus" />
-      <el-table-column label="支付状态" align="center" prop="payStatus" />
+      <el-table-column label="支付状态" align="center" width="120">
+        <template slot-scope="scope">
+          <el-tag :type="getPayStatusType(scope.row.payStatus)" size="small">
+            {{ scope.row.payStatus || '未支付' }}
+          </el-tag>
+          <div class="pay-actions" v-if="scope.row.payStatus !== '已退款'">
+            <el-button
+              v-if="scope.row.payStatus !== '已支付'"
+              size="mini"
+              type="text"
+              style="color: #67C23A;"
+              @click="handleConfirmPay(scope.row)"
+            >确认支付</el-button>
+            <el-button
+              v-if="scope.row.payStatus !== '未支付'"
+              size="mini"
+              type="text"
+              style="color: #909399;"
+              @click="handleCancelPay(scope.row)"
+            >取消</el-button>
+          </div>
+        </template>
+      </el-table-column>
       <el-table-column label="取消时间" align="center" prop="cancelTime" width="180">
         <template slot-scope="scope">
           <span>{{ parseTime(scope.row.cancelTime, '{y}-{m}-{d}') }}</span>
@@ -402,7 +438,93 @@ export default {
       this.download('system/enrollment/export', {
         ...this.queryParams
       }, `enrollment_${new Date().getTime()}.xlsx`)
+    },
+    /** 招生状态标签 */
+    getRecruitLabel(status) {
+      if (status === '1') return '停招'
+      if (status === '2') return '满班'
+      if (status === '0') return '招生中'
+      return '-'
+    },
+    /** 支付状态标签颜色 */
+    getPayStatusType(status) {
+      if (status === '已支付') return 'success'
+      if (status === '已退款') return 'warning'
+      return 'info'
+    },
+    /** 确认支付 */
+    handleConfirmPay(row) {
+      this.$modal.confirm('确认将 "' + row.studentName + '" 的报名订单标记为已支付？').then(() => {
+        const data = {
+          enrollmentId: row.enrollmentId,
+          payStatus: '已支付'
+        }
+        updateEnrollment(data).then(response => {
+          this.$modal.msgSuccess("确认支付成功")
+          this.getList()
+        })
+      }).catch(() => {})
+    },
+    /** 取消支付 */
+    handleCancelPay(row) {
+      this.$modal.confirm('确认取消 "' + row.studentName + '" 的支付状态？').then(() => {
+        const data = {
+          enrollmentId: row.enrollmentId,
+          payStatus: '未支付'
+        }
+        updateEnrollment(data).then(response => {
+          this.$modal.msgSuccess("取消成功")
+          this.getList()
+        })
+      }).catch(() => {})
     }
   }
 }
 </script>
+
+<style scoped>
+.schedule-info {
+  text-align: left;
+  padding: 4px 0;
+  .info-grade {
+    font-size: 12px;
+    color: #909399;
+  }
+  .info-subject {
+    font-size: 14px;
+    font-weight: 600;
+    color: #303133;
+    margin: 2px 0;
+    .info-type {
+      display: inline-block;
+      margin-left: 4px;
+      padding: 0 6px;
+      font-size: 11px;
+      color: #409EFF;
+      background: #ECF5FF;
+      border-radius: 3px;
+    }
+  }
+  .info-teacher {
+    font-size: 12px;
+    color: #606266;
+  }
+  .info-status {
+    font-size: 11px;
+    margin-top: 2px;
+    &.rs-0 { color: #67C23A; }
+    &.rs-1 { color: #909399; }
+    &.rs-2 { color: #E6A23C; }
+  }
+}
+.text-muted {
+  color: #C0C4CC;
+  font-size: 12px;
+}
+.pay-actions {
+  margin-top: 4px;
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+}
+</style>

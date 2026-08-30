@@ -93,4 +93,10 @@ public class EduCourseScheduleServiceImpl implements IEduCourseScheduleService
     {
         return eduCourseScheduleMapper.deleteEduCourseScheduleByScheduleId(scheduleId);
     }
+
+    @Override
+    public List<EduCourseSchedule> selectTimetableGrid(EduCourseSchedule eduCourseSchedule)
+    {
+        return eduCourseScheduleMapper.selectTimetableGrid(eduCourseSchedule);
+    }
 }

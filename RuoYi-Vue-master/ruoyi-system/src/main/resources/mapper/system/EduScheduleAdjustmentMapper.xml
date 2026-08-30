@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.EduScheduleAdjustmentMapper">
+
+    <resultMap type="EduScheduleAdjustment" id="EduScheduleAdjustmentResult">
+        <result property="adjustmentId"    column="adjustment_id"    />
+        <result property="scheduleId"    column="schedule_id"    />
+        <result property="originalDate"    column="original_date"    />
+        <result property="adjustedDate"    column="adjusted_date"    />
+        <result property="reason"    column="reason"    />
+        <result property="createBy"    column="create_by"    />
+        <result property="createTime"    column="create_time"    />
+        <result property="updateBy"    column="update_by"    />
+        <result property="updateTime"    column="update_time"    />
+        <result property="remark"    column="remark"    />
+    </resultMap>
+
+    <sql id="selectEduScheduleAdjustmentVo">
+        select adjustment_id, schedule_id, original_date, adjusted_date, reason, create_by, create_time, update_by, update_time, remark from edu_schedule_adjustment
+    </sql>
+
+    <select id="selectEduScheduleAdjustmentList" parameterType="EduScheduleAdjustment" resultMap="EduScheduleAdjustmentResult">
+        <include refid="selectEduScheduleAdjustmentVo"/>
+        <where>
+            <if test="scheduleId != null "> and schedule_id = #{scheduleId}</if>
+            <if test="originalDate != null "> and original_date = #{originalDate}</if>
+            <if test="adjustedDate != null "> and adjusted_date = #{adjustedDate}</if>
+            <if test="reason != null  and reason != ''"> and reason like concat('%', #{reason}, '%')</if>
+        </where>
+    </select>
+
+    <select id="selectEduScheduleAdjustmentByAdjustmentId" parameterType="Long" resultMap="EduScheduleAdjustmentResult">
+        <include refid="selectEduScheduleAdjustmentVo"/>
+        where adjustment_id = #{adjustmentId}
+    </select>
+
+    <insert id="insertEduScheduleAdjustment" parameterType="EduScheduleAdjustment" useGeneratedKeys="true" keyProperty="adjustmentId">
+        insert into edu_schedule_adjustment
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="scheduleId != null">schedule_id,</if>
+            <if test="originalDate != null">original_date,</if>
+            <if test="adjustedDate != null">adjusted_date,</if>
+            <if test="reason != null">reason,</if>
+            <if test="createBy != null">create_by,</if>
+            <if test="createTime != null">create_time,</if>
+            <if test="updateBy != null">update_by,</if>
+            <if test="updateTime != null">update_time,</if>
+            <if test="remark != null">remark,</if>
+         </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            <if test="scheduleId != null">#{scheduleId},</if>
+            <if test="originalDate != null">#{originalDate},</if>
+            <if test="adjustedDate != null">#{adjustedDate},</if>
+            <if test="reason != null">#{reason},</if>
+            <if test="createBy != null">#{createBy},</if>
+            <if test="createTime != null">#{createTime},</if>
+            <if test="updateBy != null">#{updateBy},</if>
+            <if test="updateTime != null">#{updateTime},</if>
+            <if test="remark != null">#{remark},</if>
+         </trim>
+    </insert>
+
+    <update id="updateEduScheduleAdjustment" parameterType="EduScheduleAdjustment">
+        update edu_schedule_adjustment
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="scheduleId != null">schedule_id = #{scheduleId},</if>
+            <if test="originalDate != null">original_date = #{originalDate},</if>
+            <if test="adjustedDate != null">adjusted_date = #{adjustedDate},</if>
+            <if test="reason != null">reason = #{reason},</if>
+            <if test="createBy != null">create_by = #{createBy},</if>
+            <if test="createTime != null">create_time = #{createTime},</if>
+            <if test="updateBy != null">update_by = #{updateBy},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+            <if test="remark != null">remark = #{remark},</if>
+        </trim>
+        where adjustment_id = #{adjustmentId}
+    </update>
+
+    <delete id="deleteEduScheduleAdjustmentByAdjustmentId" parameterType="Long">
+        delete from edu_schedule_adjustment where adjustment_id = #{adjustmentId}
+    </delete>
+
+    <delete id="deleteEduScheduleAdjustmentByIds" parameterType="String">
+        delete from edu_schedule_adjustment where adjustment_id in
+        <foreach item="adjustmentId" collection="array" open="(" separator="," close=")">
+            #{adjustmentId}
+        </foreach>
+    </delete>
+
+    <select id="selectSchedulesForBatch" resultType="java.util.HashMap">
+        select schedule_id   as scheduleId,
+               start_date    as startDate,
+               end_date      as endDate,
+               class_pattern as classPattern,
+               period_name   as periodName
+        from edu_course_schedule
+        where del_flag = '0'
+          and status = '0'
+          and start_date is not null
+          and end_date is not null
+          and term_name = #{termName}
+          and period_name = #{periodName}
+        <if test="gradeName != null and gradeName != ''">and grade_name = #{gradeName}</if>
+        <if test="subjectName != null and subjectName != ''">and subject_name = #{subjectName}</if>
+    </select>
+
+    <select id="selectAdjustedOriginalDates" resultType="java.util.Date">
+        select original_date from edu_schedule_adjustment
+        where schedule_id = #{scheduleId}
+          and original_date is not null
+    </select>
+
+</mapper>

@@ -53,9 +53,18 @@ public interface EduCourseScheduleMapper
 
     /**
      * 批量删除课程排课
-     * 
+     *
      * @param scheduleIds 需要删除的数据主键集合
      * @return 结果
      */
     public int deleteEduCourseScheduleByScheduleIds(Long[] scheduleIds);
+
+    /**
+     * 可视化课表：按 (classroomId + timeSlot) 匹配某学期期次的所有排课
+     * 用于网格渲染：先取 年+学期+期次+可选筛选 的所有正常排课
+     *
+     * @param eduCourseSchedule 查询条件（courseYear/termName/periodName 必带，其余 campus/subject/grade/teacher 可选）
+     * @return 排课集合
+     */
+    public List<EduCourseSchedule> selectTimetableGrid(EduCourseSchedule eduCourseSchedule);
 }
