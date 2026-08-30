@@ -37,7 +37,12 @@ public class UserDetailsServiceImpl implements UserDetailsService
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException
     {
+        // 支持教师/管理员使用用户名或手机号登录
         SysUser user = userService.selectUserByUserName(username);
+        if (StringUtils.isNull(user) && StringUtils.isNotEmpty(username))
+        {
+            user = userService.selectUserByPhonenumber(username);
+        }
         if (StringUtils.isNull(user))
         {
             log.info("登录用户：{} 不存在.", username);

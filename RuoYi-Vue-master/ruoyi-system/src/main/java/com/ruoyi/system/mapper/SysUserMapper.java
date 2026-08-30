@@ -38,11 +38,28 @@ public interface SysUserMapper
 
     /**
      * 通过用户名查询用户
-     * 
+     *
      * @param userName 用户名
      * @return 用户对象信息
      */
     public SysUser selectUserByUserName(String userName);
+
+    /**
+     * 通过手机号查询用户（教师/管理员手机号登录用）
+     *
+     * @param phonenumber 手机号
+     * @return 用户对象信息
+     */
+    public SysUser selectUserByPhonenumber(String phonenumber);
+
+    /**
+     * 通过手机号查询含指定角色的家长用户（避免同手机号的教师/管理员账号被误命中）
+     *
+     * @param phonenumber 手机号
+     * @param roleId 角色ID
+     * @return 用户对象信息
+     */
+    public SysUser selectParentUserByPhone(@Param("phonenumber") String phonenumber, @Param("roleId") Long roleId);
 
     /**
      * 通过用户ID查询用户

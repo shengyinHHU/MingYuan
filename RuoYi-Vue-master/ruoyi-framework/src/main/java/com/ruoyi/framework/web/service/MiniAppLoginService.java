@@ -116,7 +116,12 @@ public class MiniAppLoginService
         SysUser user;
         if (EduRoleConstants.ADMIN.equals(role))
         {
+            // 支持配置为用户名或手机号
             user = userService.selectUserByUserName(mockAdminUsername);
+            if (user == null)
+            {
+                user = userService.selectUserByPhonenumber(mockAdminUsername);
+            }
             if (user == null)
             {
                 throw new ServiceException("Mock admin user does not exist: " + mockAdminUsername);
@@ -156,7 +161,7 @@ public class MiniAppLoginService
         }
         if (user == null && StringUtils.isNotBlank(mockTeacherPhone))
         {
-            user = userMapper.checkPhoneUnique(mockTeacherPhone);
+            user = userService.selectUserByPhonenumber(mockTeacherPhone);
         }
         return user;
     }
@@ -172,7 +177,9 @@ public class MiniAppLoginService
     private SysUser findOrCreateParentUser(String phoneNumber, String nickName, String openid)
     {
         SysRole parentRole = getParentRole();
-        SysUser user = userService.selectUserByUserName(phoneNumber);
+        // 家长账号的user_name为学生姓名(导入数据)，登录统一按手机号字段匹配；
+        // 同一手机号可能同时绑定教师/管理员账号，此处仅匹配含家长角色的账号
+        SysUser user = userMapper.selectParentUserByPhone(phoneNumber, parentRole.getRoleId());
         if (user == null)
         {
             user = new SysUser();
@@ -193,12 +200,12 @@ public class MiniAppLoginService
         {
             ensureParentRole(user, parentRole);
         }
-        return userService.selectUserByUserName(user.getUserName());
+        return userService.selectUserById(user.getUserId());
     }
 
     private void ensureParentRole(SysUser user, SysRole parentRole)
     {
-        List<SysRole> roles = roleMapper.selectRolesByUserName(user.getUserName());
+        List<SysRole> roles = roleMapper.selectRolePermissionByUserId(user.getUserId());
         boolean hasParentRole = roles.stream().anyMatch(role -> EduRoleConstants.PARENT.equals(role.getRoleKey()));
         if (!hasParentRole && !user.isAdmin())
         {
