@@ -106,7 +106,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         inner join edu_classroom c on c.classroom_id = s.classroom_id
         where e.parent_id = #{parentId}
           and e.del_flag = '0'
-          and e.enrollment_status = '1'
+          and e.enrollment_status in ('1', '报名成功')
           and s.del_flag = '0'
           and s.status = '0'
         order by s.course_year, s.term_name, s.period_name, s.start_time, s.schedule_id
@@ -143,7 +143,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
          and a.del_flag = '0'
         where e.parent_id = #{parentId}
           and e.del_flag = '0'
-          and e.enrollment_status = '1'
+          and e.enrollment_status in ('1', '报名成功')
           and s.del_flag = '0'
           and s.status = '0'
         group by s.course_class_name
@@ -177,7 +177,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
          and a.del_flag = '0'
         where e.parent_id = #{parentId}
           and e.del_flag = '0'
-          and e.enrollment_status = '1'
+          and e.enrollment_status in ('1', '报名成功')
           and s.del_flag = '0'
           and s.status = '0'
           and s.course_class_name = #{courseClassName}

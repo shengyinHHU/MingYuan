@@ -1,0 +1,41 @@
+<view class="page">
+  <view class="header">
+    <view class="header-title">签到复核</view>
+    <view class="header-subtitle">核查到课人数 · 上传课堂图片 · 双人确认</view>
+  </view>
+
+  <view class="filter-bar">
+    <picker mode="date" value="{{filterDate}}" bindchange="onDateFilter">
+      <view class="filter-date">{{filterDate || '按日期筛选'}} ▾</view>
+    </picker>
+    <view class="filter-reset" bindtap="resetFilter" wx:if="{{filterDate}}">重置</view>
+  </view>
+
+  <view class="list" wx:if="{{!showEmpty}}">
+    <view class="card" wx:for="{{list}}" wx:key="index"
+      data-schedule-id="{{item.scheduleId}}" data-date="{{item.dateText}}"
+      data-course="{{item.course}}" data-room="{{item.room}}" bindtap="openDetail">
+      <view class="card-top">
+        <view class="course">{{item.course || '未命名课程'}}</view>
+        <view class="badge {{item.reviewClass}}">{{item.reviewText}}</view>
+      </view>
+      <view class="meta">
+        <text class="date">{{item.dateText}}</text>
+        <text class="tag" wx:if="{{item.periodName}}">{{item.periodName}}</text>
+        <text class="tag" wx:if="{{item.timeSlot}}">{{item.timeSlot}}</text>
+        <text class="room" wx:if="{{item.room}}">{{item.room}}</text>
+      </view>
+      <view class="footer">
+        <text class="teacher" wx:if="{{item.teacherName}}">{{item.teacherName}}</text>
+        <text class="count">实到 {{item.actualCount || 0}}/{{item.totalCount || 0}} 人</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="empty" wx:if="{{showEmpty && !loading}}">
+    <view class="empty-icon">🗂️</view>
+    <view class="empty-text">暂无签到记录</view>
+  </view>
+
+  <view class="loading" wx:if="{{loading}}">加载中...</view>
+</view>

@@ -1,0 +1,143 @@
+.page {
+  min-height: 100vh;
+  background: #f4f6fa;
+  padding-bottom: 40rpx;
+}
+
+.header {
+  padding: 40rpx 32rpx 24rpx;
+}
+
+.header-title {
+  font-size: 44rpx;
+  font-weight: 700;
+  color: #1c2530;
+}
+
+.header-subtitle {
+  margin-top: 10rpx;
+  font-size: 24rpx;
+  color: #8a95a3;
+}
+
+.list {
+  padding: 0 24rpx;
+}
+
+.card {
+  display: flex;
+  align-items: stretch;
+  background: #fff;
+  border-radius: 20rpx;
+  margin-bottom: 20rpx;
+  overflow: hidden;
+  box-shadow: 0 4rpx 16rpx rgba(28, 37, 48, 0.06);
+}
+
+.card-main {
+  flex: 1;
+  padding: 24rpx 28rpx;
+}
+
+.card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.course {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1c2530;
+  flex: 1;
+}
+
+.badge {
+  margin-left: 12rpx;
+  padding: 4rpx 16rpx;
+  border-radius: 999rpx;
+  font-size: 22rpx;
+  flex-shrink: 0;
+}
+
+.badge.done {
+  background: #e6f7ee;
+  color: #18a058;
+}
+
+.badge.pending {
+  background: #fdf3e3;
+  color: #c27a08;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 14rpx;
+}
+
+.tag {
+  padding: 4rpx 14rpx;
+  margin-right: 12rpx;
+  border-radius: 999rpx;
+  background: #eef2f8;
+  color: #4a5568;
+  font-size: 22rpx;
+}
+
+.room {
+  font-size: 24rpx;
+  color: #8a95a3;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 18rpx;
+}
+
+.sign-date {
+  font-size: 24rpx;
+  color: #8a95a3;
+}
+
+.count {
+  font-size: 24rpx;
+  color: #c27a08;
+  font-weight: 600;
+}
+
+.card-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 120rpx;
+  background: #eef4ff;
+  color: #2b6de5;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
+.empty {
+  padding: 160rpx 0;
+  text-align: center;
+}
+
+.empty-icon {
+  font-size: 72rpx;
+}
+
+.empty-text {
+  margin-top: 20rpx;
+  font-size: 26rpx;
+  color: #8a95a3;
+}
+
+.loading {
+  padding: 80rpx 0;
+  text-align: center;
+  font-size: 26rpx;
+  color: #8a95a3;
+}

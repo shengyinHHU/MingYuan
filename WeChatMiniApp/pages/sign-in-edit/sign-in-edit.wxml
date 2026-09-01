@@ -1,0 +1,63 @@
+<view class="page">
+  <view class="header">
+    <view class="header-title">{{course || '上课签到'}}</view>
+    <view class="header-subtitle">{{timeText}}<text wx:if="{{room}}"> · {{room}}</text></view>
+  </view>
+
+  <view class="date-bar">
+    <view class="date-label">课次日期</view>
+    <picker mode="date" value="{{classDate}}" end="{{maxDate}}" bindchange="onDateChange">
+      <view class="date-picker">{{classDate}} ▾</view>
+    </picker>
+    <view class="review-tag {{locked ? 'done' : 'pending'}}" wx:if="{{review}}">
+      {{locked ? '复核完成' : (review.confirmedCount > 0 ? '已确认 ' + review.confirmedCount + '/2' : '待复核')}}
+    </view>
+  </view>
+
+  <view class="banner done" wx:if="{{locked}}">该课次已复核完成，签到已锁定，不可修改</view>
+
+  <view class="stats" wx:if="{{stats && stats.total > 0}}">
+    <view class="stat main"><text class="num">{{stats.actual}}</text><text class="label">实到</text></view>
+    <view class="stat"><text class="num">{{stats.attended}}</text><text class="label">到课</text></view>
+    <view class="stat"><text class="num">{{stats.audited}}</text><text class="label">试听</text></view>
+    <view class="stat"><text class="num">{{stats.transferred}}</text><text class="label">调课</text></view>
+    <view class="stat"><text class="num">{{stats.recorded}}</text><text class="label">录播</text></view>
+    <view class="stat"><text class="num">{{stats.leave}}</text><text class="label">请假</text></view>
+  </view>
+
+  <view class="student-list">
+    <view class="student-row" wx:for="{{rows}}" wx:key="studentName">
+      <view class="student-info">
+        <view class="student-name">
+          {{item.studentName}}
+          <text class="source {{item.sourceType === '1' ? '' : 'extra'}}">{{item.sourceText}}</text>
+        </view>
+        <view class="remove" wx:if="{{item.added && !locked}}" data-index="{{index}}" bindtap="removeRow">移除</view>
+      </view>
+      <view class="status-btns">
+        <view
+          wx:for="{{item.statusOptions}}"
+          wx:for-item="opt"
+          wx:key="key"
+          class="status-btn {{item.signStatus === opt.key ? 'active' : ''}} {{item.signStatus === opt.key && opt.key === '3' ? 'leave' : ''}}"
+          data-index="{{index}}"
+          data-key="{{opt.key}}"
+          bindtap="setStatus"
+        >{{opt.label}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="add-bar" wx:if="{{!locked}}">
+    <view class="add-btn audited" bindtap="addAudited">+ 试听学员</view>
+    <view class="add-btn transferred" bindtap="addTransferred">+ 调课学员</view>
+  </view>
+
+  <view class="empty" wx:if="{{!loading && rows.length === 0}}">该班级暂无报名学员</view>
+
+  <view class="submit-wrap" wx:if="{{!locked}}">
+    <view class="submit-btn {{submitting ? 'disabled' : ''}}" bindtap="submit">
+      {{submitting ? '提交中...' : '提交签到'}}
+    </view>
+  </view>
+</view>

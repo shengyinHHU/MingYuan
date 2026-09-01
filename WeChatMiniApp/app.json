@@ -9,6 +9,10 @@
     "pages/material-detail/material-detail",
     "pages/material-orders/material-orders",
     "pages/material-upload/material-upload",
+    "pages/sign-in/sign-in",
+    "pages/sign-in-edit/sign-in-edit",
+    "pages/sign-review/sign-review",
+    "pages/sign-review-detail/sign-review-detail",
     "pages/logs/logs"
   ],
   "window": {

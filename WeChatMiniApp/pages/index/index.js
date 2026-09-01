@@ -41,6 +41,7 @@ const roleProfiles = {
       { label: '待处理', value: '7', suffix: '项' }
     ],
     actions: [
+      { title: '上课签到', icon: '签', tone: 'blue', route: '/pages/sign-in/sign-in' },
       { title: '我的课表', icon: '课', tone: 'orange' },
       { title: '考勤点名', icon: '勤', tone: 'cyan' },
       { title: '请假审核', icon: '假', tone: 'violet' },
@@ -69,6 +70,7 @@ const roleProfiles = {
       { label: '续费率', value: '83', suffix: '%' }
     ],
     actions: [
+      { title: '签到复核', icon: '核', tone: 'blue', route: '/pages/sign-review/sign-review' },
       { title: '课程报名', icon: '招', tone: 'blue' },
       { title: '排课管理', icon: '排', tone: 'orange' },
       { title: '教室管理', icon: '室', tone: 'cyan' },

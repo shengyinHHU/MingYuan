@@ -1,0 +1,34 @@
+<view class="page">
+  <view class="header">
+    <view class="header-title">上课签到</view>
+    <view class="header-subtitle">选择课次 · 记录到课 · 供教务复核</view>
+  </view>
+
+  <view class="list" wx:if="{{!showEmpty}}">
+    <view class="card" wx:for="{{list}}" wx:key="scheduleId">
+      <view class="card-main" data-id="{{item.scheduleId}}" bindtap="openSign">
+        <view class="card-top">
+          <view class="course">{{item.course || '未命名课程'}}</view>
+          <view class="badge {{item.reviewClass}}" wx:if="{{item.reviewText}}">{{item.reviewText}}</view>
+        </view>
+        <view class="meta">
+          <text class="tag" wx:if="{{item.periodName}}">{{item.periodName}}</text>
+          <text class="tag" wx:if="{{item.timeSlot}}">{{item.timeSlot}}</text>
+          <text class="room" wx:if="{{item.room}}">{{item.room}}</text>
+        </view>
+        <view class="footer">
+          <text class="sign-date">最近签到：{{item.lastDateText}}</text>
+          <text class="count" wx:if="{{item.actualText}}">实到 {{item.actualText}}</text>
+        </view>
+      </view>
+      <view class="card-action" data-id="{{item.scheduleId}}" bindtap="openSign">签到</view>
+    </view>
+  </view>
+
+  <view class="empty" wx:if="{{showEmpty && !loading}}">
+    <view class="empty-icon">📋</view>
+    <view class="empty-text">暂无我的排课</view>
+  </view>
+
+  <view class="loading" wx:if="{{loading}}">加载中...</view>
+</view>
