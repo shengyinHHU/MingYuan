@@ -248,11 +248,6 @@ public class EduClassSignIn extends BaseEntity
         this.review2AdminName = review2AdminName;
     }
 
-    public Long getReview2AdminId()
-    {
-        return review2AdminId;
-    }
-
     public void setReview2Images(String review2Images)
     {
         this.review2Images = review2Images;

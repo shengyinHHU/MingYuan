@@ -55,6 +55,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="subjectName != null  and subjectName != ''"> and subject_name like concat('%', #{subjectName}, '%')</if>
             <if test="teacherName != null  and teacherName != ''"> and teacher_name like concat('%', #{teacherName}, '%')</if>
             <if test="classType != null  and classType != ''"> and class_type = #{classType}</if>
+            <if test="classMode != null  and classMode != ''"> and class_mode = #{classMode}</if>
             <if test="enrolledCount != null "> and enrolled_count = #{enrolledCount}</if>
             <if test="recruitStatus != null  and recruitStatus != ''"> and recruit_status = #{recruitStatus}</if>
             <if test="courseClassName != null  and courseClassName != ''"> and course_class_name like concat('%', #{courseClassName}, '%')</if>
@@ -88,6 +89,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="subjectName != null and subjectName != ''">subject_name,</if>
             <if test="teacherName != null">teacher_name,</if>
             <if test="classType != null">class_type,</if>
+            <if test="classMode != null and classMode != ''">class_mode,</if>
             <if test="enrolledCount != null">enrolled_count,</if>
             <if test="recruitStatus != null">recruit_status,</if>
             <if test="courseClassName != null and courseClassName != ''">course_class_name,</if>
@@ -152,6 +154,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="subjectName != null and subjectName != ''">subject_name = #{subjectName},</if>
             <if test="teacherName != null">teacher_name = #{teacherName},</if>
             <if test="classType != null">class_type = #{classType},</if>
+            <if test="classMode != null and classMode != ''">class_mode = #{classMode},</if>
             <if test="enrolledCount != null">enrolled_count = #{enrolledCount},</if>
             <if test="recruitStatus != null">recruit_status = #{recruitStatus},</if>
             <if test="courseClassName != null and courseClassName != ''">course_class_name = #{courseClassName},</if>

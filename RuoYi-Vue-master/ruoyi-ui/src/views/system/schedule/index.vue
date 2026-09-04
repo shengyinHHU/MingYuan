@@ -204,6 +204,13 @@
       <el-table-column label="科目" align="center" prop="subjectName" />
       <el-table-column label="教师姓名" align="center" prop="teacherName" />
       <el-table-column label="班型" align="center" prop="classType" />
+      <el-table-column label="授课形式" align="center" width="90">
+        <template slot-scope="scope">
+          <el-tag size="mini" :type="scope.row.classMode === '2' ? 'warning' : 'success'">
+            {{ scope.row.classMode === '2' ? '一对一' : '班课' }}
+          </el-tag>
+        </template>
+      </el-table-column>
       <el-table-column label="已报名人数" align="center" prop="enrolledCount" />
       <el-table-column label="招生状态" align="center" prop="recruitStatus" />
       <el-table-column label="课程班名称" align="center" prop="courseClassName" />
@@ -307,6 +314,14 @@
           <el-col :span="24">
             <el-form-item label="教师姓名" prop="teacherName">
               <el-input v-model="form.teacherName" placeholder="请输入教师姓名" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="24">
+            <el-form-item label="授课形式" prop="classMode">
+              <el-select v-model="form.classMode" placeholder="请选择授课形式">
+                <el-option label="班课" value="1" />
+                <el-option label="一对一" value="2" />
+              </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="24">
@@ -468,6 +483,7 @@ export default {
         subjectName: null,
         teacherName: null,
         classType: null,
+        classMode: '1',
         enrolledCount: null,
         recruitStatus: null,
         courseClassName: null,

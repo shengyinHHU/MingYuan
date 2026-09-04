@@ -84,6 +84,10 @@ public class EduCourseSchedule extends BaseEntity
     @Excel(name = "班型")
     private String classType;
 
+    /** 授课形式（1班课 2一对一） */
+    @Excel(name = "授课形式", readConverterExp = "1=班课,2=一对一")
+    private String classMode;
+
     /** 已报名人数 */
     @Excel(name = "已报名人数")
     private Long enrolledCount;
@@ -273,6 +277,16 @@ public class EduCourseSchedule extends BaseEntity
     public String getClassType() 
     {
         return classType;
+    }
+
+    public void setClassMode(String classMode)
+    {
+        this.classMode = classMode;
+    }
+
+    public String getClassMode()
+    {
+        return classMode;
     }
 
     public void setEnrolledCount(Long enrolledCount) 

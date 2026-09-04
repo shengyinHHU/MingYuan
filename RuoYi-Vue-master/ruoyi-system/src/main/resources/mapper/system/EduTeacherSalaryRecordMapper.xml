@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.EduTeacherSalaryRecordMapper">
+
+    <resultMap type="EduTeacherSalaryRecord" id="EduTeacherSalaryRecordResult">
+        <result property="recordId"             column="record_id" />
+        <result property="teacherId"            column="teacher_id" />
+        <result property="teacherName"          column="teacher_name" />
+        <result property="salaryMonth"          column="salary_month" />
+        <result property="baseSalary"           column="base_salary" />
+        <result property="primaryClassCount"    column="primary_class_count" />
+        <result property="primaryClassHours"    column="primary_class_hours" />
+        <result property="primaryClassAmount"   column="primary_class_amount" />
+        <result property="jhClassCount"         column="jh_class_count" />
+        <result property="jhClassHours"         column="jh_class_hours" />
+        <result property="jhClassAmount"        column="jh_class_amount" />
+        <result property="primary1on1Count"     column="primary_1on1_count" />
+        <result property="primary1on1Hours"     column="primary_1on1_hours" />
+        <result property="primary1on1Amount"    column="primary_1on1_amount" />
+        <result property="junior1on1Count"      column="junior_1on1_count" />
+        <result property="junior1on1Hours"      column="junior_1on1_hours" />
+        <result property="junior1on1Amount"     column="junior_1on1_amount" />
+        <result property="senior1on1Count"      column="senior_1on1_count" />
+        <result property="senior1on1Hours"      column="senior_1on1_hours" />
+        <result property="senior1on1Amount"     column="senior_1on1_amount" />
+        <result property="totalLessons"         column="total_lessons" />
+        <result property="totalHours"           column="total_hours" />
+        <result property="lessonAmount"         column="lesson_amount" />
+        <result property="totalAmount"          column="total_amount" />
+        <result property="confirmStatus"        column="confirm_status" />
+        <result property="confirmBy"            column="confirm_by" />
+        <result property="confirmTime"          column="confirm_time" />
+        <result property="delFlag"              column="del_flag" />
+        <result property="createBy"             column="create_by" />
+        <result property="createTime"           column="create_time" />
+        <result property="updateBy"             column="update_by" />
+        <result property="updateTime"           column="update_time" />
+        <result property="remark"               column="remark" />
+    </resultMap>
+
+    <sql id="selectRecordVo">
+        select record_id, teacher_id, teacher_name, salary_month, base_salary,
+               primary_class_count, primary_class_hours, primary_class_amount,
+               jh_class_count, jh_class_hours, jh_class_amount,
+               primary_1on1_count, primary_1on1_hours, primary_1on1_amount,
+               junior_1on1_count, junior_1on1_hours, junior_1on1_amount,
+               senior_1on1_count, senior_1on1_hours, senior_1on1_amount,
+               total_lessons, total_hours, lesson_amount, total_amount,
+               confirm_status, confirm_by, confirm_time, del_flag,
+               create_by, create_time, update_by, update_time, remark
+        from edu_teacher_salary_record
+    </sql>
+
+    <select id="selectRecordList" parameterType="EduTeacherSalaryRecord" resultMap="EduTeacherSalaryRecordResult">
+        <include refid="selectRecordVo"/>
+        <where> del_flag = '0'
+            <if test="salaryMonth != null and salaryMonth != ''"> and salary_month = #{salaryMonth}</if>
+            <if test="teacherId != null"> and teacher_id = #{teacherId}</if>
+            <if test="teacherName != null and teacherName != ''"> and teacher_name like concat('%', #{teacherName}, '%')</if>
+            <if test="confirmStatus != null and confirmStatus != ''"> and confirm_status = #{confirmStatus}</if>
+        </where>
+        order by salary_month desc, teacher_id
+    </select>
+
+    <select id="selectRecordById" parameterType="Long" resultMap="EduTeacherSalaryRecordResult">
+        <include refid="selectRecordVo"/>
+        where record_id = #{recordId}
+    </select>
+
+    <select id="selectRecordByTeacherMonth" resultMap="EduTeacherSalaryRecordResult">
+        <include refid="selectRecordVo"/>
+        where teacher_id = #{teacherId} and salary_month = #{salaryMonth} and del_flag = '0'
+    </select>
+
+    <insert id="insertRecord" parameterType="EduTeacherSalaryRecord" useGeneratedKeys="true" keyProperty="recordId">
+        insert into edu_teacher_salary_record
+        (teacher_id, teacher_name, salary_month, base_salary,
+         primary_class_count, primary_class_hours, primary_class_amount,
+         jh_class_count, jh_class_hours, jh_class_amount,
+         primary_1on1_count, primary_1on1_hours, primary_1on1_amount,
+         junior_1on1_count, junior_1on1_hours, junior_1on1_amount,
+         senior_1on1_count, senior_1on1_hours, senior_1on1_amount,
+         total_lessons, total_hours, lesson_amount, total_amount,
+         confirm_status, create_by, create_time, remark)
+        values
+        (#{teacherId}, #{teacherName}, #{salaryMonth}, #{baseSalary},
+         #{primaryClassCount}, #{primaryClassHours}, #{primaryClassAmount},
+         #{jhClassCount}, #{jhClassHours}, #{jhClassAmount},
+         #{primary1on1Count}, #{primary1on1Hours}, #{primary1on1Amount},
+         #{junior1on1Count}, #{junior1on1Hours}, #{junior1on1Amount},
+         #{senior1on1Count}, #{senior1on1Hours}, #{senior1on1Amount},
+         #{totalLessons}, #{totalHours}, #{lessonAmount}, #{totalAmount},
+         '0', #{createBy}, sysdate(), #{remark})
+    </insert>
+
+    <update id="updateRecord" parameterType="EduTeacherSalaryRecord">
+        update edu_teacher_salary_record
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="teacherName != null and teacherName != ''">teacher_name = #{teacherName},</if>
+            <if test="baseSalary != null">base_salary = #{baseSalary},</if>
+            <if test="primaryClassCount != null">primary_class_count = #{primaryClassCount},</if>
+            <if test="primaryClassHours != null">primary_class_hours = #{primaryClassHours},</if>
+            <if test="primaryClassAmount != null">primary_class_amount = #{primaryClassAmount},</if>
+            <if test="jhClassCount != null">jh_class_count = #{jhClassCount},</if>
+            <if test="jhClassHours != null">jh_class_hours = #{jhClassHours},</if>
+            <if test="jhClassAmount != null">jh_class_amount = #{jhClassAmount},</if>
+            <if test="primary1on1Count != null">primary_1on1_count = #{primary1on1Count},</if>
+            <if test="primary1on1Hours != null">primary_1on1_hours = #{primary1on1Hours},</if>
+            <if test="primary1on1Amount != null">primary_1on1_amount = #{primary1on1Amount},</if>
+            <if test="junior1on1Count != null">junior_1on1_count = #{junior1on1Count},</if>
+            <if test="junior1on1Hours != null">junior_1on1_hours = #{junior1on1Hours},</if>
+            <if test="junior1on1Amount != null">junior_1on1_amount = #{junior1on1Amount},</if>
+            <if test="senior1on1Count != null">senior_1on1_count = #{senior1on1Count},</if>
+            <if test="senior1on1Hours != null">senior_1on1_hours = #{senior1on1Hours},</if>
+            <if test="senior1on1Amount != null">senior_1on1_amount = #{senior1on1Amount},</if>
+            <if test="totalLessons != null">total_lessons = #{totalLessons},</if>
+            <if test="totalHours != null">total_hours = #{totalHours},</if>
+            <if test="lessonAmount != null">lesson_amount = #{lessonAmount},</if>
+            <if test="totalAmount != null">total_amount = #{totalAmount},</if>
+            <if test="confirmStatus != null and confirmStatus != ''">confirm_status = #{confirmStatus},</if>
+            <if test="confirmBy != null">confirm_by = #{confirmBy},</if>
+            <if test="confirmTime != null">confirm_time = #{confirmTime},</if>
+            <if test="updateBy != null">update_by = #{updateBy},</if>
+            update_time = sysdate(),
+        </trim>
+        where record_id = #{recordId}
+    </update>
+
+    <update id="deleteRecordByIds">
+        update edu_teacher_salary_record set del_flag = '2' where record_id in
+        <foreach item="id" collection="array" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </update>
+
+    <!-- 全部教师账号 -->
+    <select id="selectTeacherUsers" resultType="java.util.HashMap">
+        select u.user_id as teacherId, u.nick_name as teacherName
+        from sys_user u
+        inner join sys_user_role ur on ur.user_id = u.user_id
+        inner join sys_role r on r.role_id = ur.role_id and r.role_key = 'teacher' and r.status = '0'
+        where u.del_flag = '0' and u.status = '0'
+        order by u.user_id
+    </select>
+
+    <!--
+      某月各教师已签到课次聚合（按 教师×课次 分组）：
+      班课：该课次实到(1/4/5)行数 attendedRows，实到≥1才计费（Java端判定）
+      一对一：按实到学员人次计费（Java端累加 attendedRows）
+    -->
+    <select id="selectMonthlySessions" resultType="java.util.HashMap">
+        select s.teacher_id as teacherId,
+               r.schedule_id as scheduleId,
+               r.class_date as classDate,
+               s.class_mode as classMode,
+               case
+                 when s.grade_name in ('初一','初二','初三') then 'junior'
+                 when s.grade_name in ('高一','高二','高三') then 'senior'
+                 else 'primary'
+               end as stage,
+               s.start_time as startTime,
+               s.end_time as endTime,
+               count(*) as totalRows,
+               sum(case when r.sign_status in ('1','4','5') then 1 else 0 end) as attendedRows
+        from edu_class_sign_in r
+        inner join edu_course_schedule s on s.schedule_id = r.schedule_id and s.del_flag = '0'
+        where r.del_flag = '0' and s.teacher_id is not null
+          and date_format(r.class_date, '%Y-%m') = #{salaryMonth}
+        group by s.teacher_id, r.schedule_id, r.class_date, s.class_mode, stage, s.start_time, s.end_time
+    </select>
+
+</mapper>

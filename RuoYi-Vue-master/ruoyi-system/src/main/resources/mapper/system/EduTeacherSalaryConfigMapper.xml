@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.EduTeacherSalaryConfigMapper">
+
+    <resultMap type="EduTeacherSalaryConfig" id="EduTeacherSalaryConfigResult">
+        <result property="configId"            column="config_id" />
+        <result property="teacherId"           column="teacher_id" />
+        <result property="teacherName"         column="teacher_name" />
+        <result property="baseSalary"          column="base_salary" />
+        <result property="ratePrimaryClass"    column="rate_primary_class" />
+        <result property="rateJhClass"         column="rate_jh_class" />
+        <result property="ratePrimary1on1"     column="rate_primary_1on1" />
+        <result property="rateJunior1on1"      column="rate_junior_1on1" />
+        <result property="rateSenior1on1"      column="rate_senior_1on1" />
+        <result property="classHoursPerSession" column="class_hours_per_session" />
+        <result property="status"              column="status" />
+        <result property="delFlag"             column="del_flag" />
+        <result property="createBy"            column="create_by" />
+        <result property="createTime"          column="create_time" />
+        <result property="updateBy"            column="update_by" />
+        <result property="updateTime"          column="update_time" />
+        <result property="remark"              column="remark" />
+    </resultMap>
+
+    <sql id="selectConfigVo">
+        select config_id, teacher_id, teacher_name, base_salary, rate_primary_class, rate_jh_class,
+               rate_primary_1on1, rate_junior_1on1, rate_senior_1on1, class_hours_per_session,
+               status, del_flag, create_by, create_time, update_by, update_time, remark
+        from edu_teacher_salary_config
+    </sql>
+
+    <select id="selectConfigList" parameterType="EduTeacherSalaryConfig" resultMap="EduTeacherSalaryConfigResult">
+        <include refid="selectConfigVo"/>
+        <where> del_flag = '0'
+            <if test="teacherId != null"> and teacher_id = #{teacherId}</if>
+            <if test="teacherName != null and teacherName != ''"> and teacher_name like concat('%', #{teacherName}, '%')</if>
+            <if test="status != null and status != ''"> and status = #{status}</if>
+        </where>
+        order by teacher_id
+    </select>
+
+    <select id="selectConfigById" parameterType="Long" resultMap="EduTeacherSalaryConfigResult">
+        <include refid="selectConfigVo"/>
+        where config_id = #{configId}
+    </select>
+
+    <select id="selectConfigByTeacherId" resultMap="EduTeacherSalaryConfigResult">
+        <include refid="selectConfigVo"/>
+        where teacher_id = #{teacherId} and del_flag = '0'
+    </select>
+
+    <insert id="insertConfig" parameterType="EduTeacherSalaryConfig" useGeneratedKeys="true" keyProperty="configId">
+        insert into edu_teacher_salary_config
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="teacherId != null">teacher_id,</if>
+            <if test="teacherName != null and teacherName != ''">teacher_name,</if>
+            <if test="baseSalary != null">base_salary,</if>
+            <if test="ratePrimaryClass != null">rate_primary_class,</if>
+            <if test="rateJhClass != null">rate_jh_class,</if>
+            <if test="ratePrimary1on1 != null">rate_primary_1on1,</if>
+            <if test="rateJunior1on1 != null">rate_junior_1on1,</if>
+            <if test="rateSenior1on1 != null">rate_senior_1on1,</if>
+            <if test="classHoursPerSession != null">class_hours_per_session,</if>
+            <if test="status != null and status != ''">status,</if>
+            <if test="createBy != null">create_by,</if>
+            <if test="remark != null">remark,</if>
+            create_time,
+        </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            <if test="teacherId != null">#{teacherId},</if>
+            <if test="teacherName != null and teacherName != ''">#{teacherName},</if>
+            <if test="baseSalary != null">#{baseSalary},</if>
+            <if test="ratePrimaryClass != null">#{ratePrimaryClass},</if>
+            <if test="rateJhClass != null">#{rateJhClass},</if>
+            <if test="ratePrimary1on1 != null">#{ratePrimary1on1},</if>
+            <if test="rateJunior1on1 != null">#{rateJunior1on1},</if>
+            <if test="rateSenior1on1 != null">#{rateSenior1on1},</if>
+            <if test="classHoursPerSession != null">#{classHoursPerSession},</if>
+            <if test="status != null and status != ''">#{status},</if>
+            <if test="createBy != null">#{createBy},</if>
+            <if test="remark != null">#{remark},</if>
+            sysdate(),
+        </trim>
+    </insert>
+
+    <update id="updateConfig" parameterType="EduTeacherSalaryConfig">
+        update edu_teacher_salary_config
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="teacherId != null">teacher_id = #{teacherId},</if>
+            <if test="teacherName != null and teacherName != ''">teacher_name = #{teacherName},</if>
+            <if test="baseSalary != null">base_salary = #{baseSalary},</if>
+            <if test="ratePrimaryClass != null">rate_primary_class = #{ratePrimaryClass},</if>
+            <if test="rateJhClass != null">rate_jh_class = #{rateJhClass},</if>
+            <if test="ratePrimary1on1 != null">rate_primary_1on1 = #{ratePrimary1on1},</if>
+            <if test="rateJunior1on1 != null">rate_junior_1on1 = #{rateJunior1on1},</if>
+            <if test="rateSenior1on1 != null">rate_senior_1on1 = #{rateSenior1on1},</if>
+            <if test="classHoursPerSession != null">class_hours_per_session = #{classHoursPerSession},</if>
+            <if test="status != null and status != ''">status = #{status},</if>
+            <if test="updateBy != null">update_by = #{updateBy},</if>
+            <if test="remark != null">remark = #{remark},</if>
+            update_time = sysdate(),
+        </trim>
+        where config_id = #{configId}
+    </update>
+
+    <update id="deleteConfigByIds">
+        update edu_teacher_salary_config set del_flag = '2' where config_id in
+        <foreach item="id" collection="array" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </update>
+
+</mapper>
