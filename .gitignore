@@ -1,15 +1,19 @@
 # ===== IDE =====
 .idea/
 *.iml
+*.ipr
+*.iws
 .vscode/
+*.swp
 
 # ===== Java / Maven 编译产物 =====
 target/
+bin/
 *.class
 *.jar
 *.war
 
-# ===== Node / 前端依赖 =====
+# ===== Node / 前端依赖与构建 =====
 node_modules/
 dist/
 .cache/
@@ -24,13 +28,18 @@ logs/
 uploadPath/
 D:/ruoyi/uploadPath/
 
-# ===== 大文件 / 压缩包（项目里这些不该入库）=====
+# ===== 大文件 / 压缩包 / 文档 =====
 *.zip
 *.lnk
+*.docx
+*.xlsx
 
 # ===== 数据库工具会话文件 =====
 *.session.sql
 *.sqp
+
+# ===== Maven Wrapper（保留 wrapper jar 本身）=====
+!.mvn/wrapper/maven-wrapper.jar
 
 # ===== 系统 =====
 Thumbs.db
