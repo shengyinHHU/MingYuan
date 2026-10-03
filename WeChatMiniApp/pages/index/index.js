@@ -71,7 +71,7 @@ const roleProfiles = {
     ],
     actions: [
       { title: '签到复核', icon: '核', tone: 'blue', route: '/pages/sign-review/sign-review' },
-      { title: '课程报名', icon: '招', tone: 'blue' },
+      { title: '课程报名', icon: '招', tone: 'blue', route: '/pages/admin-enrollment/admin-enrollment' },
       { title: '排课管理', icon: '排', tone: 'orange' },
       { title: '教室管理', icon: '室', tone: 'cyan' },
       { title: '学生档案', icon: '档', tone: 'green' },

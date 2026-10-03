@@ -8,6 +8,7 @@ function request(options) {
     wx.request({
       url: `${baseUrl}${options.url}`,
       method: options.method || 'GET',
+      timeout: options.timeout || 60000,
       data: options.data || {},
       header: {
         'Content-Type': 'application/json',
@@ -16,7 +17,8 @@ function request(options) {
       },
       success(res) {
         const data = res.data || {}
-        if (res.statusCode >= 200 && res.statusCode < 300 && data.code !== 500 && data.code !== 401) {
+        if (res.statusCode >= 200 && res.statusCode < 300 &&
+            !(typeof data.code === 'number' && data.code >= 400)) {
           resolve(data)
           return
         }
@@ -35,7 +37,8 @@ function request(options) {
         reject(new Error(data.msg || `Request failed: ${res.statusCode}`))
       },
       fail(error) {
-        reject(new Error(error.errMsg || 'Network request failed'))
+        const message = error.errMsg || 'Network request failed'
+        reject(new Error(message.includes('timeout') ? '请求超时，请检查后端是否已重启并正常运行' : message))
       }
     })
   })

@@ -143,7 +143,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
          and a.del_flag = '0'
         where e.parent_id = #{parentId}
           and e.del_flag = '0'
-          and e.enrollment_status in ('1', '报名成功')
+          and (e.enrollment_status in ('1', '报名成功') or a.attendance_status = '1')
           and s.del_flag = '0'
           and s.status = '0'
         group by s.course_class_name
@@ -177,7 +177,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
          and a.del_flag = '0'
         where e.parent_id = #{parentId}
           and e.del_flag = '0'
-          and e.enrollment_status in ('1', '报名成功')
+          and (e.enrollment_status in ('1', '报名成功') or a.attendance_status = '1')
           and s.del_flag = '0'
           and s.status = '0'
           and s.course_class_name = #{courseClassName}
@@ -298,41 +298,4 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         limit 1
     </select>
 
-    <update id="cancelEnrollmentById">
-        update edu_enrollment
-        set del_flag = '2',
-            enrollment_status = '2',
-            cancel_time = now(),
-            update_by = #{updateBy},
-            update_time = now()
-        where enrollment_id = #{enrollmentId}
-          and del_flag = '0'
-    </update>
-
-    <update id="decreaseScheduleEnrollment">
-        update edu_course_schedule s
-        inner join edu_classroom c on c.classroom_id = s.classroom_id
-        set s.enrolled_count = greatest(ifnull(s.enrolled_count, 0) - 1, 0),
-            s.recruit_status = case
-                when s.recruit_status = '2'
-                     and greatest(ifnull(s.enrolled_count, 0) - 1, 0) <![CDATA[<]]> ifnull(c.capacity, 999999)
-                then '0'
-                else s.recruit_status
-            end,
-            s.update_by = #{updateBy},
-            s.update_time = now()
-        where s.schedule_id = #{scheduleId}
-          and s.del_flag = '0'
-          and s.status = '0'
-          and ifnull(s.enrolled_count, 0) > 0
-    </update>
-
-    <update id="cancelAttendanceByEnrollmentId">
-        update edu_attendance
-        set del_flag = '2',
-            update_by = #{updateBy},
-            update_time = now()
-        where enrollment_id = #{enrollmentId}
-          and del_flag = '0'
-    </update>
 </mapper>
