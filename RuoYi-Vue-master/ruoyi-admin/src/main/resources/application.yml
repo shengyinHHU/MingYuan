@@ -2,7 +2,7 @@ ruoyi:
   name: RuoYi
   version: 3.9.2
   copyrightYear: 2026
-  profile: D:/ruoyi/uploadPath
+  profile: ${RUOYI_UPLOAD_PATH:${user.home}/mingyuan/uploadPath}
   addressEnabled: false
   captchaType: math
 
@@ -62,17 +62,17 @@ spring:
 
 token:
   header: Authorization
-  secret: abcdefghijklmnopqrstuvwxyz
+  secret: ${TOKEN_SECRET}
   expireTime: 30
 
 wechat:
   miniapp:
-    appid:
-    secret:
-    mock-enabled: true
+    appid: ${WECHAT_APPID:}
+    secret: ${WECHAT_SECRET:}
+    mock-enabled: false
     mock-phone: 13800000000
     mock-admin-username: admin
-    mock-teacher-phone: 13910000002
+    mock-teacher-phone: ${WECHAT_MOCK_TEACHER_PHONE:}
 
 mybatis:
   typeAliasesPackage: com.ruoyi.**.domain

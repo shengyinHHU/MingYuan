@@ -16,7 +16,7 @@ function request(options) {
       },
       success(res) {
         const data = res.data || {}
-        if (res.statusCode >= 200 && res.statusCode < 300 && data.code !== 500 && data.code !== 401) {
+        if (res.statusCode >= 200 && res.statusCode < 300 && data.code === 200) {
           resolve(data)
           return
         }
@@ -32,10 +32,17 @@ function request(options) {
             wx.reLaunch({ url: '/pages/register/register' })
           }, 600)
         }
-        reject(new Error(data.msg || `Request failed: ${res.statusCode}`))
+        const error = new Error(data.msg || `Request failed: ${res.statusCode}`)
+        error.code = data.code || res.statusCode
+        error.applicationRejected = res.statusCode >= 200 && res.statusCode < 500 && typeof data === 'object' && !Array.isArray(data) && Number.isInteger(data.code) && data.code > 0 && data.code !== 200 && typeof data.msg === 'string' && data.msg.length > 0
+        error.uncertain = !error.applicationRejected
+        reject(error)
       },
       fail(error) {
-        reject(new Error(error.errMsg || 'Network request failed'))
+        const failure = new Error(error.errMsg || '网络连接失败，请重试')
+        failure.network = true
+        failure.uncertain = true
+        reject(failure)
       }
     })
   })

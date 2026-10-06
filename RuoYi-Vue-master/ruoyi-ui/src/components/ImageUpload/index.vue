@@ -200,7 +200,6 @@ export default {
         this.uploadedSuccessfully()
       } else {
         this.number--
-        this.$modal.closeLoading()
         this.$modal.msgError(res.msg)
         this.$refs.imageUpload.handleRemove(file)
         this.uploadedSuccessfully()
@@ -216,12 +215,13 @@ export default {
     },
     // 上传失败
     handleUploadError() {
+      this.number--
       this.$modal.msgError("上传图片失败，请重试")
-      this.$modal.closeLoading()
+      this.uploadedSuccessfully()
     },
     // 上传结束处理
     uploadedSuccessfully() {
-      if (this.number > 0 && this.uploadList.length === this.number) {
+      if (this.uploadList.length === this.number) {
         this.fileList = this.fileList.concat(this.uploadList)
         this.uploadList = []
         this.number = 0

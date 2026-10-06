@@ -1,57 +1,21 @@
 package com.ruoyi.system.service.impl;
-
 import java.util.List;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import com.ruoyi.common.exception.ServiceException;
+import com.ruoyi.common.core.domain.model.MiniAppMaterialBuyBody;
+import com.ruoyi.common.core.domain.model.MiniAppMaterialUploadBody;
 import com.ruoyi.system.domain.EduMaterial;
-import com.ruoyi.system.mapper.EduMaterialMapper;
+import com.ruoyi.system.domain.EduMaterialOrder;
 import com.ruoyi.system.service.IEduMaterialService;
 
-/**
- * 资料商品Service实现
- *
- * @author ruoyi
- * @date 2026-08-21
- */
+/** Retained only for binary compatibility; all commerce now uses ShopService. */
 @Service
-public class EduMaterialServiceImpl implements IEduMaterialService
-{
-    @Autowired
-    private EduMaterialMapper eduMaterialMapper;
-
-    @Override
-    public EduMaterial selectEduMaterialByMaterialId(Long materialId)
-    {
-        return eduMaterialMapper.selectEduMaterialByMaterialId(materialId);
-    }
-
-    @Override
-    public List<EduMaterial> selectEduMaterialList(EduMaterial eduMaterial)
-    {
-        return eduMaterialMapper.selectEduMaterialList(eduMaterial);
-    }
-
-    @Override
-    public int insertEduMaterial(EduMaterial eduMaterial)
-    {
-        return eduMaterialMapper.insertEduMaterial(eduMaterial);
-    }
-
-    @Override
-    public int updateEduMaterial(EduMaterial eduMaterial)
-    {
-        return eduMaterialMapper.updateEduMaterial(eduMaterial);
-    }
-
-    @Override
-    public int deleteEduMaterialByMaterialIds(Long[] materialIds)
-    {
-        return eduMaterialMapper.deleteEduMaterialByMaterialIds(materialIds);
-    }
-
-    @Override
-    public int deleteEduMaterialByMaterialId(Long materialId)
-    {
-        return eduMaterialMapper.deleteEduMaterialByMaterialId(materialId);
-    }
+@Deprecated
+public class EduMaterialServiceImpl implements IEduMaterialService {
+    @Override public EduMaterial selectEduMaterialByMaterialId(Long id) {throw new ServiceException("资料商城接口已升级，请使用新的商品与订单流程");}
+    @Override public List<EduMaterial> selectEduMaterialList(EduMaterial query) {throw new ServiceException("资料商城接口已升级，请使用新的商品与订单流程");}
+    @Override public int insertEduMaterial(EduMaterial material) {throw new ServiceException("资料商城接口已升级，请使用新的商品与订单流程");}
+    @Override public int updateEduMaterial(EduMaterial material) {throw new ServiceException("资料商城接口已升级，请使用新的商品与订单流程");}
+    @Override public int deleteEduMaterialByMaterialIds(Long[] ids) {throw new ServiceException("资料商城接口已升级，请使用新的商品与订单流程");}
+    @Override public int deleteEduMaterialByMaterialId(Long id) {throw new ServiceException("资料商城接口已升级，请使用新的商品与订单流程");}
 }

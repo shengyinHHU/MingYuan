@@ -1,0 +1,2 @@
+@import "../../utils/material-shop.wxss";
+.timeline { border-left: 4rpx solid #d4e4fa; margin-top: 22rpx; padding-left: 20rpx; }

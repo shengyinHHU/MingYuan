@@ -1,247 +1,168 @@
-const { request } = require('../../utils/request')
-const app = getApp()
-
+const shop = require('../../utils/material-shop')
+const blank = role => ({ title: '', subtitle: '', subjectCode: '', gradeCode: '', materialType: '', textbookVersion: '', deliveryType: role === 'teacher' ? 'DIGITAL' : 'PHYSICAL', price: '0.00', unit: '份', stockQuantity: 0, purchaseLimit: role === 'teacher' ? 1 : 99, shippingFee: '0.00', shipFrom: '', dispatchDays: 0, sortOrder: 0, intro: '', detailText: '', coverUrl: '', images: [], shelfStatus: '2', filePath: '', fileName: '', fileSize: 0 })
 Page({
-  data: {
-    loading: false,
-    submitting: false,
-    subjects: [],
-    grades: [],
-    subjectIndex: -1,
-    gradeIndex: -1,
-    list: [],
-    showEmpty: false,
-    showForm: false,
-    form: {
-      title: '',
-      price: '',
-      intro: ''
-    },
-    file: null
+  data: { role: '', loading: false, submitting: false, error: '', subjects: [], grades: [], materialTypes: [], subjectIndex: -1, gradeIndex: -1, typeIndex: -1, list: [], total: 0, pageNum: 1, showForm: false, form: blank(''), file: null, stockDelta: '', stockRemark: '' },
+  onLoad() { this._sequence = 0; this._removeOperation = 0 },
+  async onShow() {
+    this._hidden = false
+    if (this._removing) { this._removing = false; this.setData({ submitting: false }) }
+    const sequence = ++this._sequence
+    this.setData({ loading: true, error: '', role: '', list: [] }); this._role = ''
+    try {
+      const info = await shop.request({ url: '/getInfo' })
+      if (sequence !== this._sequence || this._hidden) return
+      const roles = info.roles || []
+      this._role = roles.includes('admin') ? 'admin' : roles.includes('teacher') ? 'teacher' : ''
+      if (!this._role) throw new Error('当前账号没有资料管理权限')
+      this.setData({ role: this._role })
+      await this.loadDict()
+      if (sequence === this._sequence && !this._hidden) await this.loadList()
+    } catch (error) { if (sequence === this._sequence && !this._hidden) this.setData({ error: error.message, loading: false, list: [] }) }
   },
-
-  onLoad() {
-    this.loadDict().then(() => this.loadList())
-  },
-
-  onPullDownRefresh() {
-    Promise.all([this.loadDict(), this.loadList()])
-      .finally(() => wx.stopPullDownRefresh())
-  },
-
+  onHide() { this._hidden = true; this._sequence++; this._removeOperation++ },
+  onUnload() { this.onHide() },
+  onPullDownRefresh() { this.onShow().finally(() => wx.stopPullDownRefresh()) },
+  onReachBottom() { if (!this.data.loading && this.data.list.length < this.data.total) this.loadList(true) },
   async loadDict() {
+    const response = await shop.request({ url: '/miniapp/material/dict' })
+    if (!this._hidden) this.setData({ subjects: response.data.subjects || [], grades: response.data.grades || [], materialTypes: response.data.materialTypes || [] })
+  },
+  async loadList(append = false) {
+    if (!['admin', 'teacher'].includes(this._role)) return
+    const sequence = ++this._sequence, pageNum = append ? this.data.pageNum + 1 : 1
+    this.setData({ loading: true, error: '', ...(append ? {} : { list: [] }) })
     try {
-      const res = await request({ url: '/miniapp/material/dict' })
-      const data = res.data || {}
-      this.setData({
-        subjects: data.subjects || [],
-        grades: data.grades || []
-      })
-    } catch (error) {
-      // 字典失败不阻断
-    }
+      const response = await shop.request({ url: this._role === 'admin' ? '/system/material/list' : '/miniapp/teacher/material/list', data: { pageNum, pageSize: 20 } })
+      if (sequence !== this._sequence || this._hidden) return
+      const result = this._role === 'admin' ? response : response.data
+      this.setData({ list: (append ? this.data.list : []).concat((result.rows || []).map(item => ({ ...item, displayCover: shop.imageUrl(item.coverUrl), shelfText: { '0': '已下架', '1': '已上架', '2': '草稿' }[item.shelfStatus] }))), total: Number(result.total || 0), pageNum })
+    } catch (error) { if (sequence === this._sequence && !this._hidden) this.setData({ error: error.message }) }
+    finally { if (sequence === this._sequence && !this._hidden) this.setData({ loading: false }) }
   },
-
-  async loadList() {
-    this.setData({ loading: true })
+  openForm() { if (this._role && !this.data.submitting) this.setForm(blank(this._role)) },
+  setForm(form) {
+    this._formDirty = false
+    form = { ...form, coverUrl: shop.imageUrl(form.coverUrl), images: (form.images || []).map(image => ({ ...image, imageUrl: shop.imageUrl(image.imageUrl) })) }
+    this.setData({ showForm: true, form, file: null, stockDelta: '', stockRemark: '', subjectIndex: this.data.subjects.findIndex(item => item.dictValue === form.subjectCode), gradeIndex: this.data.grades.findIndex(item => item.dictValue === form.gradeCode), typeIndex: this.data.materialTypes.findIndex(item => item.dictValue === form.materialType) }, () => { if (wx.pageScrollTo) wx.pageScrollTo({ selector: '.editor', duration: 200 }) })
+  },
+  async edit(e) {
+    if (this.data.submitting || !this._role) return
+    const item = this.data.list.find(row => row.materialId === e.currentTarget.dataset.id)
+    if (!item || (this._role === 'teacher' && item.shelfStatus !== '2')) return
     try {
-      const res = await request({ url: '/miniapp/teacher/material/list' })
-      const list = this.decorate(res.data || [])
-      this.setData({ list, showEmpty: list.length === 0 })
-    } catch (error) {
-      wx.showToast({ title: error.message || '加载失败', icon: 'none' })
-      this.setData({ list: [], showEmpty: true })
-    } finally {
-      this.setData({ loading: false })
-    }
+      const form = this._role === 'admin' ? (await shop.request({ url: `/system/material/${item.materialId}` })).data : item
+      this.setForm({ ...blank(this._role), ...form })
+    } catch (error) { shop.message(error) }
   },
-
-  decorate(list) {
-    return list.map((item) => ({
-      ...item,
-      priceText: Number(item.price) === 0 ? '免费' : `¥${Number(item.price).toFixed(2)}`,
-      subjectText: this.labelOf(this.data.subjects, item.subjectName) || item.subjectName,
-      gradeText: this.labelOf(this.data.grades, item.gradeName) || item.gradeName,
-      shelfText: item.shelfStatus === '1' ? '已上架' : '已下架',
-      shelfClass: item.shelfStatus === '1' ? 'on' : 'off',
-      sizeText: this.formatSize(item.fileSize)
-    }))
+  closeForm() { if (!this.data.submitting) this.setData({ showForm: false }) },
+  input(e) { this._formDirty = true; this.setData({ [`form.${e.currentTarget.dataset.field}`]: e.detail.value }) },
+  select(e) {
+    const kind = e.currentTarget.dataset.kind
+    const index = Number(e.detail.value), dictionaries = { subject: 'subjects', grade: 'grades', type: 'materialTypes' }, fields = { subject: 'subjectCode', grade: 'gradeCode', type: 'materialType' }
+    if (!dictionaries[kind]) return
+    this._formDirty = true
+    this.setData({ [`${kind}Index`]: index, [`form.${fields[kind]}`]: this.data[dictionaries[kind]][index].dictValue })
   },
-
-  labelOf(list, value) {
-    const hit = (list || []).find((i) => i.dictValue === value)
-    return hit ? hit.dictLabel : ''
+  deliveryChange(e) {
+    if (this._role !== 'admin') return
+    this._formDirty = true
+    const deliveryType = Number(e.detail.value) ? 'DIGITAL' : 'PHYSICAL'
+    this.setData({ 'form.deliveryType': deliveryType, ...(deliveryType === 'DIGITAL' ? { 'form.purchaseLimit': 1, 'form.shippingFee': '0.00' } : {}) })
   },
-
-  formatSize(bytes) {
-    if (!bytes) return ''
-    const n = Number(bytes)
-    if (n < 1024) return `${n}B`
-    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}KB`
-    return `${(n / 1024 / 1024).toFixed(1)}MB`
-  },
-
-  openForm() {
-    this.setData({
-      showForm: true,
-      subjectIndex: -1,
-      gradeIndex: -1,
-      form: { title: '', price: '', intro: '' },
-      file: null
-    })
-  },
-
-  closeForm() {
-    if (this.data.submitting) return
-    this.setData({ showForm: false })
-  },
-
-  onTitleInput(e) {
-    this.setData({ 'form.title': e.detail.value })
-  },
-
-  onPriceInput(e) {
-    this.setData({ 'form.price': e.detail.value })
-  },
-
-  onIntroInput(e) {
-    this.setData({ 'form.intro': e.detail.value })
-  },
-
-  onSubjectChange(e) {
-    this.setData({ subjectIndex: Number(e.detail.value) })
-  },
-
-  onGradeChange(e) {
-    this.setData({ gradeIndex: Number(e.detail.value) })
-  },
-
   chooseFile() {
-    wx.chooseMessageFile({
-      count: 1,
-      type: 'file',
-      extension: ['pdf'],
-      success: (res) => {
-        const f = res.tempFiles && res.tempFiles[0]
-        if (!f) return
-        if (!f.name.toLowerCase().endsWith('.pdf')) {
-          wx.showToast({ title: '仅支持 PDF 文件', icon: 'none' })
-          return
-        }
-        if (f.size > 10 * 1024 * 1024) {
-          wx.showToast({ title: '文件不能超过 10MB', icon: 'none' })
-          return
-        }
-        this.setData({ file: f })
-      },
-      fail() {}
-    })
+    if (!this._role || this.data.submitting) return
+    wx.chooseMessageFile({ count: 1, type: 'file', extension: ['pdf'], success: response => {
+      const file = (response.tempFiles || [])[0]
+      if (!file) return
+      if (!/\.pdf$/i.test(file.name) || file.size > 10 * 1024 * 1024) { shop.message(new Error('请选择10MB以内的PDF文件')); return }
+      this.setData({ file })
+      this._formDirty = true
+    } })
   },
-
-  async submit() {
-    const { form, subjectIndex, gradeIndex, subjects, grades, file, submitting } = this.data
-    if (submitting) return
-    if (!form.title.trim()) {
-      wx.showToast({ title: '请填写标题', icon: 'none' })
-      return
-    }
-    if (subjectIndex < 0) {
-      wx.showToast({ title: '请选择学科', icon: 'none' })
-      return
-    }
-    if (gradeIndex < 0) {
-      wx.showToast({ title: '请选择年级', icon: 'none' })
-      return
-    }
-    if (!file) {
-      wx.showToast({ title: '请选择 PDF 文件', icon: 'none' })
-      return
-    }
-    const priceVal = form.price === '' ? 0 : Number(form.price)
-    if (isNaN(priceVal) || priceVal < 0) {
-      wx.showToast({ title: '价格格式不正确', icon: 'none' })
-      return
-    }
-
+  chooseImages(e) {
+    if (!this._role || this.data.submitting) return
+    const kind = e.currentTarget.dataset.kind
+    if (!['cover', 'GALLERY', 'DETAIL'].includes(kind)) return
+    const existing = this.data.form.images.filter(item => item.imageType === kind).length
+    const remaining = kind === 'cover' ? 1 : (kind === 'GALLERY' ? 4 : 21) - existing
+    if (remaining <= 0) { shop.message(new Error('已达到图片数量上限')); return }
+    wx.chooseMedia({ count: Math.min(9, remaining), mediaType: ['image'], sourceType: ['album', 'camera'], success: async response => {
+      this.setData({ submitting: true })
+      try {
+        for (const file of response.tempFiles) {
+          if (!/\.(png|jpe?g)$/i.test(file.tempFilePath) || file.size > 5 * 1024 * 1024) throw new Error('请选择5MB以内JPG/PNG图片')
+          const result = await shop.upload('/common/upload', { path: file.tempFilePath, size: file.size })
+          const imageUrl = result.url || result.fileName
+          this._formDirty = true
+          if (kind === 'cover') this.setData({ 'form.coverUrl': imageUrl })
+          else this.setData({ 'form.images': this.data.form.images.concat({ imageType: kind, imageUrl, sortOrder: this.data.form.images.length }) })
+        }
+      } catch (error) { shop.message(error) }
+      finally { this.setData({ submitting: false }) }
+    } })
+  },
+  removeImage(e) {
+    if (this.data.submitting) return
+    this._formDirty = true
+    if (e.currentTarget.dataset.kind === 'cover') this.setData({ 'form.coverUrl': '' })
+    else this.setData({ 'form.images': this.data.form.images.filter((item, index) => index !== Number(e.currentTarget.dataset.index)) })
+  },
+  async submit(e) {
+    if (this.data.submitting || !['admin', 'teacher'].includes(this._role)) return
+    const role = this._role
     this.setData({ submitting: true })
     try {
-      // 1. 上传 PDF 文件
-      const baseUrl = app.globalData.baseUrl
-      const token = wx.getStorageSync('token')
-      const uploadRes = await new Promise((resolve, reject) => {
-        wx.uploadFile({
-          url: `${baseUrl}/common/upload`,
-          filePath: file.path,
-          name: 'file',
-          header: { Authorization: `Bearer ${token}` },
-          formData: {},
-          success(res) {
-            try {
-              const data = JSON.parse(res.data)
-              if (data.code !== 200) {
-                reject(new Error(data.msg || '上传失败'))
-                return
-              }
-              resolve(data)
-            } catch (e) {
-              reject(new Error('上传响应解析失败'))
-            }
-          },
-          fail(err) {
-            reject(new Error(err.errMsg || '上传失败'))
-          }
-        })
-      })
-
-      // 2. 提交资料
-      await request({
-        url: '/miniapp/teacher/material',
-        method: 'POST',
-        data: {
-          title: form.title.trim(),
-          subjectName: subjects[subjectIndex].dictValue,
-          gradeName: grades[gradeIndex].dictValue,
-          price: priceVal,
-          intro: form.intro || '',
-          filePath: uploadRes.fileName,
-          fileName: file.name || uploadRes.originalFilename,
-          fileSize: file.size
-        }
-      })
-
-      wx.showToast({ title: '发布成功', icon: 'success' })
-      this.setData({ showForm: false, file: null })
-      await this.loadList()
-    } catch (error) {
-      wx.showToast({ title: error.message || '发布失败', icon: 'none' })
-    } finally {
-      this.setData({ submitting: false })
-    }
-  },
-
-  remove(e) {
-    const id = e.currentTarget.dataset.id
-    if (!id) return
-    wx.showModal({
-      title: '删除资料',
-      content: '删除后不可恢复，确认删除吗？',
-      success: (res) => {
-        if (!res.confirm) return
-        this.doRemove(id)
+      const form = { ...this.data.form, images: this.data.form.images || [] }
+      if (!form.title.trim()) throw new Error('请填写商品名称')
+      shop.cents(form.price || '0.00'); shop.cents(form.shippingFee || '0.00')
+      if (this.data.subjectIndex >= 0) form.subjectCode = this.data.subjects[this.data.subjectIndex].dictValue
+      if (this.data.gradeIndex >= 0) form.gradeCode = this.data.grades[this.data.gradeIndex].dictValue
+      form.shelfStatus = role === 'teacher' ? '2' : (e && e.currentTarget.dataset.publish === '1' ? '1' : '2')
+      if (role === 'teacher') form.deliveryType = 'DIGITAL'
+      if (form.deliveryType === 'DIGITAL' && this.data.file) {
+        const metadata = await shop.upload(role === 'admin' ? '/system/material/file' : '/miniapp/teacher/material/file', this.data.file)
+        Object.assign(form, metadata)
+        this.setData({ 'form.filePath': metadata.filePath, 'form.fileName': metadata.fileName, 'form.fileSize': metadata.fileSize, file: null })
       }
-    })
+      if (form.shelfStatus === '1' && form.deliveryType === 'DIGITAL' && !form.filePath) throw new Error('请选择私有PDF文件')
+      const response = await shop.request({ url: role === 'admin' ? '/system/material' : '/miniapp/teacher/material', method: form.materialId ? 'PUT' : 'POST', data: form })
+      this.setData({ showForm: false, form: { ...form, ...(response.data || {}) } }); wx.showToast({ title: form.shelfStatus === '1' ? '已上架' : '草稿已保存', icon: 'success' }); await this.loadList()
+    } catch (error) { shop.message(error) }
+    finally { this.setData({ submitting: false }) }
   },
-
-  async doRemove(id) {
+  stockInput(e) { this.setData({ [e.currentTarget.dataset.field]: e.detail.value }) },
+  async adjustStock() {
+    if (this._role !== 'admin' || this.data.submitting || !this.data.form.materialId) return
+    if (this._formDirty || this.data.file) { shop.message(new Error('请先保存商品修改，再重新打开进行库存调整')); return }
+    this.setData({ submitting: true })
     try {
-      await request({
-        url: `/miniapp/teacher/material/${id}`,
-        method: 'DELETE'
-      })
-      wx.showToast({ title: '已删除', icon: 'success' })
-      this.loadList()
-    } catch (error) {
-      wx.showToast({ title: error.message || '删除失败', icon: 'none' })
-    }
+      const delta = Number(this.data.stockDelta)
+      if (!Number.isSafeInteger(delta) || !delta || !this.data.stockRemark.trim()) throw new Error('填写非零整数增减数量和原因')
+      const response = await shop.request({ url: `/system/material/${this.data.form.materialId}/stock-adjustments`, method: 'POST', data: { delta, remark: this.data.stockRemark } })
+      this.setForm(response.data); await this.loadList()
+    } catch (error) { shop.message(error) }
+    finally { this.setData({ submitting: false }) }
+  },
+  async shelf(e) {
+    if (this._role !== 'admin' || this.data.submitting) return
+    this.setData({ submitting: true })
+    try {
+      await shop.request({ url: `/system/material/${e.currentTarget.dataset.id}/shelf`, method: 'PUT', data: { shelfStatus: e.currentTarget.dataset.status } }); await this.loadList()
+    } catch (error) { shop.message(error) }
+    finally { this.setData({ submitting: false }) }
+  },
+  async remove(e) {
+    if (!['admin', 'teacher'].includes(this._role) || this._hidden || this.data.submitting) return
+    const role = this._role, id = e.currentTarget.dataset.id, operation = ++this._removeOperation
+    const isActive = () => !this._hidden && operation === this._removeOperation
+    this._removing = true
+    this.setData({ submitting: true })
+    try {
+      if (!await shop.confirm('移除商品', '确认移除此商品？已购买订单记录会保留。')) return
+      if (!isActive()) return
+      await shop.request({ url: `${role === 'admin' ? '/system/material' : '/miniapp/teacher/material'}/${id}`, method: 'DELETE' })
+      if (isActive()) await this.loadList()
+    } catch (error) { if (isActive()) shop.message(error) }
+    finally { if (isActive()) { this._removing = false; this.setData({ submitting: false }) } }
   }
 })

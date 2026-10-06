@@ -1,0 +1,7 @@
+# Opt in with --spring.profiles.active=druid,local. Never use this profile in production.
+payment:
+  mode: mock
+wechat:
+  miniapp:
+    mock-enabled: true
+    mock-teacher-username: teacher_demo

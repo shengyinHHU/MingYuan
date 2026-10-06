@@ -1,44 +1,11 @@
 <view class="page">
-  <view class="header">
-    <view class="header-title">资料商城</view>
-    <view class="header-subtitle">学科精品资料 · 付费下载</view>
-  </view>
-
-  <view class="filter-bar">
-    <picker class="filter-picker" bindchange="onSubjectChange" value="{{subjectIndex}}" range="{{subjectOptions}}">
-      <view class="filter-text">{{subjectOptions[subjectIndex]}}</view>
-    </picker>
-    <picker class="filter-picker" bindchange="onGradeChange" value="{{gradeIndex}}" range="{{gradeOptions}}">
-      <view class="filter-text">{{gradeOptions[gradeIndex]}}</view>
-    </picker>
-    <input class="filter-input" placeholder="搜索标题" value="{{keyword}}" bindinput="onKeyword" confirm-type="search" bindconfirm="loadList" />
-    <view class="icon-btn reset" bindtap="resetFilters">重置</view>
-  </view>
-
-  <view class="section" wx:if="{{!showEmpty}}">
-    <view class="material-card" wx:for="{{list}}" wx:key="materialId" data-id="{{item.materialId}}" bindtap="openDetail">
-      <view class="cover">{{item.subjectText || '资'}}</view>
-      <view class="info">
-        <view class="title">{{item.title}}</view>
-        <view class="meta">
-          <text class="tag">{{item.subjectText}}</text>
-          <text class="tag">{{item.gradeText}}</text>
-          <text class="size" wx:if="{{item.sizeText}}">{{item.sizeText}}</text>
-        </view>
-        <view class="sale">已售 {{item.saleCount || 0}} 份</view>
-      </view>
-      <view class="right">
-        <view class="price {{item.priceText === '免费' ? 'free' : ''}}">{{item.priceText}}</view>
-        <view class="badge" wx:if="{{item.bought}}">已购买</view>
-        <view class="badge buy" wx:else>去查看</view>
-      </view>
-    </view>
-  </view>
-
-  <view class="empty" wx:if="{{showEmpty && !loading}}">
-    <view class="empty-icon">📚</view>
-    <view class="empty-text">暂无符合条件的资料</view>
-  </view>
-
-  <view class="loading" wx:if="{{loading}}">加载中...</view>
+  <view class="hero"><view class="heading">资料商城</view><view class="muted">精选学习资料 · 纸质配送 / 电子下载</view><button wx:if="{{role === 'parent'}}" class="small" bindtap="openOrders">我的订单</button><button wx:if="{{role === 'admin' || role === 'teacher'}}" class="small" bindtap="openManagement">资料管理</button></view>
+  <view wx:if="{{role === 'teacher'}}" class="notice">教师可在资料管理提交电子资料草稿，审核上架由管理员完成。</view>
+  <block wx:else>
+    <view wx:if="{{role === 'admin'}}" class="notice">管理员商品预览</view>
+    <view class="row"><input class="grow" value="{{keyword}}" placeholder="搜索商品名称" bindinput="onKeyword" bindconfirm="search" confirm-type="search"/><button class="small primary" bindtap="search">搜索</button></view>
+    <view class="filters"><picker range="{{subjectOptions}}" value="{{subjectIndex}}" bindchange="onSubjectChange"><view class="picker">{{subjectOptions[subjectIndex]}}</view></picker><picker range="{{gradeOptions}}" value="{{gradeIndex}}" bindchange="onGradeChange"><view class="picker">{{gradeOptions[gradeIndex]}}</view></picker><picker wx:if="{{role === 'parent'}}" range="{{sortOptions}}" value="{{sortIndex}}" bindchange="onSortChange"><view class="picker">{{sortOptions[sortIndex]}}</view></picker><button class="small" bindtap="resetFilters">重置</button></view>
+    <view class="grid"><view wx:for="{{list}}" wx:key="materialId" class="product card" data-id="{{item.materialId}}" bindtap="openDetail"><image class="product-cover" src="{{item.coverUrl}}" mode="aspectFill"/><view class="product-title">{{item.title}}</view><view class="tag">{{item.deliveryText}}</view><view class="price">{{item.priceText}}</view><view class="muted">销量 {{item.saleCount || 0}}<text wx:if="{{item.deliveryType === 'PHYSICAL' && item.availableStock <= 0}}"> · 暂时缺货</text></view></view></view>
+    <view wx:if="{{error}}" class="state error">{{error}}<button class="small" bindtap="search">重新加载</button></view><view wx:elif="{{loading}}" class="state">正在加载资料…</view><view wx:elif="{{!list.length}}" class="state">暂无匹配资料</view><view wx:elif="{{list.length >= total}}" class="state">已显示全部 {{total}} 件商品</view>
+  </block>
 </view>

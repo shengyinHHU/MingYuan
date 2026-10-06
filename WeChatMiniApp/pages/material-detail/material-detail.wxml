@@ -1,43 +1,10 @@
-<view class="page" wx:if="{{detail}}">
-  <view class="hero">
-    <view class="hero-tag">{{subjectText}} · {{gradeText}}</view>
-    <view class="hero-title">{{detail.title}}</view>
-    <view class="hero-price">{{priceText}}</view>
-    <view class="hero-meta">
-      <text>已售 {{detail.saleCount || 0}} 份</text>
-      <text wx:if="{{sizeText}}"> · {{sizeText}}</text>
-    </view>
-  </view>
-
-  <view class="section">
-    <view class="section-title">资料简介</view>
-    <view class="intro">{{detail.intro || '暂无简介'}}</view>
-  </view>
-
-  <view class="section">
-    <view class="section-title">文件信息</view>
-    <view class="file-row">
-      <view class="file-name">{{detail.fileName || '—'}}</view>
-      <view class="file-size" wx:if="{{sizeText}}">{{sizeText}}</view>
-    </view>
-  </view>
-
-  <view class="section" wx:if="{{detail.uploadUserName}}">
-    <view class="section-title">上传者</view>
-    <view class="uploader">{{detail.uploadUserName}}</view>
-  </view>
-
-  <view class="footer">
-    <block wx:if="{{bought}}">
-      <button class="btn primary" bindtap="download">下载资料</button>
-    </block>
-    <block wx:elif="{{role === 'parent'}}">
-      <button class="btn primary" loading="{{buying}}" disabled="{{buying}}" bindtap="buy">立即购买（模拟支付）</button>
-    </block>
-    <block wx:else>
-      <view class="hint">教师/管理员身份无法购买，请使用家长身份</view>
-    </block>
-  </view>
+<view class="page">
+  <view wx:if="{{loading}}" class="state">正在加载商品…</view><view wx:elif="{{error}}" class="state error">{{error}}<button bindtap="loadDetail">重试</button></view>
+  <block wx:if="{{detail}}">
+    <swiper class="gallery" indicator-dots="{{detail.gallery.length > 1}}"><swiper-item wx:for="{{detail.gallery}}" wx:key="imageUrl"><image src="{{item.imageUrl}}" mode="aspectFit" data-url="{{item.imageUrl}}" bindtap="previewImage"/></swiper-item></swiper>
+    <view class="card"><view class="price">{{detail.priceText}}</view><view class="heading">{{detail.title}}</view><view class="muted">{{detail.subtitle}}</view><view class="row"><text class="tag">{{detail.deliveryText}}</text><text class="muted">已售 {{detail.saleCount || 0}}</text></view><view class="muted">{{detail.subjectName}} · {{detail.gradeName}} · {{detail.textbookVersion}}</view><view class="detail-text">{{detail.intro}}</view></view>
+    <view class="card"><view class="title">交付说明</view><block wx:if="{{detail.deliveryType === 'PHYSICAL'}}"><view>可售库存 {{detail.availableStock}} {{detail.unit}} · 单次限购 {{detail.purchaseLimit}}</view><view class="muted">运费 ¥{{detail.shippingFee}} · {{detail.shipFrom || '发货地以订单为准'}} · 预计 {{detail.dispatchDays || 0}} 天发货</view></block><view wx:else class="muted">电子资料数量为1，支付后在我的订单下载PDF，无运费。{{detail.bought ? '您已购买此资料。' : ''}}</view></view>
+    <view class="card"><view class="title">商品详情</view><view class="detail-text">{{detail.detailText}}</view><image wx:for="{{detail.detailImages}}" wx:key="imageUrl" class="detail-image" src="{{item.imageUrl}}" mode="widthFix" data-url="{{item.imageUrl}}" bindtap="previewImage"/></view>
+    <view class="bottom"><button wx:if="{{role === 'parent'}}" class="primary" disabled="{{detail.deliveryType === 'PHYSICAL' && detail.availableStock <= 0}}" bindtap="buy">{{detail.deliveryType === 'DIGITAL' && detail.bought ? '查看订单 / 下载' : (detail.deliveryType === 'PHYSICAL' && detail.availableStock <= 0 ? '暂时缺货' : '立即购买')}}</button><view wx:else class="muted">管理员商品预览</view></view>
+  </block>
 </view>
-
-<view class="loading" wx:if="{{loading && !detail}}">加载中...</view>

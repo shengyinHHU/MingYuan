@@ -1,31 +1,5 @@
-<view class="page">
-  <view class="header">
-    <view class="header-title">我的资料</view>
-    <view class="header-subtitle">已购买的资料可随时下载</view>
-  </view>
-
-  <view class="list" wx:if="{{!showEmpty}}">
-    <view class="order-card" wx:for="{{orders}}" wx:key="orderId">
-      <view class="order-main">
-        <view class="title">{{item.materialTitle || '资料已删除'}}</view>
-        <view class="meta">
-          <text class="code">{{item.orderCode}}</text>
-          <text class="time" wx:if="{{item.timeText}}">{{item.timeText}}</text>
-        </view>
-      </view>
-      <view class="order-right">
-        <view class="amount {{item.statusClass === 'paid' ? 'free' : ''}}">{{item.amountText}}</view>
-        <view class="status {{item.statusClass}}">{{item.statusText}}</view>
-        <view class="btn-download" wx:if="{{item.payStatus === '1'}}" data-id="{{item.orderId}}" bindtap="download">下载</view>
-      </view>
-    </view>
-  </view>
-
-  <view class="empty" wx:if="{{showEmpty && !loading}}">
-    <view class="empty-icon">📭</view>
-    <view class="empty-text">还没有购买记录</view>
-    <navigator class="empty-action" url="/pages/material/material" open-type="navigate">去逛商城</navigator>
-  </view>
-
-  <view class="loading" wx:if="{{loading}}">加载中...</view>
+<view class="page"><view class="hero"><view class="heading">我的订单</view><view class="muted">订单与交付信息以服务端状态为准</view></view>
+  <scroll-view scroll-x class="tabs"><view class="tabs-inner"><view wx:for="{{tabs}}" wx:key="*this" class="tab {{tabIndex === index ? 'active' : ''}}" data-index="{{index}}" bindtap="selectTab">{{item}}</view></view></scroll-view>
+  <view wx:for="{{orders}}" wx:key="orderId" class="card" data-id="{{item.orderId}}" bindtap="openDetail"><view class="row"><text class="muted">{{item.orderCode}}</text><text class="tag">{{item.statusText}}</text></view><view wx:for="{{item.items}}" wx:for-item="line" wx:key="itemId" class="row"><image class="cover" src="{{line.coverUrl}}" mode="aspectFill"/><view class="grow"><view class="title">{{line.materialTitle}}</view><view class="muted">单价 ¥{{line.unitPrice}} · {{line.quantity}}{{line.unit}}</view></view></view><view class="row"><text class="muted">{{item.createTime}}</text><text class="price">¥{{item.payableAmount}}</text></view><view class="muted">{{item.canDownload ? '可下载PDF · 查看详情' : '查看订单详情'}}　{{item.payment.channel === 'MOCK' ? '模拟支付' : ''}}</view></view>
+  <view wx:if="{{error}}" class="state error">{{error}}<button bindtap="loadOrders">重试</button></view><view wx:elif="{{loading}}" class="state">正在加载订单…</view><view wx:elif="{{!orders.length}}" class="state">暂无此类订单<button bindtap="openShop">去商城看看</button></view><view wx:elif="{{orders.length >= total}}" class="state">已显示全部订单</view>
 </view>

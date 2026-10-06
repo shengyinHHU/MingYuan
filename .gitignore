@@ -44,3 +44,11 @@ D:/ruoyi/uploadPath/
 # ===== 系统 =====
 Thumbs.db
 .DS_Store
+
+# ===== 本地密钥与发布副本临时文件 =====
+.env.local
+.env.*.local
+*.pem
+*.key
+*.bak
+.superpowers/
