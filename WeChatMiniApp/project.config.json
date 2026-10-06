@@ -1,29 +1,25 @@
 {
-  "compileType": "miniprogram",
-  "libVersion": "3.8.12",
-  "packOptions": {
-    "ignore": [],
-    "include": []
-  },
+  "miniprogramRoot": "",
+  "projectname": "名远教育",
+  "description": "名远教育微信小程序",
+  "appid": "wx6ee47a91c24779e2",
   "setting": {
     "urlCheck": false,
-    "coverView": true,
     "es6": false,
-    "postcss": true,
-    "minified": false,
     "enhance": false,
-    "showShadowRootInWxmlPanel": true,
-    "packNpmRelationList": [],
-    "babelSetting": {
-      "ignore": [],
-      "disablePlugins": [],
-      "outputPath": ""
-    }
+    "compileHotReLoad": false,
+    "postcss": false,
+    "preloadBackgroundData": false,
+    "minified": false,
+    "newFeature": true,
+    "autoAudits": false,
+    "coverView": true,
+    "showShadowRootInWxmlPanel": false,
+    "scopeDataCheck": false,
+    "useCompilerModule": false
   },
-  "condition": {},
-  "editorSetting": {
-    "tabIndent": "auto",
-    "tabSize": 2
-  },
-  "appid": "wx6ee47a91c24779e2"
+  "compileType": "miniprogram",
+  "simulatorType": "wechat",
+  "simulatorPluginLibVersion": {},
+  "condition": {}
 }
