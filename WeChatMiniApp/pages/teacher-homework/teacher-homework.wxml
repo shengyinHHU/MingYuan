@@ -1,0 +1,35 @@
+<view class="page">
+  <view class="header"><view class="header-title">作业管理</view><button class="create" bindtap="create">+ 创建作业</button></view>
+  <scroll-view wx:if="{{classTabs.length > 2}}" scroll-x class="class-tabs"><view wx:for="{{classTabs}}" wx:key="key" class="class-tab {{activeClass === item.key ? 'class-tab-active' : ''}}" data-key="{{item.key}}" bindtap="switchClass">{{item.name}}</view></scroll-view>
+  <view class="tabs"><view wx:for="{{statusTabs}}" wx:key="key" class="tab {{activeStatus === item.key ? 'tab-active' : ''}}" data-key="{{item.key}}" bindtap="switchStatus">{{item.name}}</view></view>
+  <view class="card" wx:for="{{shown}}" wx:key="homeworkId" data-id="{{item.homeworkId}}" bindtap="openCard">
+    <view class="title">{{item.title || item.homeworkTitle || '未命名作业'}}</view>
+    <view class="meta">截止：{{item.deadline || '-'}}</view>
+    <view class="meta">发布对象：{{item.classText || item.scheduleName || '当前班级'}}</view>
+    <view class="meta" wx:if="{{item.progress}}">{{item.progress}}</view>
+    <view class="status">{{item.statusText}}</view>
+    <view class="actions" catchtap="noop">
+      <button wx:if="{{item.status === '0'}}" size="mini" data-id="{{item.homeworkId}}" bindtap="publish">发布</button>
+      <button wx:if="{{item.status === '0'}}" size="mini" data-id="{{item.homeworkId}}" bindtap="edit">编辑</button>
+      <button wx:if="{{item.status === '1'}}" size="mini" data-id="{{item.homeworkId}}" data-type="close" bindtap="action">关闭</button>
+    </view>
+  </view>
+  <view class="empty" wx:if="{{!loading && !shown.length}}">该分类暂无作业</view>
+  <view class="loading" wx:if="{{loading}}">加载中...</view>
+  <view class="mask" wx:if="{{publish}}" catchtap="closePublish">
+    <view class="panel" catchtap="noop">
+      <view class="panel-title">选择发布班级</view>
+      <view class="panel-sub">《{{publishItem.title}}》　截止：{{publishItem.deadline || '未设置'}}</view>
+      <scroll-view scroll-y class="panel-list">
+        <view wx:for="{{publishClasses}}" wx:key="scheduleId" class="class-row" data-index="{{index}}" bindtap="toggleClass">
+          <view class="checkbox {{item.checked ? 'checked' : ''}}">{{item.checked ? '✓' : ''}}</view>
+          <view class="class-label">{{item.name}}（ID：{{item.scheduleId}}）</view>
+        </view>
+      </scroll-view>
+      <view class="panel-actions">
+        <button size="mini" bindtap="closePublish">取消</button>
+        <button size="mini" class="confirm" bindtap="confirmPublish">确认发布</button>
+      </view>
+    </view>
+  </view>
+</view>
