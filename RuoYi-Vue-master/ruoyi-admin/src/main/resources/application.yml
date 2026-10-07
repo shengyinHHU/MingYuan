@@ -62,17 +62,18 @@ spring:
 
 token:
   header: Authorization
-  secret: ${TOKEN_SECRET}
+  secret: ${TOKEN_SECRET:abcdefghijklmnopqrstuvwxyz}
   expireTime: 30
 
 wechat:
   miniapp:
     appid: ${WECHAT_APPID:}
     secret: ${WECHAT_SECRET:}
-    mock-enabled: false
+    mock-enabled: ${WECHAT_MOCK_ENABLED:true}
     mock-phone: 13800000000
     mock-admin-username: admin
-    mock-teacher-phone: ${WECHAT_MOCK_TEACHER_PHONE:}
+    mock-teacher-username: ${WECHAT_MOCK_TEACHER_USERNAME:teacher_demo}
+    mock-teacher-phone: ${WECHAT_MOCK_TEACHER_PHONE:13910009999}
 
 mybatis:
   typeAliasesPackage: com.ruoyi.**.domain
