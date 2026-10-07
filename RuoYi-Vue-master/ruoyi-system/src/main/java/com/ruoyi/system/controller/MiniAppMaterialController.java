@@ -1,182 +1,63 @@
 package com.ruoyi.system.controller;
 
-import jakarta.servlet.http.HttpServletRequest;
+import java.util.*;
 import jakarta.servlet.http.HttpServletResponse;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
-import com.ruoyi.common.config.RuoYiConfig;
-import com.ruoyi.common.core.controller.BaseController;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import com.ruoyi.common.core.domain.AjaxResult;
-import com.ruoyi.common.core.domain.model.MiniAppMaterialBuyBody;
-import com.ruoyi.common.core.domain.model.MiniAppMaterialUploadBody;
-import com.ruoyi.common.utils.file.FileUtils;
-import com.ruoyi.system.domain.EduMaterial;
-import com.ruoyi.system.domain.EduMaterialOrder;
 import com.ruoyi.common.core.domain.entity.SysDictData;
-import com.ruoyi.system.service.IMiniAppMaterialService;
+import com.ruoyi.common.utils.SecurityUtils;
+import com.ruoyi.common.utils.file.FileUtils;
 import com.ruoyi.system.service.ISysDictDataService;
+import com.ruoyi.system.shop.*;
 
-/**
- * MiniApp material APIs.
- *
- * Parent: browse / buy / download / my orders.
- * Teacher & Admin: upload / update / delete my materials.
- */
 @RestController
 @RequestMapping("/miniapp")
-public class MiniAppMaterialController extends BaseController
-{
-    @Autowired
-    private IMiniAppMaterialService miniAppMaterialService;
-
-    @Autowired
-    private ISysDictDataService sysDictDataService;
-
-    /**
-     * 资料商城字典：返回学科、年级选项。家长、教师、管理员均可访问。
-     */
+public class MiniAppMaterialController {
+    private final ShopService shop;
+    private final PrivateStorage storage;
+    private final ISysDictDataService dicts;
+    public MiniAppMaterialController(ShopService shop,PrivateStorage storage,ISysDictDataService dicts){this.shop=shop;this.storage=storage;this.dicts=dicts;}
     @PreAuthorize("@ss.hasAnyRoles('parent,teacher,admin')")
-    @GetMapping("/material/dict")
-    public AjaxResult dict()
-    {
-        SysDictData subjectQuery = new SysDictData();
-        subjectQuery.setDictType("edu_subject");
-        subjectQuery.setStatus("0");
-        List<SysDictData> subjects = sysDictDataService.selectDictDataList(subjectQuery);
-
-        SysDictData gradeQuery = new SysDictData();
-        gradeQuery.setDictType("edu_grade");
-        gradeQuery.setStatus("0");
-        List<SysDictData> grades = sysDictDataService.selectDictDataList(gradeQuery);
-
-        Map<String, Object> data = new HashMap<>(2);
-        data.put("subjects", subjects);
-        data.put("grades", grades);
-        return success(data);
+    @GetMapping("/material/dict") public AjaxResult dict(){
+        var s=new SysDictData();s.setDictType("edu_subject");s.setStatus("0");
+        var g=new SysDictData();g.setDictType("edu_grade");g.setStatus("0");
+        var t=new SysDictData();t.setDictType("edu_material_type");t.setStatus("0");
+        return AjaxResult.success(Map.of("subjects",dicts.selectDictDataList(s),"grades",dicts.selectDictDataList(g),"materialTypes",dicts.selectDictDataList(t)));
     }
-
-    // ============== 家长端 ==============
-
     @PreAuthorize("@ss.hasRole('parent')")
-    @GetMapping("/parent/material/list")
-    public AjaxResult list(@RequestParam(value = "title", required = false) String title,
-            @RequestParam(value = "subjectName", required = false) String subjectName,
-            @RequestParam(value = "gradeName", required = false) String gradeName)
-    {
-        return success(miniAppMaterialService.selectOnSaleMaterialsForParent(title, subjectName, gradeName));
-    }
-
+    @GetMapping("/parent/material/list") public AjaxResult list(@RequestParam Map<String,String> q){return AjaxResult.success(shop.products(q,SecurityUtils.getUserId(),false,false));}
     @PreAuthorize("@ss.hasRole('parent')")
-    @GetMapping("/parent/material/{materialId}")
-    public AjaxResult detail(@PathVariable("materialId") Long materialId)
-    {
-        return success(miniAppMaterialService.selectMaterialDetailForParent(materialId));
-    }
-
+    @GetMapping("/parent/material/{id}") public AjaxResult detail(@PathVariable long id){return AjaxResult.success(shop.product(id,SecurityUtils.getUserId(),false));}
     @PreAuthorize("@ss.hasRole('parent')")
-    @GetMapping("/parent/material/orders")
-    public AjaxResult myOrders()
-    {
-        return success(miniAppMaterialService.selectMyOrders());
-    }
-
+    @GetMapping("/parent/material/orders") public AjaxResult orders(@RequestParam Map<String,String> q){return AjaxResult.success(shop.orders(q,SecurityUtils.getUserId(),false));}
     @PreAuthorize("@ss.hasRole('parent')")
-    @PostMapping("/parent/material/buy")
-    public AjaxResult buy(@RequestBody MiniAppMaterialBuyBody body)
-    {
-        Long orderId = miniAppMaterialService.buyMaterial(body);
-        AjaxResult ajax = AjaxResult.success();
-        ajax.put("orderId", orderId);
-        ajax.put("payStatus", "1");
-        return ajax;
-    }
-
-    /**
-     * 家长下载已购买的资料。校验订单已支付后输出文件流。
-     */
+    @PostMapping("/parent/material/orders") public AjaxResult create(@RequestBody Map<String,Object> body){return AjaxResult.success(shop.createOrder(SecurityUtils.getUserId(),body));}
     @PreAuthorize("@ss.hasRole('parent')")
-    @GetMapping("/parent/material/download/{orderId}")
-    public void download(@PathVariable("orderId") Long orderId,
-            HttpServletRequest request, HttpServletResponse response)
-    {
-        try
-        {
-            EduMaterialOrder order = miniAppMaterialService.selectDownloadableOrder(orderId);
-            String resource = order.getMaterialFilePath();
-            if (!FileUtils.checkAllowDownload(resource))
-            {
-                throw new RuntimeException("资料文件（" + resource + "）非法，不允许下载");
-            }
-            String localPath = RuoYiConfig.getProfile();
-            String downloadPath = localPath + FileUtils.stripPrefix(resource);
-            String downloadName = order.getMaterialFileName();
-            if (downloadName == null || downloadName.isEmpty())
-            {
-                downloadName = com.ruoyi.common.utils.StringUtils
-                        .substringAfterLast(downloadPath, "/");
-            }
-            response.setContentType(MediaType.APPLICATION_OCTET_STREAM_VALUE);
-            FileUtils.setAttachmentResponseHeader(response, downloadName);
-            FileUtils.writeBytes(downloadPath, response.getOutputStream());
-        }
-        catch (Exception e)
-        {
-            logger.error("下载资料文件失败", e);
-            try
-            {
-                response.reset();
-                response.setContentType("application/json");
-                response.setCharacterEncoding("UTF-8");
-                response.getWriter().print("{\"code\":500,\"msg\":\"" + e.getMessage() + "\"}");
-            }
-            catch (Exception ignored)
-            {
-            }
-        }
+    @GetMapping("/parent/material/orders/{id}") public AjaxResult order(@PathVariable long id){return AjaxResult.success(shop.order(id,SecurityUtils.getUserId(),false));}
+    @PreAuthorize("@ss.hasRole('parent')")
+    @PostMapping("/parent/material/orders/{id}/payment") public AjaxResult payment(@PathVariable long id){return AjaxResult.success(shop.preparePayment(SecurityUtils.getUserId(),id));}
+    @PreAuthorize("@ss.hasRole('parent')")
+    @PostMapping("/parent/material/orders/{id}/cancel") public AjaxResult cancel(@PathVariable long id){return AjaxResult.success(shop.cancel(SecurityUtils.getUserId(),id));}
+    @PreAuthorize("@ss.hasRole('parent')")
+    @PostMapping("/parent/material/orders/{id}/receive") public AjaxResult receive(@PathVariable long id){return AjaxResult.success(shop.receive(SecurityUtils.getUserId(),id));}
+    @PreAuthorize("@ss.hasRole('parent')")
+    @PostMapping("/parent/material/buy") public AjaxResult disabledBuy(){return AjaxResult.error("购买流程已升级，请创建待支付订单后确认模拟支付");}
+    @PreAuthorize("@ss.hasRole('parent')")
+    @GetMapping("/parent/material/download/{id}") public void download(@PathVariable long id,HttpServletResponse response)throws Exception {
+        var path=shop.download(SecurityUtils.getUserId(),id);
+        response.setContentType("application/pdf");FileUtils.setAttachmentResponseHeader(response,"material-"+id+".pdf");
+        java.nio.file.Files.copy(path,response.getOutputStream());
     }
-
-    // ============== 教师 / 管理员端 ==============
-
     @PreAuthorize("@ss.hasAnyRoles('teacher,admin')")
-    @GetMapping("/teacher/material/list")
-    public AjaxResult myUploads(@RequestParam(value = "title", required = false) String title,
-            @RequestParam(value = "subjectName", required = false) String subjectName,
-            @RequestParam(value = "gradeName", required = false) String gradeName)
-    {
-        return success(miniAppMaterialService.selectMyUploads(title, subjectName, gradeName));
-    }
-
+    @GetMapping("/teacher/material/list") public AjaxResult myUploads(@RequestParam Map<String,String> q){return AjaxResult.success(shop.products(q,SecurityUtils.getUserId(),true,true));}
     @PreAuthorize("@ss.hasAnyRoles('teacher,admin')")
-    @PostMapping("/teacher/material")
-    public AjaxResult upload(@RequestBody MiniAppMaterialUploadBody body)
-    {
-        return toAjax(miniAppMaterialService.uploadMaterial(body));
-    }
-
+    @PostMapping("/teacher/material") public AjaxResult draft(@RequestBody Map<String,Object> body){body.remove("materialId");return AjaxResult.success(shop.saveProduct(SecurityUtils.getUserId(),body,true));}
     @PreAuthorize("@ss.hasAnyRoles('teacher,admin')")
-    @PutMapping("/teacher/material")
-    public AjaxResult edit(@RequestBody EduMaterial material)
-    {
-        return toAjax(miniAppMaterialService.updateMyMaterial(material));
-    }
-
+    @PutMapping("/teacher/material") public AjaxResult editDraft(@RequestBody Map<String,Object> body){ShopService.require(body.get("materialId")!=null,"资料ID不能为空");return AjaxResult.success(shop.saveProduct(SecurityUtils.getUserId(),body,true));}
     @PreAuthorize("@ss.hasAnyRoles('teacher,admin')")
-    @DeleteMapping("/teacher/material/{materialId}")
-    public AjaxResult remove(@PathVariable("materialId") Long materialId)
-    {
-        return toAjax(miniAppMaterialService.deleteMyMaterial(materialId));
-    }
+    @DeleteMapping("/teacher/material/{id}") public AjaxResult deleteDraft(@PathVariable long id){shop.deleteProduct(SecurityUtils.getUserId(),id,true);return AjaxResult.success();}
+    @PreAuthorize("@ss.hasAnyRoles('teacher,admin')")
+    @PostMapping("/teacher/material/file") public AjaxResult file(@RequestParam("file") MultipartFile file)throws Exception{return AjaxResult.success(storage.upload(SecurityUtils.getUserId(),file));}
 }

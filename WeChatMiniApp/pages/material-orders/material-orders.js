@@ -1,79 +1,31 @@
-const { request } = require('../../utils/request')
-const app = getApp()
-
+const shop = require('../../utils/material-shop')
 Page({
-  data: {
-    loading: false,
-    orders: [],
-    showEmpty: false
-  },
-
-  onLoad() {
-    this.loadOrders()
-  },
-
-  onPullDownRefresh() {
-    this.loadOrders().finally(() => wx.stopPullDownRefresh())
-  },
-
-  async loadOrders() {
-    this.setData({ loading: true })
+  data: { loading: false, error: '', orders: [], tabs: ['全部', '待支付', '待发货', '待收货', '已完成', '已关闭', '已退款'], tabIndex: 0, total: 0, pageNum: 1 },
+  onLoad(options) { this.materialId = options.materialId || ''; this._sequence = 0 },
+  onShow() { this._hidden = false; return this.loadOrders() },
+  onHide() { this._hidden = true; this._sequence++ },
+  onUnload() { this.onHide() },
+  onPullDownRefresh() { this.loadOrders().finally(() => wx.stopPullDownRefresh()) },
+  onReachBottom() { if (!this.data.loading && this.data.orders.length < this.data.total) this.loadOrders(true) },
+  selectTab(e) { this.setData({ tabIndex: Number(e.currentTarget.dataset.index) }); this.loadOrders() },
+  async loadOrders(append = false) {
+    append = append === true
+    if (append && this.data.loading) return
+    const sequence = ++this._sequence, pageNum = append ? this.data.pageNum + 1 : 1
+    this.setData({ loading: true, error: '', ...(append ? {} : { orders: [], total: 0 }) })
+    const data = { pageNum, pageSize: 20 }
+    const status = ['', 'WAIT_PAY', 'WAIT_SHIP', 'WAIT_RECEIVE', 'COMPLETED', 'CLOSED', ''][this.data.tabIndex]
+    if (status) data.orderStatus = status
+    if (this.data.tabIndex === 6) data.payStatus = '2'
+    if ([2, 3, 4].includes(this.data.tabIndex)) data.payStatus = '1'
     try {
-      const res = await request({ url: '/miniapp/parent/material/orders' })
-      const orders = this.decorate(res.data || [])
-      this.setData({ orders, showEmpty: orders.length === 0 })
-    } catch (error) {
-      wx.showToast({ title: error.message || '加载失败', icon: 'none' })
-      this.setData({ orders: [], showEmpty: true })
-    } finally {
-      this.setData({ loading: false })
-    }
+      const responses = await Promise.all((this.data.tabIndex === 5 ? ['CLOSED', 'CANCELLED'] : [data.orderStatus]).map(orderStatus => shop.request({ url: shop.ordersUrl, data: { ...data, ...(orderStatus ? { orderStatus } : {}) } })))
+      if (sequence !== this._sequence || this._hidden) return
+      const rows = responses.flatMap(response => (response.data || {}).rows || []).map(shop.order).sort((a, b) => String(b.createTime).localeCompare(String(a.createTime)))
+      this.setData({ orders: (append ? this.data.orders : []).concat(rows), total: responses.reduce((sum, response) => sum + Number((response.data || {}).total || 0), 0), pageNum })
+    } catch (error) { if (sequence === this._sequence && !this._hidden) this.setData({ error: error.message }) }
+    finally { if (sequence === this._sequence && !this._hidden) this.setData({ loading: false }) }
   },
-
-  decorate(list) {
-    return list.map((item) => ({
-      ...item,
-      amountText: Number(item.amount) === 0 ? '免费' : `¥${Number(item.amount).toFixed(2)}`,
-      statusText: item.payStatus === '1' ? '已支付' : (item.payStatus === '2' ? '已退款' : '未支付'),
-      statusClass: item.payStatus === '1' ? 'paid' : (item.payStatus === '2' ? 'refund' : 'unpaid'),
-      timeText: this.formatTime(item.payTime || item.createTime)
-    }))
-  },
-
-  formatTime(t) {
-    if (!t) return ''
-    return String(t).replace('T', ' ').substring(0, 16)
-  },
-
-  async download(e) {
-    const orderId = e.currentTarget.dataset.id
-    if (!orderId) return
-    wx.showLoading({ title: '准备下载...', mask: true })
-    const baseUrl = app.globalData.baseUrl
-    const token = wx.getStorageSync('token')
-    wx.downloadFile({
-      url: `${baseUrl}/miniapp/parent/material/download/${orderId}`,
-      header: { Authorization: `Bearer ${token}` },
-      success(res) {
-        wx.hideLoading()
-        if (res.statusCode !== 200) {
-          wx.showToast({ title: '下载失败', icon: 'none' })
-          return
-        }
-        const filePath = res.tempFilePath
-        wx.openDocument({
-          filePath,
-          fileType: 'pdf',
-          success() {},
-          fail() {
-            wx.showToast({ title: '无法打开文件', icon: 'none' })
-          }
-        })
-      },
-      fail() {
-        wx.hideLoading()
-        wx.showToast({ title: '下载失败', icon: 'none' })
-      }
-    })
-  }
+  openDetail(e) { wx.navigateTo({ url: `/pages/material-order-detail/material-order-detail?id=${e.currentTarget.dataset.id}` }) },
+  openShop() { wx.navigateTo({ url: '/pages/material/material' }) }
 })

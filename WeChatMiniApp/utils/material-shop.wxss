@@ -1,0 +1,32 @@
+page { min-height: 100vh; background: #f4f7fb; color: #172033; font-size: 28rpx; }
+.page { padding: 24rpx; padding-bottom: 160rpx; }
+.hero { padding: 32rpx; margin-bottom: 24rpx; border-radius: 24rpx; background: linear-gradient(145deg, #e6f0ff, #fff9ed); }
+.heading { font-size: 40rpx; font-weight: 800; color: #0b326a; }
+.muted { font-size: 24rpx; color: #6c7b8e; line-height: 1.6; }
+.card { background: white; padding: 24rpx; border-radius: 22rpx; margin-bottom: 22rpx; box-shadow: 0 6rpx 20rpx rgba(20,50,90,.05); }
+.row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14rpx; gap: 12rpx; }
+.row:last-child { margin-bottom: 0; }
+.title { font-size: 30rpx; color: #0b326a; font-weight: 700; line-height: 1.5; }
+.price { font-size: 36rpx; color: #b88020; font-weight: 800; }
+.tag { font-size: 22rpx; background: #edf4ff; color: #225dad; padding: 6rpx 12rpx; border-radius: 10rpx; display: inline-block; }
+.notice { background: #fff3d9; color: #8c641b; border-radius: 16rpx; padding: 20rpx; line-height: 1.7; margin-bottom: 20rpx; }
+.state { text-align: center; padding: 44rpx 20rpx; color: #6c7b8e; line-height: 1.8; }
+.error { color: #b54736; }
+.primary { background: #0b326a; color: white; }
+button { font-size: 28rpx; border-radius: 14rpx; margin: 0; }
+button[disabled] { opacity: .5; }
+.small { font-size: 24rpx; padding: 0 22rpx; line-height: 64rpx; }
+.actions { display: flex; gap: 12rpx; flex-wrap: wrap; margin-top: 20rpx; }
+.actions button { flex: 1; min-width: 130rpx; }
+input, textarea, .picker { box-sizing: border-box; width: 100%; background: #f4f7fb; border: 1rpx solid #dce5f2; border-radius: 12rpx; padding: 18rpx; margin: 12rpx 0 20rpx; }
+input { height: 82rpx; }
+textarea { min-height: 150rpx; }
+.label { color: #526175; font-size: 26rpx; }
+.cover { width: 130rpx; height: 130rpx; flex-shrink: 0; border-radius: 14rpx; background: #eaf3ff; }
+.grow { flex: 1; min-width: 0; }
+.bottom { position: fixed; left: 0; right: 0; bottom: 0; z-index: 2; background: white; padding: 20rpx 24rpx; padding-bottom: calc(20rpx + env(safe-area-inset-bottom)); box-shadow: 0 -4rpx 24rpx rgba(20,50,90,.07); }
+.detail-text { white-space: pre-wrap; line-height: 1.8; }
+.detail-image { width: 100%; margin-top: 14rpx; }
+.thumbs { display: flex; gap: 12rpx; flex-wrap: wrap; }
+.thumb { width: 160rpx; }
+.thumb image { width: 160rpx; height: 160rpx; border-radius: 12rpx; background: #eaf3ff; }

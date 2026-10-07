@@ -1,57 +1,21 @@
 package com.ruoyi.system.service.impl;
-
 import java.util.List;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import com.ruoyi.common.exception.ServiceException;
+import com.ruoyi.common.core.domain.model.MiniAppMaterialBuyBody;
+import com.ruoyi.common.core.domain.model.MiniAppMaterialUploadBody;
+import com.ruoyi.system.domain.EduMaterial;
 import com.ruoyi.system.domain.EduMaterialOrder;
-import com.ruoyi.system.mapper.EduMaterialOrderMapper;
 import com.ruoyi.system.service.IEduMaterialOrderService;
 
-/**
- * 资料订单Service实现
- *
- * @author ruoyi
- * @date 2026-08-21
- */
+/** Retained only for binary compatibility; all commerce now uses ShopService. */
 @Service
-public class EduMaterialOrderServiceImpl implements IEduMaterialOrderService
-{
-    @Autowired
-    private EduMaterialOrderMapper eduMaterialOrderMapper;
-
-    @Override
-    public EduMaterialOrder selectEduMaterialOrderByOrderId(Long orderId)
-    {
-        return eduMaterialOrderMapper.selectEduMaterialOrderByOrderId(orderId);
-    }
-
-    @Override
-    public List<EduMaterialOrder> selectEduMaterialOrderList(EduMaterialOrder eduMaterialOrder)
-    {
-        return eduMaterialOrderMapper.selectEduMaterialOrderList(eduMaterialOrder);
-    }
-
-    @Override
-    public int insertEduMaterialOrder(EduMaterialOrder eduMaterialOrder)
-    {
-        return eduMaterialOrderMapper.insertEduMaterialOrder(eduMaterialOrder);
-    }
-
-    @Override
-    public int updateEduMaterialOrder(EduMaterialOrder eduMaterialOrder)
-    {
-        return eduMaterialOrderMapper.updateEduMaterialOrder(eduMaterialOrder);
-    }
-
-    @Override
-    public int deleteEduMaterialOrderByOrderIds(Long[] orderIds)
-    {
-        return eduMaterialOrderMapper.deleteEduMaterialOrderByOrderIds(orderIds);
-    }
-
-    @Override
-    public int deleteEduMaterialOrderByOrderId(Long orderId)
-    {
-        return eduMaterialOrderMapper.deleteEduMaterialOrderByOrderId(orderId);
-    }
+@Deprecated
+public class EduMaterialOrderServiceImpl implements IEduMaterialOrderService {
+    @Override public EduMaterialOrder selectEduMaterialOrderByOrderId(Long id) {throw new ServiceException("资料商城接口已升级，请使用新的商品与订单流程");}
+    @Override public List<EduMaterialOrder> selectEduMaterialOrderList(EduMaterialOrder query) {throw new ServiceException("资料商城接口已升级，请使用新的商品与订单流程");}
+    @Override public int insertEduMaterialOrder(EduMaterialOrder order) {throw new ServiceException("资料商城接口已升级，请使用新的商品与订单流程");}
+    @Override public int updateEduMaterialOrder(EduMaterialOrder order) {throw new ServiceException("资料商城接口已升级，请使用新的商品与订单流程");}
+    @Override public int deleteEduMaterialOrderByOrderIds(Long[] ids) {throw new ServiceException("资料商城接口已升级，请使用新的商品与订单流程");}
+    @Override public int deleteEduMaterialOrderByOrderId(Long id) {throw new ServiceException("资料商城接口已升级，请使用新的商品与订单流程");}
 }

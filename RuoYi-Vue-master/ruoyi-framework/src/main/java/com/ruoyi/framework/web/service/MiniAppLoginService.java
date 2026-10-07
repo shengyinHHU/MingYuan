@@ -52,7 +52,7 @@ public class MiniAppLoginService
     @Value("${wechat.miniapp.mock-teacher-username:}")
     private String mockTeacherUsername;
 
-    @Value("${wechat.miniapp.mock-teacher-phone:13910000002}")
+    @Value("${wechat.miniapp.mock-teacher-phone:}")
     private String mockTeacherPhone;
 
     @Autowired

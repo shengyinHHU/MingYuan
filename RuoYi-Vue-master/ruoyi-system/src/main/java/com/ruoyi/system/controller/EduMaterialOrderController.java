@@ -1,93 +1,39 @@
 package com.ruoyi.system.controller;
 
-import java.util.List;
+import java.util.*;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import com.ruoyi.common.annotation.Log;
-import com.ruoyi.common.core.controller.BaseController;
 import com.ruoyi.common.core.domain.AjaxResult;
 import com.ruoyi.common.enums.BusinessType;
-import com.ruoyi.system.domain.EduMaterialOrder;
-import com.ruoyi.system.service.IEduMaterialOrderService;
-import com.ruoyi.common.utils.poi.ExcelUtil;
-import com.ruoyi.common.core.page.TableDataInfo;
+import com.ruoyi.common.utils.SecurityUtils;
+import com.ruoyi.system.shop.*;
 
-/**
- * 资料订单Controller
- *
- * @author ruoyi
- * @date 2026-08-21
- */
 @RestController
 @RequestMapping("/system/materialOrder")
-public class EduMaterialOrderController extends BaseController
-{
-    @Autowired
-    private IEduMaterialOrderService eduMaterialOrderService;
-
-    /**
-     * 查询资料订单列表
-     */
+public class EduMaterialOrderController {
+    private final ShopService shop;
+    public EduMaterialOrderController(ShopService shop){this.shop=shop;}
     @PreAuthorize("@ss.hasPermi('system:materialOrder:list')")
-    @GetMapping("/list")
-    public TableDataInfo list(EduMaterialOrder eduMaterialOrder)
-    {
-        startPage();
-        List<EduMaterialOrder> list = eduMaterialOrderService.selectEduMaterialOrderList(eduMaterialOrder);
-        return getDataTable(list);
+    @GetMapping("/list") public AjaxResult list(@RequestParam Map<String,String> q){
+        var data=shop.orders(q,SecurityUtils.getUserId(),true);var result=AjaxResult.success();result.putAll(data);return result;
     }
-
-    /**
-     * 导出资料订单列表
-     */
-    @PreAuthorize("@ss.hasPermi('system:materialOrder:export')")
-    @Log(title = "资料订单", businessType = BusinessType.EXPORT)
-    @PostMapping("/export")
-    public void export(HttpServletResponse response, EduMaterialOrder eduMaterialOrder)
-    {
-        List<EduMaterialOrder> list = eduMaterialOrderService.selectEduMaterialOrderList(eduMaterialOrder);
-        ExcelUtil<EduMaterialOrder> util = new ExcelUtil<EduMaterialOrder>(EduMaterialOrder.class);
-        util.exportExcel(response, list, "资料订单数据");
-    }
-
-    /**
-     * 获取资料订单详细信息
-     */
     @PreAuthorize("@ss.hasPermi('system:materialOrder:query')")
-    @GetMapping(value = "/{orderId}")
-    public AjaxResult getInfo(@PathVariable("orderId") Long orderId)
-    {
-        return success(eduMaterialOrderService.selectEduMaterialOrderByOrderId(orderId));
-    }
-
-    /**
-     * 修改资料订单（例如退款）
-     */
+    @GetMapping("/{id}") public AjaxResult detail(@PathVariable long id){return AjaxResult.success(shop.order(id,SecurityUtils.getUserId(),true));}
     @PreAuthorize("@ss.hasPermi('system:materialOrder:edit')")
-    @Log(title = "资料订单", businessType = BusinessType.UPDATE)
-    @PutMapping
-    public AjaxResult edit(@RequestBody EduMaterialOrder eduMaterialOrder)
-    {
-        return toAjax(eduMaterialOrderService.updateEduMaterialOrder(eduMaterialOrder));
-    }
-
-    /**
-     * 删除资料订单
-     */
+    @Log(title="资料订单发货",isSaveResponseData=false,businessType=BusinessType.UPDATE)
+    @PostMapping("/{id}/ship") public AjaxResult ship(@PathVariable long id,@RequestBody Map<String,Object> body){return AjaxResult.success(shop.ship(SecurityUtils.getUserId(),id,body));}
+    @PreAuthorize("@ss.hasPermi('system:materialOrder:edit')")
+    @Log(title="资料订单模拟退款",isSaveResponseData=false,businessType=BusinessType.UPDATE)
+    @PostMapping("/{id}/refund") public AjaxResult refund(@PathVariable long id,@RequestBody Map<String,Object> body){return AjaxResult.success(shop.refund(SecurityUtils.getUserId(),id,ShopService.text(body.get("reason"))));}
+    @PreAuthorize("@ss.hasPermi('system:materialOrder:edit')")
+    @PutMapping public AjaxResult disabledEdit(){return AjaxResult.error("订单不允许通用编辑，请使用发货或退款操作");}
     @PreAuthorize("@ss.hasPermi('system:materialOrder:remove')")
-    @Log(title = "资料订单", businessType = BusinessType.DELETE)
-    @DeleteMapping("/{orderIds}")
-    public AjaxResult remove(@PathVariable Long[] orderIds)
-    {
-        return toAjax(eduMaterialOrderService.deleteEduMaterialOrderByOrderIds(orderIds));
+    @DeleteMapping("/{ids}") public AjaxResult disabledDelete(){return AjaxResult.error("交易订单不允许删除");}
+    @PreAuthorize("@ss.hasPermi('system:materialOrder:export')")
+    @Log(title="资料订单",isSaveResponseData=false,businessType=BusinessType.EXPORT)
+    @PostMapping("/export") public void export(@RequestParam Map<String,String> q,HttpServletResponse response)throws Exception{
+        ShopExport.write(response,"资料订单",ShopExport.collect(q,p->shop.orders(p,SecurityUtils.getUserId(),true)),List.of("orderId","orderCode","parentName","orderStatus","payStatus","totalQuantity","goodsAmount","shippingAmount","payableAmount","amount","refundedAmount","receiverName","receiverPhone","createTime","payTime"));
     }
 }

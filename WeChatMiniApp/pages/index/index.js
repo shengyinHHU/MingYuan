@@ -22,7 +22,8 @@ const roleProfiles = {
       { title: '考勤记录', icon: '勤', tone: 'cyan', route: '/pages/attendance/attendance' },
       { title: '请假申请', icon: '假', tone: 'violet' },
       { title: '资料商城', icon: '资', tone: 'indigo', route: '/pages/material/material' },
-      { title: '我的资料', icon: '料', tone: 'green', route: '/pages/material-orders/material-orders' }
+      { title: '我的资料', icon: '料', tone: 'green', route: '/pages/material-orders/material-orders' },
+      { title: '我的作业', icon: '作', tone: 'violet', route: '/pages/homework/homework' }
     ],
     agendaTitle: '我的课程',
     schedule: [
@@ -51,7 +52,8 @@ const roleProfiles = {
       { title: '排课统计', icon: '统', tone: 'gold' },
       { title: 'WiFi打卡', icon: '卡', tone: 'red' },
       { title: '资料商城', icon: '资', tone: 'indigo', route: '/pages/material/material' },
-      { title: '我的资料', icon: '料', tone: 'green', route: '/pages/material-upload/material-upload' }
+      { title: '我的资料', icon: '料', tone: 'green', route: '/pages/material-upload/material-upload' },
+      { title: '作业管理', icon: '作', tone: 'violet', route: '/pages/teacher-homework/teacher-homework' }
     ],
     agendaTitle: '今日排课',
     schedule: [

@@ -1,0 +1,2 @@
+@import "../../utils/material-shop.wxss";
+.stepper { display: flex; align-items: center; gap: 28rpx; }
