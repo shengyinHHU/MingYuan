@@ -39,11 +39,12 @@
 
     <view class="action-grid">
       <view
-        class="action-card {{item.tone}}"
+        class="action-card {{item.tone}} {{item.disabled ? 'action-disabled' : ''}}"
         wx:for="{{quickActions}}"
         wx:key="title"
         data-title="{{item.title}}"
         data-route="{{item.route}}"
+        data-disabled="{{item.disabled}}"
         bindtap="handleAction"
       >
         <view class="action-icon">{{item.icon}}</view>

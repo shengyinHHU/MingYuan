@@ -212,6 +212,7 @@
         </template>
       </el-table-column>
       <el-table-column label="已报名人数" align="center" prop="enrolledCount" />
+      <el-table-column label="课时单价" align="center" prop="unitPrice" />
       <el-table-column label="招生状态" align="center" prop="recruitStatus" />
       <el-table-column label="课程班名称" align="center" prop="courseClassName" />
       <el-table-column label="来源Sheet" align="center" prop="sourceSheet" />
@@ -330,6 +331,11 @@
             </el-form-item>
           </el-col>
           <el-col :span="24">
+            <el-form-item label="课时单价(元)" prop="unitPrice">
+              <el-input-number v-model="form.unitPrice" :min="0" :precision="2" :step="50" controls-position="right" style="width: 100%" placeholder="元/人·次，用于财务统计" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="24">
             <el-form-item label="课程班名称" prop="courseClassName">
               <el-input v-model="form.courseClassName" placeholder="请输入课程班名称" />
             </el-form-item>
@@ -411,6 +417,7 @@ export default {
         teacherName: null,
         classType: null,
         enrolledCount: null,
+        unitPrice: null,
         recruitStatus: null,
         courseClassName: null,
         sourceSheet: null,
@@ -485,6 +492,7 @@ export default {
         classType: null,
         classMode: '1',
         enrolledCount: null,
+        unitPrice: null,
         recruitStatus: null,
         courseClassName: null,
         sourceSheet: null,

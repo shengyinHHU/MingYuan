@@ -92,6 +92,10 @@ public class EduCourseSchedule extends BaseEntity
     @Excel(name = "已报名人数")
     private Long enrolledCount;
 
+    /** 课时单价（元/人·次） */
+    @Excel(name = "课时单价(元)")
+    private java.math.BigDecimal unitPrice;
+
     /** 招生状态（0可报名 1停招 2满班） */
     @Excel(name = "招生状态", readConverterExp = "0=可报名,1=停招,2=满班")
     private String recruitStatus;
@@ -297,6 +301,16 @@ public class EduCourseSchedule extends BaseEntity
     public Long getEnrolledCount() 
     {
         return enrolledCount;
+    }
+
+    public void setUnitPrice(java.math.BigDecimal unitPrice)
+    {
+        this.unitPrice = unitPrice;
+    }
+
+    public java.math.BigDecimal getUnitPrice()
+    {
+        return unitPrice;
     }
 
     public void setRecruitStatus(String recruitStatus) 

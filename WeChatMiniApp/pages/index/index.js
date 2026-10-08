@@ -72,12 +72,11 @@ const roleProfiles = {
       { label: '续费率', value: '83', suffix: '%' }
     ],
     actions: [
-      { title: '签到复核', icon: '核', tone: 'blue', route: '/pages/sign-review/sign-review' },
-      { title: '课程报名', icon: '招', tone: 'blue' },
+      { title: '签到复核', icon: '核', tone: 'blue', disabled: true },
       { title: '排课管理', icon: '排', tone: 'orange' },
-      { title: '教室管理', icon: '室', tone: 'cyan' },
-      { title: '学生档案', icon: '档', tone: 'green' },
-      { title: '教师管理', icon: '师', tone: 'indigo' },
+      { title: '教室管理', icon: '室', tone: 'cyan', route: '/pages/admin-classrooms/admin-classrooms' },
+      { title: '学生档案', icon: '档', tone: 'green', route: '/pages/admin-students/admin-students' },
+      { title: '教师管理', icon: '师', tone: 'indigo', route: '/pages/admin-teachers/admin-teachers' },
       { title: '收费财务', icon: '财', tone: 'gold' },
       { title: '薪资核算', icon: '薪', tone: 'red' },
       { title: '运营分析', icon: '析', tone: 'violet' },
@@ -396,6 +395,14 @@ Page({
   handleAction(e) {
     const route = e.currentTarget.dataset.route
     const title = e.currentTarget.dataset.title
+    const disabled = e.currentTarget.dataset.disabled
+    if (disabled) {
+      wx.showToast({
+        title: `${title}已暂时关闭`,
+        icon: 'none'
+      })
+      return
+    }
     if (route) {
       wx.navigateTo({ url: route })
       return
