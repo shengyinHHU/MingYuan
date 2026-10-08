@@ -15,6 +15,7 @@
     "pages/material-checkout/material-checkout",
     "pages/material-order-detail/material-order-detail",
     "pages/material-address/material-address",
+    "pages/teacher-students/teacher-students",
     "pages/sign-in/sign-in",
     "pages/sign-in-edit/sign-in-edit",
     "pages/sign-review/sign-review",

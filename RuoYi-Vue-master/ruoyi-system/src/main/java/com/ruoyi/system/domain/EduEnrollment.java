@@ -68,6 +68,14 @@ public class EduEnrollment extends BaseEntity
     /** 删除标志（0代表存在 2代表删除） */
     private String delFlag;
 
+    /** 关联课程及家长联系电话，非新增表字段。 */
+    private String courseClassName;
+    private String parentPhone;
+    public String getCourseClassName() { return courseClassName; }
+    public void setCourseClassName(String value) { this.courseClassName = value; }
+    public String getParentPhone() { return parentPhone; }
+    public void setParentPhone(String value) { this.parentPhone = value; }
+
     /** 排课-年级（关联查询，非表字段） */
     private String gradeName;
 

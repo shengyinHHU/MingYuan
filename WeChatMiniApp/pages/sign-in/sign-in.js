@@ -7,6 +7,8 @@ Page({
     showEmpty: false
   },
 
+  onUnload() { this._unloaded = true; this._version = (this._version || 0) + 1 },
+
   onShow() {
     this.loadList()
   },
@@ -16,16 +18,21 @@ Page({
   },
 
   async loadList() {
+    const version = this._version = (this._version || 0) + 1
+    const token = wx.getStorageSync('token')
+    const current = () => !this._unloaded && version === this._version && wx.getStorageSync('token') === token
     this.setData({ loading: true })
     try {
       const res = await request({ url: '/miniapp/teacher/sign/list' })
+      if (!current()) return
       const list = (res.data || []).map((item) => this.decorate(item))
       this.setData({ list, showEmpty: list.length === 0 })
     } catch (error) {
+      if (!current()) return
       wx.showToast({ title: error.message || '加载失败', icon: 'none' })
       this.setData({ list: [], showEmpty: true })
     } finally {
-      this.setData({ loading: false })
+      if (current()) this.setData({ loading: false })
     }
   },
 
@@ -47,6 +54,8 @@ Page({
 
   openSign(e) {
     const { id } = e.currentTarget.dataset
-    wx.navigateTo({ url: `/pages/sign-in-edit/sign-in-edit?scheduleId=${id}` })
+    const item = this.data.list.find((row) => String(row.scheduleId) === String(id))
+    if (!item) return
+    wx.navigateTo({ url: `/pages/sign-in-edit/sign-in-edit?scheduleId=${encodeURIComponent(id)}&course=${encodeURIComponent(item.course)}&room=${encodeURIComponent(item.room)}&time=${encodeURIComponent(item.timeSlot || '')}` })
   }
 })

@@ -34,6 +34,12 @@
         from edu_course_schedule s
         left join edu_classroom c on c.classroom_id = s.classroom_id
     </sql>
+    <select id="selectTeacherSchedules" resultType="java.util.HashMap">
+        <include refid="scheduleView"/>
+        where s.del_flag = '0' and s.teacher_id = #{teacherId}
+        <if test="scheduleId != null">and s.schedule_id = #{scheduleId}</if>
+        order by <include refid="gradeOrder"/>, s.grade_name, s.course_year desc, s.term_name, s.period_name, s.start_time, s.schedule_id
+    </select>
     <select id="selectGrades" resultType="string">
         select grade_name from (
             select distinct s.grade_name, <include refid="gradeOrder"/> as grade_sort
@@ -51,6 +57,16 @@
     <select id="selectSchedule" resultType="java.util.HashMap">
         <include refid="scheduleView"/>
         where s.schedule_id = #{scheduleId} and s.del_flag = '0'
+    </select>
+    <select id="selectTeacherHistory" resultType="java.util.HashMap">
+        select r.class_date as classDate, r.sign_status as signStatus, r.review_status as reviewStatus,
+               r.source_type as sourceType, r.remark
+        from edu_class_sign_in r
+        join edu_enrollment e on e.enrollment_id = r.enrollment_id and e.schedule_id = r.schedule_id
+        join edu_course_schedule s on s.schedule_id = r.schedule_id
+        where r.enrollment_id = #{enrollmentId} and r.del_flag = '0'
+          and e.del_flag = '0' and s.del_flag = '0' and s.teacher_id = #{teacherId}
+        order by r.class_date desc, r.sign_in_id desc
     </select>
     <select id="selectHistory" resultType="java.util.HashMap">
         select class_date as classDate, sign_status as signStatus, review_status as reviewStatus,

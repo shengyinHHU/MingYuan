@@ -42,14 +42,10 @@ const roleProfiles = {
       { label: '我的作业', value: '—', suffix: '项' }
     ],
     actions: [
-      { title: '上课签到', icon: '签', tone: 'blue', route: '/pages/sign-in/sign-in' },
-      { title: '我的课表', icon: '课', tone: 'orange' },
-      { title: '考勤点名', icon: '勤', tone: 'cyan' },
+      { title: '学生出勤', icon: '签', tone: 'blue', route: '/pages/sign-in/sign-in' },
+      { title: '我的课表', icon: '课', tone: 'orange', route: '/pages/timetable/timetable' },
       { title: '请假审核', icon: '假', tone: 'violet' },
-      { title: '学生档案', icon: '档', tone: 'green' },
-      { title: '成长报告', icon: '评', tone: 'blue' },
-      { title: '班级名单', icon: '班', tone: 'indigo' },
-      { title: '排课统计', icon: '统', tone: 'gold' },
+      { title: '班级学员', icon: '班', tone: 'green', route: '/pages/teacher-students/teacher-students' },
       { title: 'WiFi打卡', icon: '卡', tone: 'red' },
       { title: '资料商城', icon: '资', tone: 'indigo', route: '/pages/material/material' },
       { title: '我的资料', icon: '料', tone: 'green', route: '/pages/material-upload/material-upload' },
@@ -326,7 +322,7 @@ Page({
         room: item.classroomName || '',
         teacher: item.teacherName || ''
       })),
-      teacherDataMessage: classes === null ? '班级加载失败，请重新进入或查看上课签到' : (classes.length ? '' : '当前教师尚未绑定班级'),
+      teacherDataMessage: classes === null ? '班级加载失败，请重新进入或查看学生出勤' : (classes.length ? '' : '当前教师尚未绑定班级'),
     })
   },
 

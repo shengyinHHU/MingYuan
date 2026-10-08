@@ -3,6 +3,8 @@ const { request } = require('../../utils/request')
 Page({
   data: {
     loading: false,
+    teacherMode: false,
+    plannedLessonCount: 0,
     timetable: [],
     groupedTimetable: [],
     timetableCount: 0,
@@ -10,28 +12,38 @@ Page({
   },
 
   onLoad() {
+    this._unloaded = false
+    const roles = wx.getStorageSync('roles') || []
+    this.setData({ teacherMode: roles.includes('teacher') && !roles.includes('admin') })
     this.loadTimetable()
   },
+
+  onUnload() { this._unloaded = true; this._loadVersion = (this._loadVersion || 0) + 1 },
 
   onPullDownRefresh() {
     this.loadTimetable().finally(() => wx.stopPullDownRefresh())
   },
 
   async loadTimetable() {
+    const version = this._loadVersion = (this._loadVersion || 0) + 1
+    const token = wx.getStorageSync('token')
+    const current = () => !this._unloaded && version === this._loadVersion && wx.getStorageSync('token') === token
     this.setData({ loading: true })
     try {
-      const res = await request({ url: '/miniapp/parent/timetable' })
+      const res = await request({ url: this.data.teacherMode ? '/miniapp/teacher/course/schedules' : '/miniapp/parent/timetable', timeout: 15000 })
+      if (!current()) return
       const timetable = this.decorateTimetable(res.data || [])
       this.setData({
         timetable,
         groupedTimetable: this.groupByPeriod(timetable),
         timetableCount: timetable.length,
+        plannedLessonCount: this.data.teacherMode ? timetable.reduce((sum, item) => sum + this.buildDateList(item).length, 0) : 0,
         showEmpty: timetable.length === 0
       })
     } catch (error) {
-      wx.showToast({ title: error.message || '加载失败', icon: 'none' })
+      if (current()) wx.showToast({ title: error.message || '加载失败', icon: 'none' })
     } finally {
-      this.setData({ loading: false })
+      if (current()) this.setData({ loading: false })
     }
   },
 
@@ -41,6 +53,7 @@ Page({
       const next = this.computeNextClass(item)
       return {
         ...item,
+        viewKey: String(item.enrollmentId || item.scheduleId),
         timeText: this.buildTimeText(item),
         placeText: item.classroomName || '',
         subjectTag: this.joinText([item.gradeName, item.subjectName]),
@@ -195,10 +208,12 @@ Page({
   },
 
   goEnrollment() {
+    if (this.data.teacherMode) return
     wx.navigateTo({ url: '/pages/enrollment/enrollment' })
   },
 
   async handleCancel(e) {
+    if (this.data.teacherMode) return
     const { enrollmentId, courseName, studentName } = e.currentTarget.dataset || {}
     if (!enrollmentId) {
       wx.showToast({ title: '报名信息异常', icon: 'none' })
