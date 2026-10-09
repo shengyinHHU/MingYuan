@@ -23,7 +23,11 @@ const roleProfiles = {
       { title: '请假申请', icon: '假', tone: 'violet' },
       { title: '资料商城', icon: '资', tone: 'indigo', route: '/pages/material/material' },
       { title: '我的资料', icon: '料', tone: 'green', route: '/pages/material-orders/material-orders' },
-      { title: '我的作业', icon: '作', tone: 'violet', route: '/pages/homework/homework' }
+      { title: '我的作业', icon: '作', tone: 'violet', route: '/pages/homework/homework' },
+      { title: '我的缴费', icon: '费', tone: 'blue', route: '/pages/tuition-list/tuition-list' },
+      { title: '我的收据', icon: '据', tone: 'cyan', route: '/pages/tuition-receipt/tuition-receipt' },
+      { title: '退费记录', icon: '退', tone: 'orange', route: '/pages/tuition-refund/tuition-refund' },
+      { title: '我的优惠券', icon: '券', tone: 'indigo', route: '/pages/my-coupons/my-coupons' }
     ],
     agendaTitle: '我的课程',
     schedule: [
@@ -78,7 +82,7 @@ const roleProfiles = {
       { title: '教室管理', icon: '室', tone: 'cyan' },
       { title: '学生档案', icon: '档', tone: 'green' },
       { title: '教师管理', icon: '师', tone: 'indigo' },
-      { title: '收费财务', icon: '财', tone: 'gold' },
+      { title: '收费财务', icon: '财', tone: 'gold', route: '/pages/admin-tuition/admin-tuition' },
       { title: '薪资核算', icon: '薪', tone: 'red' },
       { title: '运营分析', icon: '析', tone: 'violet' },
       { title: '资料商城', icon: '资', tone: 'indigo', route: '/pages/material/material' },

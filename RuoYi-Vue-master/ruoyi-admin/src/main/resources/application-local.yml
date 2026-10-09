@@ -4,4 +4,7 @@ payment:
 wechat:
   miniapp:
     mock-enabled: true
-    mock-teacher-username: teacher_demo
+    # Leave both blank to reuse the enabled teacher with the lowest user_id.
+    # Explicit username takes precedence over phone; invalid config never falls back.
+    mock-teacher-username: ${WECHAT_MOCK_TEACHER_USERNAME:}
+    mock-teacher-phone: ${WECHAT_MOCK_TEACHER_PHONE:}

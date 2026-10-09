@@ -3,6 +3,7 @@ package com.ruoyi.framework.web.service;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -132,7 +133,7 @@ public class MiniAppLoginService
             user = findMockTeacherUser();
             if (user == null)
             {
-                throw new ServiceException("Mock teacher user does not exist. Please check mock teacher config");
+                throw new ServiceException("没有可用的教师账号，请在用户管理中检查账号状态及教师角色");
             }
         }
         else if (EduRoleConstants.PARENT.equals(role))
@@ -154,16 +155,57 @@ public class MiniAppLoginService
 
     private SysUser findMockTeacherUser()
     {
-        SysUser user = null;
-        if (StringUtils.isNotBlank(mockTeacherUsername))
+        // Explicit configuration must not silently log in as a different teacher.
+        boolean byUsername = StringUtils.isNotBlank(mockTeacherUsername);
+        if (byUsername || StringUtils.isNotBlank(mockTeacherPhone))
         {
-            user = userService.selectUserByUserName(mockTeacherUsername);
+            SysUser user = byUsername
+                    ? userService.selectUserByUserName(mockTeacherUsername.trim())
+                    : findExistingTeacher(mockTeacherPhone.trim());
+            if (!isAvailableTeacher(user))
+            {
+                throw new ServiceException("配置的模拟教师不可用，请检查账号、启用状态和教师角色（WECHAT_MOCK_TEACHER_USERNAME / WECHAT_MOCK_TEACHER_PHONE）");
+            }
+            return user;
         }
-        if (user == null && StringUtils.isNotBlank(mockTeacherPhone))
+        return findExistingTeacher(null);
+    }
+
+    private SysUser findExistingTeacher(String phone)
+    {
+        // Reuse existing users and role assignments; never create a demo teacher.
+        SysRole teacherRole = roleMapper.checkRoleKeyUnique(EduRoleConstants.TEACHER);
+        if (teacherRole == null || !UserConstants.ROLE_NORMAL.equals(teacherRole.getStatus()))
         {
-            user = userService.selectUserByPhonenumber(mockTeacherPhone);
+            return null;
         }
-        return user;
+        SysUser filter = new SysUser();
+        filter.setRoleId(teacherRole.getRoleId());
+        List<SysUser> candidates = userMapper.selectAllocatedList(filter).stream()
+                .filter(user -> UserConstants.NORMAL.equals(user.getStatus()))
+                .filter(user -> phone == null || phone.equals(user.getPhonenumber()))
+                .sorted(Comparator.comparing(SysUser::getUserId))
+                .map(user -> userService.selectUserById(user.getUserId()))
+                .filter(this::isAvailableTeacher)
+                .limit(phone == null ? 1 : 2).toList();
+        if (candidates.size() > 1)
+        {
+            throw new ServiceException("该手机号对应多个可用教师，请用 WECHAT_MOCK_TEACHER_USERNAME 指定用户名");
+        }
+        return candidates.isEmpty() ? null : candidates.get(0);
+    }
+
+    private boolean isAvailableTeacher(SysUser user)
+    {
+        if (user == null || !UserConstants.NORMAL.equals(user.getStatus())
+                || !UserConstants.NORMAL.equals(user.getDelFlag()))
+        {
+            return false;
+        }
+        // This query excludes deleted roles, unlike the roles joined by selectUserById.
+        return roleMapper.selectRolePermissionByUserId(user.getUserId()).stream()
+                .anyMatch(role -> EduRoleConstants.TEACHER.equals(role.getRoleKey())
+                        && UserConstants.ROLE_NORMAL.equals(role.getStatus()));
     }
 
     private String createLoginToken(SysUser user)

@@ -144,23 +144,16 @@
       <el-table-column label="支付状态" align="center" width="120">
         <template slot-scope="scope">
           <el-tag :type="getPayStatusType(scope.row.payStatus)" size="small">
-            {{ scope.row.payStatus || '未支付' }}
+            {{ scope.row.payStatus || '待核对' }}
           </el-tag>
-          <div class="pay-actions" v-if="scope.row.payStatus !== '已退款'">
+          <div class="pay-actions">
             <el-button
-              v-if="scope.row.payStatus !== '已支付'"
               size="mini"
               type="text"
               style="color: #67C23A;"
-              @click="handleConfirmPay(scope.row)"
-            >确认支付</el-button>
-            <el-button
-              v-if="scope.row.payStatus !== '未支付'"
-              size="mini"
-              type="text"
-              style="color: #909399;"
-              @click="handleCancelPay(scope.row)"
-            >取消</el-button>
+              @click="handleFinance(scope.row)"
+              v-hasPermi="['system:tuition:query']"
+            >收费详情</el-button>
           </div>
         </template>
       </el-table-column>
@@ -408,13 +401,13 @@ export default {
       this.$refs["form"].validate(valid => {
         if (valid) {
           if (this.form.enrollmentId != null) {
-            updateEnrollment(this.form).then(response => {
+            updateEnrollment(this.enrollmentBody()).then(response => {
               this.$modal.msgSuccess("修改成功")
               this.open = false
               this.getList()
             })
           } else {
-            addEnrollment(this.form).then(response => {
+            addEnrollment(this.enrollmentBody()).then(response => {
               this.$modal.msgSuccess("新增成功")
               this.open = false
               this.getList()
@@ -452,31 +445,16 @@ export default {
       if (status === '已退款') return 'warning'
       return 'info'
     },
-    /** 确认支付 */
-    handleConfirmPay(row) {
-      this.$modal.confirm('确认将 "' + row.studentName + '" 的报名订单标记为已支付？').then(() => {
-        const data = {
-          enrollmentId: row.enrollmentId,
-          payStatus: '已支付'
-        }
-        updateEnrollment(data).then(response => {
-          this.$modal.msgSuccess("确认支付成功")
-          this.getList()
-        })
-      }).catch(() => {})
+    /** 通用报名表单只发送允许编辑的字段，财务汇总由专用流程维护。 */
+    enrollmentBody() {
+      const body = {}
+      for (const key of ['enrollmentId', 'enrollmentCode', 'scheduleId', 'parentId', 'studentName', 'studentPhone', 'contactPhone', 'remark']) {
+        if (this.form[key] !== undefined) body[key] = this.form[key]
+      }
+      return body
     },
-    /** 取消支付 */
-    handleCancelPay(row) {
-      this.$modal.confirm('确认取消 "' + row.studentName + '" 的支付状态？').then(() => {
-        const data = {
-          enrollmentId: row.enrollmentId,
-          payStatus: '未支付'
-        }
-        updateEnrollment(data).then(response => {
-          this.$modal.msgSuccess("取消成功")
-          this.getList()
-        })
-      }).catch(() => {})
+    handleFinance(row) {
+      this.$router.push({ path: '/finance/tuition', query: { enrollmentId: String(row.enrollmentId) } })
     }
   }
 }

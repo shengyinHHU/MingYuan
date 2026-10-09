@@ -73,7 +73,7 @@ public class MiniAppParentController extends BaseController
 
     /**
      * 家长取消本人的课程报名
-     * 逻辑：校验归属本人→逻辑删除报名记录→释放排课名额→同步删除考勤记录
+     * 财务安全取消：校验归属与收款状态，关闭账单并释放一次名额，保留历史考勤。
      */
     @PreAuthorize("@ss.hasAnyRoles('parent')")
     @Log(title = "家长取消报名", businessType = BusinessType.DELETE)
