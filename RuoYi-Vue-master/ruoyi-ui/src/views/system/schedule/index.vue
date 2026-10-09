@@ -210,6 +210,7 @@
         </template>
       </el-table-column>
       <el-table-column label="已报名人数" align="center" prop="enrolledCount" />
+      <el-table-column label="课时单价" align="center" prop="unitPrice" />
       <el-table-column label="招生状态" align="center"><template slot-scope="scope">{{ { '0': '可报名', '1': '停招', '2': '满班' }[scope.row.recruitStatus] || '未知' }}</template></el-table-column>
       <el-table-column label="排课状态" align="center"><template slot-scope="scope">{{ scope.row.status === '1' ? '停用' : '正常' }}</template></el-table-column>
       <el-table-column label="排课日期" min-width="210"><template slot-scope="scope">{{ scope.row.startDate && scope.row.endDate ? `${scope.row.startDate} 至 ${scope.row.endDate}` : '待配置' }}</template></el-table-column>
@@ -328,6 +329,11 @@
             </el-form-item>
           </el-col>
           <el-col :span="24">
+            <el-form-item label="课时单价(元)" prop="unitPrice">
+              <el-input-number v-model="form.unitPrice" :min="0" :precision="2" :step="50" controls-position="right" style="width: 100%" placeholder="元/人·次，用于财务统计" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="24">
             <el-form-item label="课程班名称" prop="courseClassName">
               <el-input v-model="form.courseClassName" placeholder="请输入课程班名称" />
             </el-form-item>
@@ -412,6 +418,7 @@ export default {
         teacherName: null,
         classType: null,
         enrolledCount: null,
+        unitPrice: null,
         recruitStatus: null,
         courseClassName: null,
         sourceSheet: null,
@@ -486,6 +493,7 @@ export default {
         classType: null,
         classMode: this.dims.isTeacher && !this.dims.isAdmin ? '2' : '1',
         enrolledCount: 0,
+        unitPrice: null,
         recruitStatus: '0',
         courseClassName: null,
         sourceSheet: null,

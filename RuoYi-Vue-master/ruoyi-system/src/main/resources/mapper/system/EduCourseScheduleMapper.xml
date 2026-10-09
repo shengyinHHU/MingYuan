@@ -24,6 +24,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="classType"    column="class_type"    />
         <result property="classMode"    column="class_mode"    />
         <result property="enrolledCount"    column="enrolled_count"    />
+        <result property="unitPrice"    column="unit_price"    />
         <result property="recruitStatus"    column="recruit_status"    />
         <result property="courseClassName"    column="course_class_name"    />
         <result property="sourceSheet"    column="source_sheet"    />
@@ -39,7 +40,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     </resultMap>
 
     <sql id="selectEduCourseScheduleVo">
-        select schedule_id, schedule_code, classroom_id, course_year, term_name, period_name, time_slot, start_time, end_time, start_date, end_date, class_pattern, grade_name, subject_name, teacher_name, teacher_id, class_type, class_mode, enrolled_count, recruit_status, course_class_name, source_sheet, source_row, source_col, status, del_flag, create_by, create_time, update_by, update_time, remark from edu_course_schedule
+        select schedule_id, schedule_code, classroom_id, course_year, term_name, period_name, time_slot, start_time, end_time, start_date, end_date, class_pattern, grade_name, subject_name, teacher_name, teacher_id, class_type, class_mode, enrolled_count, unit_price, recruit_status, course_class_name, source_sheet, source_row, source_col, status, del_flag, create_by, create_time, update_by, update_time, remark from edu_course_schedule
     </sql>
 
     <select id="selectEduCourseScheduleList" parameterType="EduCourseSchedule" resultMap="EduCourseScheduleResult">
@@ -101,6 +102,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="classType != null">class_type,</if>
             <if test="classMode != null and classMode != ''">class_mode,</if>
             <if test="enrolledCount != null">enrolled_count,</if>
+            <if test="unitPrice != null">unit_price,</if>
             <if test="recruitStatus != null">recruit_status,</if>
             <if test="courseClassName != null and courseClassName != ''">course_class_name,</if>
             <if test="sourceSheet != null">source_sheet,</if>
@@ -133,6 +135,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="classType != null">#{classType},</if>
             <if test="classMode != null and classMode != ''">#{classMode},</if>
             <if test="enrolledCount != null">#{enrolledCount},</if>
+            <if test="unitPrice != null">#{unitPrice},</if>
             <if test="recruitStatus != null">#{recruitStatus},</if>
             <if test="courseClassName != null and courseClassName != ''">#{courseClassName},</if>
             <if test="sourceSheet != null">#{sourceSheet},</if>
@@ -169,6 +172,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="classType != null">class_type = #{classType},</if>
             <if test="classMode != null and classMode != ''">class_mode = #{classMode},</if>
             <if test="enrolledCount != null">enrolled_count = #{enrolledCount},</if>
+            <if test="unitPrice != null">unit_price = #{unitPrice},</if>
             <if test="recruitStatus != null">recruit_status = #{recruitStatus},</if>
             <if test="courseClassName != null and courseClassName != ''">course_class_name = #{courseClassName},</if>
             <if test="sourceSheet != null">source_sheet = #{sourceSheet},</if>
