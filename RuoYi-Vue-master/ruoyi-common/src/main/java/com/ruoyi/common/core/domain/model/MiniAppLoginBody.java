@@ -17,6 +17,19 @@ public class MiniAppLoginBody
      */
     private String devRole;
 
+    /** Selected teacher user ID; only accepted by local development login. */
+    private Long devTeacherId;
+
+    public Long getDevTeacherId()
+    {
+        return devTeacherId;
+    }
+
+    public void setDevTeacherId(Long devTeacherId)
+    {
+        this.devTeacherId = devTeacherId;
+    }
+
     public String getLoginCode()
     {
         return loginCode;

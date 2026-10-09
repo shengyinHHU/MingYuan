@@ -129,8 +129,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 
     <!-- 排课的报名学员 -->
     <select id="selectEnrolledStudents" resultType="java.util.HashMap">
-        select e.enrollment_id, e.parent_id, e.student_name
+        select e.enrollment_id, e.parent_id, e.student_name, e.contact_phone, parent.phonenumber as parent_phone
         from edu_enrollment e
+        left join sys_user parent on parent.user_id = e.parent_id
         where e.schedule_id = #{scheduleId} and e.enrollment_status in ('1', '报名成功') and e.del_flag = '0' and e.status = '0'
         order by e.enrollment_id
     </select>

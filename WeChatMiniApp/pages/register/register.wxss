@@ -124,3 +124,36 @@ page {
   font-weight: 800;
   line-height: 82rpx;
 }
+
+.teacher-select {
+  margin-bottom: 24rpx;
+}
+
+.teacher-title {
+  margin-bottom: 14rpx;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.teacher-picker {
+  padding: 22rpx;
+  border: 1rpx solid #d8e4f2;
+  border-radius: 14rpx;
+  background: #f8fbff;
+  font-size: 27rpx;
+}
+
+.teacher-hint, .teacher-error {
+  margin: 14rpx 0;
+  color: #59687d;
+  font-size: 24rpx;
+  line-height: 1.6;
+}
+
+.teacher-error {
+  color: #b13b32;
+}
+
+.dev-btn[disabled] {
+  opacity: 0.55;
+}

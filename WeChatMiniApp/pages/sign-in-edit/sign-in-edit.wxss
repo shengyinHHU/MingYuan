@@ -228,3 +228,5 @@
 .submit-btn.disabled {
   opacity: 0.6;
 }
+
+.status-btn.disabled { opacity: 0.5; }

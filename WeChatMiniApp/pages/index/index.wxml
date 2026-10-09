@@ -20,6 +20,7 @@
     <view class="hero-copy">
       <view class="eyebrow">{{eyebrow}}</view>
       <view class="title">{{title}}</view>
+      <view class="teacher-switch" wx:if="{{currentRole === 'teacher'}}" bindtap="switchTeacher">切换教师</view>
     </view>
 
     <view class="stats">
@@ -56,6 +57,7 @@
   <view class="section split">
     <view class="panel">
       <view class="section-title">{{agendaTitle}}</view>
+      <view class="course-meta" wx:if="{{currentRole === 'teacher' && teacherDataMessage}}">{{teacherDataMessage}}</view>
       <view class="course" wx:for="{{schedule}}" wx:key="time">
         <view class="course-time-wrap">
           <view class="course-meta-date" wx:if="{{item.dateReady}}">

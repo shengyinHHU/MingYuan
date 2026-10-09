@@ -1,6 +1,7 @@
 package com.ruoyi.system.mapper;
 
 import java.util.List;
+import org.apache.ibatis.annotations.Param;
 import com.ruoyi.system.domain.EduEnrollment;
 
 /**
@@ -43,19 +44,12 @@ public interface EduEnrollmentMapper
      */
     public int updateEduEnrollment(EduEnrollment eduEnrollment);
 
-    /**
-     * 删除课程报名
-     * 
-     * @param enrollmentId 课程报名主键
-     * @return 结果
-     */
-    public int deleteEduEnrollmentByEnrollmentId(Long enrollmentId);
+    /** 原子取消；返回 0 表示未变更，不能再释放名额。 */
+    public int cancelEnrollment(@Param("enrollmentId") Long enrollmentId, @Param("updateBy") String updateBy);
 
-    /**
-     * 批量删除课程报名
-     * 
-     * @param enrollmentIds 需要删除的数据主键集合
-     * @return 结果
-     */
-    public int deleteEduEnrollmentByEnrollmentIds(Long[] enrollmentIds);
+    /** 首次取消后释放一个名额，人数不低于零，满班有空位时恢复招生。 */
+    public int releaseScheduleSeat(@Param("scheduleId") Long scheduleId, @Param("updateBy") String updateBy);
+
+    /** 仅作废未使用的自动考勤，保留已出勤及课次签到历史。 */
+    public int invalidateUnusedAttendance(@Param("enrollmentId") Long enrollmentId, @Param("updateBy") String updateBy);
 }

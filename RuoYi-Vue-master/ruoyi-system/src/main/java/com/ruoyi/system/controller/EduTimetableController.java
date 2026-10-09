@@ -55,7 +55,7 @@ public class EduTimetableController extends BaseController
      * 菜单权限：system:courseschedule:list（与列表页共用同一权限标识，减少额外菜单配置）
      * 同时允许 teacher 角色直接调用（hasAnyRoles）
      */
-    @PreAuthorize("@ss.hasPermi('system:courseschedule:list') or @ss.hasAnyRoles('admin,teacher')")
+    @PreAuthorize("@ss.hasPermi('system:courseschedule:list') or @ss.hasAnyPermi('system:schedule:list,system:schedule:add,system:schedule:edit') or @ss.hasAnyRoles('admin,teacher')")
     @GetMapping("/dimensions")
     public AjaxResult dimensions()
     {
@@ -115,7 +115,7 @@ public class EduTimetableController extends BaseController
 
         // 9. 当前年份、当前角色是否 admin、当前用户昵称（给前端做默认值）
         data.put("currentYear", Calendar.getInstance().get(Calendar.YEAR));
-        data.put("isAdmin", SecurityUtils.isAdmin());
+        data.put("isAdmin", SecurityUtils.isAdmin() || SecurityUtils.hasRole("admin"));
         data.put("isTeacher", SecurityUtils.hasRole("teacher"));
         data.put("currentUserNick", SecurityUtils.getLoginUser().getUser().getNickName());
         data.put("currentUserId", SecurityUtils.getUserId());
@@ -206,7 +206,7 @@ public class EduTimetableController extends BaseController
 
     /**
      * 修改排课
-     * 权限：admin 任意改；teacher 仅能改自己 create_by 的记录，且 teacherName 不能改成别人
+     * 权限：admin 任意改；teacher 仅能改自己 teacher_id 对应的记录，且 teacherName 不能改成别人
      */
     @PreAuthorize("@ss.hasPermi('system:courseschedule:edit') or @ss.hasAnyRoles('admin,teacher')")
     @Log(title = "可视化课表-修改", businessType = BusinessType.UPDATE)
@@ -235,16 +235,15 @@ public class EduTimetableController extends BaseController
             return toAjax(scheduleService.deleteEduCourseScheduleByScheduleIds(scheduleIds));
         }
         // teacher：逐条校验 create_by
-        String me = SecurityUtils.getUsername();
         List<Long> allowed = new ArrayList<>();
         for (Long id : scheduleIds) {
             EduCourseSchedule old = scheduleService.selectEduCourseScheduleByScheduleId(id);
-            if (old != null && me.equals(old.getCreateBy())) {
+            if (old != null && Objects.equals(SecurityUtils.getUserId(), old.getTeacherId())) {
                 allowed.add(id);
             } else if (old == null) {
                 // 不存在跳过
             } else {
-                throw new ServiceException("无权删除他人创建的排课：" + old.getScheduleId());
+                throw new ServiceException("无权删除其他教师的排课：" + old.getScheduleId());
             }
         }
         if (allowed.isEmpty()) return success(0);
@@ -266,7 +265,7 @@ public class EduTimetableController extends BaseController
                 .map(d -> {
                     Map<String, String> m = new LinkedHashMap<>();
                     m.put("label", d.getDictLabel());
-                    m.put("value", d.getDictValue());
+                    m.put("value", Set.of("edu_grade", "edu_subject", "edu_class_type").contains(dictType) ? d.getDictLabel() : d.getDictValue());
                     m.put("isDefault", d.getIsDefault());
                     return m;
                 })
@@ -301,7 +300,7 @@ public class EduTimetableController extends BaseController
     private void checkEditablePermission(EduCourseSchedule input, EduCourseSchedule old, boolean isNew)
     {
         // admin 一律放行
-        if (SecurityUtils.isAdmin()) return;
+        if (SecurityUtils.isAdmin() || SecurityUtils.hasRole("admin")) return;
         // 有通配权限也放行
         if (SecurityUtils.hasPermi(Constants.ALL_PERMISSION)) return;
 
@@ -309,23 +308,13 @@ public class EduTimetableController extends BaseController
             throw new ServiceException("当前用户不具备排课编辑权限");
         }
 
-        String me = SecurityUtils.getUsername();
-        if (!isNew) {
-            // 修改：必须是自己创建的
-            if (!me.equals(old.getCreateBy())) {
-                throw new ServiceException("教师仅能修改自己创建的排课");
-            }
+        if (!isNew && !Objects.equals(old.getTeacherId(), SecurityUtils.getUserId())) {
+            throw new ServiceException("教师仅能修改本人负责的排课");
         }
-
-        // teacher：teacherName 字段不允许改成"不是自己"的名字
-        if (StringUtils.isNotEmpty(input.getTeacherName())) {
-            String myNick = SecurityUtils.getLoginUser().getUser().getNickName();
-            if (!input.getTeacherName().trim().equals(myNick)) {
-                throw new ServiceException("教师仅能为自己排课（teacherName 必须填写：" + myNick + "）");
-            }
-        } else {
-            // 如果前端没填，强制设成自己
-            input.setTeacherName(SecurityUtils.getLoginUser().getUser().getNickName());
+        if (input.getTeacherId() != null && !Objects.equals(input.getTeacherId(), SecurityUtils.getUserId())) {
+            throw new ServiceException("教师仅能为自己排课");
         }
+        input.setTeacherId(SecurityUtils.getUserId());
+        input.setTeacherName(SecurityUtils.getLoginUser().getUser().getNickName());
     }
 }

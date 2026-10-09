@@ -14,13 +14,28 @@
     <view class="icon-btn reset" bindtap="resetFilters">重置</view>
   </view>
 
+  <view class="teacher-filter">
+    <view class="teacher-filter-title" bindtap="toggleTeacherPicker">按教师查找 · {{selectedTeachers.length ? '已选 ' + selectedTeachers.length + ' 位' : '全部教师'}}　{{showTeacherPicker ? '收起' : '展开'}}</view>
+    <view class="teacher-tags"><view wx:for="{{selectedTeachers}}" wx:key="key" class="teacher-tag" data-key="{{item.key}}" bindtap="toggleTeacher">{{item.label}} ×</view></view>
+    <view wx:if="{{showTeacherPicker}}">
+      <input class="teacher-search" value="{{teacherKeyword}}" bindinput="searchTeacher" placeholder="输入教师姓名查找，可选择多位教师" />
+      <view class="teacher-clear" bindtap="clearTeachers">全部教师／清空选择</view>
+      <scroll-view scroll-y class="teacher-options">
+        <view class="teacher-option {{item.selected ? 'selected' : ''}}" wx:for="{{teacherOptions}}" wx:key="key" data-key="{{item.key}}" bindtap="toggleTeacher"><text>{{item.selected ? '☑' : '☐'}}　{{item.label}}</text></view>
+        <view wx:if="{{!teacherOptions.length}}" class="meta">未找到匹配的教师</view>
+      </scroll-view>
+    </view>
+  </view>
+
   <view class="section">
     <view class="section-title">可报名课次</view>
     <view class="empty" wx:if="{{showScheduleEmpty}}">暂无可报名课程</view>
-    <view class="schedule-card" wx:for="{{schedules}}" wx:key="scheduleId" data-id="{{item.scheduleId}}" bindtap="openEnroll">
+    <view wx:for="{{teacherGroups}}" wx:for-item="group" wx:key="key" class="teacher-group">
+      <view class="teacher-group-title">{{group.label}} · {{group.courses.length}} 个班次</view>
+    <view class="schedule-card" wx:for="{{group.courses}}" wx:key="scheduleId" data-id="{{item.scheduleId}}" bindtap="openEnroll">
       <view class="card-main">
         <view class="course-name">{{item.courseClassName}}</view>
-        <view class="meta">{{item.gradeText}} · {{item.subjectText}} · {{item.teacherName}}</view>
+        <view class="meta">{{item.gradeText}} · {{item.subjectText}} · {{item.teacherName || '教师待配置'}}</view>
         <view class="meta">{{item.timeText}}</view>
         <view class="meta">{{item.placeText}}</view>
       </view>
@@ -28,6 +43,7 @@
         <view class="count">{{item.countText}}</view>
         <view class="status {{item.statusClass}}">{{item.statusText}}</view>
       </view>
+    </view>
     </view>
   </view>
 
@@ -38,6 +54,7 @@
       <view>
         <view class="course-name">{{item.courseClassName}}</view>
         <view class="meta">{{item.studentName}} · {{item.gradeText}} · {{item.subjectText}}</view>
+        <view class="meta">授课教师：{{item.teacherName || '教师待配置'}}</view>
         <view class="meta">{{item.timeText}}</view>
       </view>
       <view class="done">{{item.statusText}}</view>
@@ -48,6 +65,7 @@
   <view class="sheet" wx:if="{{showSheet}}">
     <view class="sheet-title">确认报名</view>
     <view class="sheet-course">{{selectedSchedule.courseClassName}}</view>
+    <view class="sheet-meta">授课教师：{{selectedSchedule.teacherName || '教师待配置'}}</view>
     <view class="sheet-meta">{{selectedSchedule.timeText}}</view>
     <view class="sheet-meta">{{selectedSchedule.placeText}}</view>
     <view class="field">
