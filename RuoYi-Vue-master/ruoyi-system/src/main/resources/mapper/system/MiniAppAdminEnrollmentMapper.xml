@@ -23,7 +23,7 @@
     <sql id="scheduleView">
         select s.schedule_id as scheduleId, s.course_class_name as courseClassName,
                s.grade_name as gradeName, s.subject_name as subjectName,
-               s.teacher_name as teacherName, s.class_type as classType,
+               coalesce(nullif(trim(teacher.nick_name), ''), s.teacher_name) as teacherName, s.class_type as classType, s.class_mode as classMode,
                s.course_year as courseYear, s.term_name as termName,
                s.period_name as periodName, s.time_slot as timeSlot,
                s.start_time as startTime, s.end_time as endTime,
@@ -32,6 +32,7 @@
                s.status, ifnull(s.enrolled_count, 0) as enrolledCount,
                c.classroom_name as classroomName, c.campus_name as campusName, c.capacity
         from edu_course_schedule s
+        left join sys_user teacher on teacher.user_id = s.teacher_id
         left join edu_classroom c on c.classroom_id = s.classroom_id
     </sql>
     <select id="selectTeacherSchedules" resultType="java.util.HashMap">

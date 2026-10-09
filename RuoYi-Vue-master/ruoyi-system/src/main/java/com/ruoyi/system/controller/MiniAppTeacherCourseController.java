@@ -15,8 +15,12 @@ import com.ruoyi.system.domain.EduEnrollment;
 import com.ruoyi.system.mapper.MiniAppAdminEnrollmentMapper;
 import com.ruoyi.system.mapper.MiniAppParentMapper;
 import com.ruoyi.system.service.IEduEnrollmentService;
+import com.ruoyi.system.service.IEduCourseScheduleService;
+import com.ruoyi.system.domain.EduCourseSchedule;
+import com.ruoyi.common.annotation.Log;
+import com.ruoyi.common.enums.BusinessType;
 
-/** 教师课程和班级学员只读视图，复用报名、排课及课次历史。 */
+/** 教师排课 CRUD 和班级学员只读视图，复用现有排课、报名及课次历史。 */
 @RestController
 @RequestMapping("/miniapp/teacher/course")
 @PreAuthorize("@ss.hasRole('teacher')")
@@ -25,6 +29,7 @@ public class MiniAppTeacherCourseController extends BaseController
     @Autowired private MiniAppAdminEnrollmentMapper viewMapper;
     @Autowired private MiniAppParentMapper parentMapper;
     @Autowired private IEduEnrollmentService enrollmentService;
+    @Autowired private IEduCourseScheduleService scheduleService;
 
     @GetMapping("/schedules")
     public AjaxResult schedules()
@@ -35,6 +40,40 @@ public class MiniAppTeacherCourseController extends BaseController
             course.put("adjustments", parentMapper.selectScheduleAdjustments(course.get("scheduleId")));
         }
         return success(courses);
+    }
+
+    @GetMapping("/schedule/{scheduleId}/edit")
+    public AjaxResult editInfo(@PathVariable Long scheduleId)
+    {
+        ownSchedule(scheduleId);
+        return success(scheduleService.selectEduCourseScheduleByScheduleId(scheduleId));
+    }
+
+    @PostMapping("/schedule")
+    @Log(title = "教师新增排课", businessType = BusinessType.INSERT)
+    public AjaxResult add(@RequestBody com.ruoyi.system.domain.TeacherOneToOneDraft draft)
+    {
+        EduCourseSchedule input = draft.toSchedule();
+        fixedTeacher(input);
+        scheduleService.insertEduCourseSchedule(input);
+        return success(input.getScheduleId());
+    }
+
+    @PutMapping("/schedule")
+    @Log(title = "教师修改排课", businessType = BusinessType.UPDATE)
+    public AjaxResult edit(@RequestBody EduCourseSchedule input)
+    {
+        ownSchedule(input.getScheduleId());
+        fixedTeacher(input);
+        return toAjax(scheduleService.updateEduCourseSchedule(input));
+    }
+
+    @DeleteMapping("/schedule/{scheduleId}")
+    @Log(title = "教师删除排课", businessType = BusinessType.DELETE)
+    public AjaxResult remove(@PathVariable Long scheduleId)
+    {
+        ownSchedule(scheduleId);
+        return toAjax(scheduleService.deleteEduCourseScheduleByScheduleId(scheduleId));
     }
 
     @GetMapping("/students")
@@ -68,6 +107,13 @@ public class MiniAppTeacherCourseController extends BaseController
         data.put("schedule", ownSchedule(enrollment.getScheduleId()));
         data.put("history", viewMapper.selectTeacherHistory(enrollmentId, SecurityUtils.getUserId()));
         return success(data);
+    }
+
+    private void fixedTeacher(EduCourseSchedule input)
+    {
+        if (input.getTeacherId() != null && !input.getTeacherId().equals(SecurityUtils.getUserId()))
+            throw new ServiceException("只能为当前教师排课");
+        input.setTeacherId(SecurityUtils.getUserId());
     }
 
     private EduEnrollment query()

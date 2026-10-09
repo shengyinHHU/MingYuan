@@ -7,6 +7,7 @@
     "pages/admin-enrollment-list/admin-enrollment-list",
     "pages/admin-enrollment-detail/admin-enrollment-detail",
     "pages/timetable/timetable",
+    "pages/teacher-schedule-edit/teacher-schedule-edit",
     "pages/attendance/attendance",
     "pages/material/material",
     "pages/material-detail/material-detail",

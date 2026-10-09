@@ -1,6 +1,8 @@
 package com.ruoyi.system.domain;
 
 import java.util.Date;
+import java.time.LocalTime;
+import org.springframework.format.annotation.DateTimeFormat;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import org.apache.commons.lang3.builder.ToStringBuilder;
 import org.apache.commons.lang3.builder.ToStringStyle;
@@ -45,14 +47,16 @@ public class EduCourseSchedule extends BaseEntity
     private String timeSlot;
 
     /** 开始时间 */
-    @JsonFormat(pattern = "yyyy-MM-dd")
-    @Excel(name = "开始时间", width = 30, dateFormat = "yyyy-MM-dd")
-    private Date startTime;
+    @JsonFormat(pattern = "HH:mm:ss")
+    @DateTimeFormat(pattern = "HH:mm:ss")
+    @Excel(name = "开始时间", width = 30)
+    private LocalTime startTime;
 
     /** 结束时间 */
-    @JsonFormat(pattern = "yyyy-MM-dd")
-    @Excel(name = "结束时间", width = 30, dateFormat = "yyyy-MM-dd")
-    private Date endTime;
+    @JsonFormat(pattern = "HH:mm:ss")
+    @DateTimeFormat(pattern = "HH:mm:ss")
+    @Excel(name = "结束时间", width = 30)
+    private LocalTime endTime;
 
     /** 开课日期（本期第一次上课日） */
     @JsonFormat(pattern = "yyyy-MM-dd")
@@ -75,6 +79,12 @@ public class EduCourseSchedule extends BaseEntity
     /** 科目 */
     @Excel(name = "科目")
     private String subjectName;
+
+    /** 教师用户ID，归属以ID为准，不按姓名推断 */
+    private Long teacherId;
+
+    public Long getTeacherId() { return teacherId; }
+    public void setTeacherId(Long teacherId) { this.teacherId = teacherId; }
 
     /** 教师姓名 */
     @Excel(name = "教师姓名")
@@ -189,22 +199,22 @@ public class EduCourseSchedule extends BaseEntity
         return timeSlot;
     }
 
-    public void setStartTime(Date startTime) 
+    public void setStartTime(LocalTime startTime)
     {
         this.startTime = startTime;
     }
 
-    public Date getStartTime() 
+    public LocalTime getStartTime()
     {
         return startTime;
     }
 
-    public void setEndTime(Date endTime) 
+    public void setEndTime(LocalTime endTime)
     {
         this.endTime = endTime;
     }
 
-    public Date getEndTime() 
+    public LocalTime getEndTime()
     {
         return endTime;
     }
