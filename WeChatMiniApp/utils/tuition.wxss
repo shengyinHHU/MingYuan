@@ -1,0 +1,12 @@
+@import './material-shop.wxss';
+.hero { background: linear-gradient(140deg, #e7f1ff, #ffffff); }
+.price { color: #165bb1; }
+.brand { display: flex; align-items: center; gap: 20rpx; margin-bottom: 20rpx; }
+.logo { width: 90rpx; height: 90rpx; }
+.amount-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20rpx; margin: 24rpx 0; }
+.amount-grid .value { font-size: 30rpx; font-weight: 700; padding-top: 8rpx; word-break: break-all; }
+.number { word-break: break-all; }
+.timeline { border-left: 4rpx solid #d6e6ff; padding-left: 22rpx; margin-top: 22rpx; }
+.section-title { font-size: 30rpx; font-weight: 700; color: #0b326a; margin: 26rpx 0 18rpx; }
+.safe { background: #eef5ff; color: #305a90; padding: 20rpx; border-radius: 14rpx; line-height: 1.7; margin-bottom: 20rpx; }
+.link { color: #165bb1; }

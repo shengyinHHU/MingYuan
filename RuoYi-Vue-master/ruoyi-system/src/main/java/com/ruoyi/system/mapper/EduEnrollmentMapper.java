@@ -43,19 +43,5 @@ public interface EduEnrollmentMapper
      */
     public int updateEduEnrollment(EduEnrollment eduEnrollment);
 
-    /**
-     * 删除课程报名
-     * 
-     * @param enrollmentId 课程报名主键
-     * @return 结果
-     */
-    public int deleteEduEnrollmentByEnrollmentId(Long enrollmentId);
-
-    /**
-     * 批量删除课程报名
-     * 
-     * @param enrollmentIds 需要删除的数据主键集合
-     * @return 结果
-     */
-    public int deleteEduEnrollmentByEnrollmentIds(Long[] enrollmentIds);
+    // Cancellation is handled transactionally by TuitionService; no physical DELETE mapper.
 }

@@ -40,6 +40,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     <select id="selectEduEnrollmentList" parameterType="EduEnrollment" resultMap="EduEnrollmentResult">
         <include refid="selectEduEnrollmentVo"/>
         <where>
+            e.del_flag = '0'
             <if test="enrollmentCode != null  and enrollmentCode != ''"> and e.enrollment_code = #{enrollmentCode}</if>
             <if test="scheduleId != null "> and e.schedule_id = #{scheduleId}</if>
             <if test="parentId != null "> and e.parent_id = #{parentId}</if>
@@ -125,14 +126,4 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         where enrollment_id = #{enrollmentId}
     </update>
 
-    <delete id="deleteEduEnrollmentByEnrollmentId" parameterType="Long">
-        delete from edu_enrollment where enrollment_id = #{enrollmentId}
-    </delete>
-
-    <delete id="deleteEduEnrollmentByEnrollmentIds" parameterType="String">
-        delete from edu_enrollment where enrollment_id in 
-        <foreach item="enrollmentId" collection="array" open="(" separator="," close=")">
-            #{enrollmentId}
-        </foreach>
-    </delete>
 </mapper>

@@ -14,6 +14,8 @@ import com.ruoyi.common.utils.StringUtils;
 import com.ruoyi.common.utils.uuid.IdUtils;
 import com.ruoyi.system.mapper.MiniAppParentMapper;
 import com.ruoyi.system.service.IMiniAppParentService;
+import com.ruoyi.system.finance.TuitionService;
+import com.ruoyi.system.shop.ShopRepository;
 
 /**
  * MiniApp parent service implementation.
@@ -23,6 +25,8 @@ public class MiniAppParentServiceImpl implements IMiniAppParentService
 {
     @Autowired
     private MiniAppParentMapper miniAppParentMapper;
+    @Autowired private TuitionService tuition;
+    @Autowired private ShopRepository db;
 
     @Override
     public List<Map<String, Object>> selectAvailableSchedules(String gradeName, String subjectName, String termName)
@@ -85,6 +89,8 @@ public class MiniAppParentServiceImpl implements IMiniAppParentService
         }
 
         Long parentId = SecurityUtils.getUserId();
+        // All capacity changes lock schedule before enrollment/finance records.
+        db.one("SELECT schedule_id FROM edu_course_schedule WHERE schedule_id=? FOR UPDATE", body.getScheduleId());
         if (miniAppParentMapper.countScheduleAvailable(body.getScheduleId()) == 0)
         {
             throw new ServiceException("This schedule is not available");
@@ -106,6 +112,7 @@ public class MiniAppParentServiceImpl implements IMiniAppParentService
         Long enrollmentId = miniAppParentMapper.selectEnrollmentIdByCode(enrollmentCode);
         if (enrollmentId != null)
         {
+            tuition.initializeBill(enrollmentId, parentId);
             String attendanceCode = "ATT" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"))
                     + IdUtils.fastSimpleUUID().substring(0, 6).toUpperCase();
             miniAppParentMapper.insertInitialAttendance(attendanceCode, body.getScheduleId(), enrollmentId, parentId,
@@ -118,44 +125,8 @@ public class MiniAppParentServiceImpl implements IMiniAppParentService
     @Transactional(rollbackFor = Exception.class)
     public int cancelEnrollment(Long enrollmentId)
     {
-        if (enrollmentId == null)
-        {
-            throw new ServiceException("请选择要取消的课程");
-        }
-        Long parentId = SecurityUtils.getUserId();
-        Map<String, Object> owner = miniAppParentMapper.selectEnrollmentOwnerInfo(enrollmentId);
-        if (owner == null)
-        {
-            throw new ServiceException("报名记录不存在或已取消");
-        }
-        Object recordParentId = owner.get("parentId");
-        Object delFlag = owner.get("delFlag");
-        if (recordParentId == null || !parentId.equals(Long.valueOf(String.valueOf(recordParentId))))
-        {
-            throw new ServiceException("无权取消他人的报名");
-        }
-        if (delFlag != null && !"0".equals(String.valueOf(delFlag)))
-        {
-            throw new ServiceException("该报名已取消，请勿重复操作");
-        }
-        String createBy = SecurityUtils.getUsername();
-
-        // 1. 逻辑删除考勤记录（无考勤也不报错）
-        miniAppParentMapper.cancelAttendanceByEnrollmentId(enrollmentId, createBy);
-
-        // 2. 释放排课名额
-        Object scheduleId = owner.get("scheduleId");
-        if (scheduleId != null)
-        {
-            miniAppParentMapper.decreaseScheduleEnrollment(Long.valueOf(String.valueOf(scheduleId)), createBy);
-        }
-
-        // 3. 逻辑删除报名记录（enrollment_status='2', del_flag='2'）
-        int rows = miniAppParentMapper.cancelEnrollmentById(enrollmentId, createBy);
-        if (rows == 0)
-        {
-            throw new ServiceException("取消失败，报名状态已变更，请刷新后重试");
-        }
-        return rows;
+        if (enrollmentId == null) throw new ServiceException("请选择要取消的课程");
+        tuition.cancelEnrollment(enrollmentId, SecurityUtils.getUserId(), false);
+        return 1;
     }
 }
