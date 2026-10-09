@@ -19,6 +19,16 @@
       </view>
     </view>
 
+    <view class="teacher-select" wx:if="{{devRole === 'teacher'}}">
+      <view class="teacher-title">选择登录教师</view>
+      <picker mode="selector" range="{{teacherOptions}}" range-key="label" value="{{teacherIndex}}" bindchange="chooseTeacher" disabled="{{teachersLoading || submitting || !teachers.length}}">
+        <view class="teacher-picker">{{teachersLoading ? '正在加载教师…' : (teacherLabel || '请选择教师')}} ▾</view>
+      </picker>
+      <view class="teacher-hint">仅用于开发测试，进入后查看所选教师负责的班级。</view>
+      <view class="teacher-error" wx:if="{{teacherError}}">{{teacherError}}</view>
+      <button size="mini" bindtap="loadTeachers" disabled="{{teachersLoading || submitting}}">刷新教师列表</button>
+    </view>
+
     <view class="notice">
       <view class="notice-title">名远教育</view>
       <view class="notice-text">当前开发模式会向若依后端申请所选角色的真实登录 token，方便继续联调角色权限和接口。</view>
@@ -26,11 +36,12 @@
 
     <button
       class="wechat-btn"
+      wx:if="{{devRole !== 'teacher'}}"
       open-type="getPhoneNumber"
       bindgetphonenumber="handlePhoneLogin"
       loading="{{submitting}}"
     >手机号授权登录</button>
 
-    <button class="dev-btn" bindtap="handleDevLogin" loading="{{submitting}}">开发模拟登录</button>
+    <button class="dev-btn" bindtap="handleDevLogin" loading="{{submitting}}" disabled="{{submitting || (devRole === 'teacher' && (teachersLoading || !devTeacherId))}}">{{devRole === 'teacher' ? '以所选教师身份进入' : '开发模拟登录'}}</button>
   </view>
 </view>

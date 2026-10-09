@@ -14,6 +14,7 @@ import com.ruoyi.common.utils.StringUtils;
 import com.ruoyi.common.utils.uuid.IdUtils;
 import com.ruoyi.system.mapper.MiniAppParentMapper;
 import com.ruoyi.system.service.IMiniAppParentService;
+import com.ruoyi.system.service.IEduEnrollmentService;
 
 /**
  * MiniApp parent service implementation.
@@ -23,6 +24,9 @@ public class MiniAppParentServiceImpl implements IMiniAppParentService
 {
     @Autowired
     private MiniAppParentMapper miniAppParentMapper;
+
+    @Autowired
+    private IEduEnrollmentService enrollmentService;
 
     @Override
     public List<Map<String, Object>> selectAvailableSchedules(String gradeName, String subjectName, String termName)
@@ -138,24 +142,6 @@ public class MiniAppParentServiceImpl implements IMiniAppParentService
         {
             throw new ServiceException("该报名已取消，请勿重复操作");
         }
-        String createBy = SecurityUtils.getUsername();
-
-        // 1. 逻辑删除考勤记录（无考勤也不报错）
-        miniAppParentMapper.cancelAttendanceByEnrollmentId(enrollmentId, createBy);
-
-        // 2. 释放排课名额
-        Object scheduleId = owner.get("scheduleId");
-        if (scheduleId != null)
-        {
-            miniAppParentMapper.decreaseScheduleEnrollment(Long.valueOf(String.valueOf(scheduleId)), createBy);
-        }
-
-        // 3. 逻辑删除报名记录（enrollment_status='2', del_flag='2'）
-        int rows = miniAppParentMapper.cancelEnrollmentById(enrollmentId, createBy);
-        if (rows == 0)
-        {
-            throw new ServiceException("取消失败，报名状态已变更，请刷新后重试");
-        }
-        return rows;
+        return enrollmentService.cancelEduEnrollmentByEnrollmentIds(new Long[] { enrollmentId });
     }
 }

@@ -79,7 +79,7 @@
                     :schedule="cellSchedule(cls.classroomId, ts.value)"
                     :classroomId="cls.classroomId"
                     :timeSlot="ts.value"
-                    :editable="canEditCell(cls, ts.value)"
+                    :editable="canEditCell(cls.classroomId, ts.value)"
                     :teacherNameMap="teacherNameMap"
                     @edit="onEdit"
                     @add="onAdd"
@@ -249,8 +249,7 @@ export default {
         return this.dims.isTeacher
       }
       // 已有课：admin 已经在上面 return true 了；teacher 需判断 createBy
-      return sch.createBy === this.dims.currentUserId ||
-             (this.$store.getters && this.$store.getters.name && sch.createBy === this.$store.getters.name)
+      return this.dims.isTeacher && String(sch.teacherId) === String(this.dims.currentUserId)
     },
     onCellClick(cls, ts) {
       // 点击单元格，如果无权限编辑则提示
@@ -264,12 +263,15 @@ export default {
         this.onAdd(cls, ts)
       } else {
         if (!editable) {
-          this.$message.info('仅管理员或创建人可编辑此排课')
+          this.$message.info('仅管理员或负责教师可编辑此排课')
+          return
         }
         this.onEdit(sch)
       }
     },
     onAdd(cls, ts) {
+      if (typeof cls !== 'object') cls = this.dims.classroomList.find(room => String(room.classroomId) === String(cls))
+      if (!cls || !ts || !this.canEditCell(cls.classroomId, ts.value)) return
       this.dialogPreset = {
         mode: 'add',
         defaults: {
@@ -281,7 +283,8 @@ export default {
           campusName: cls.campusName,
           timeSlot: ts.value,
           // teacher 角色默认把教师名称设为自己（后端会再次校验）
-          teacherName: this.dims.isAdmin ? '' : this.dims.currentUserNick
+          teacherName: this.dims.isAdmin ? '' : this.dims.currentUserNick,
+          teacherId: this.dims.isAdmin ? null : this.dims.currentUserId
         }
       }
       this.$nextTick(() => {
@@ -289,6 +292,7 @@ export default {
       })
     },
     onEdit(sch) {
+      if (!this.canEditCell(sch.classroomId, sch.timeSlot)) return
       this.dialogPreset = {
         mode: 'edit',
         defaults: { ...sch }
@@ -298,6 +302,7 @@ export default {
       })
     },
     async onRemove(sch) {
+      if (!this.canEditCell(sch.classroomId, sch.timeSlot)) return
       try {
         await this.$confirm(`确认删除「${sch.gradeName || ''}${sch.subjectName || ''} ${this.teacherNameMap[sch.teacherName] || sch.teacherName || ''}」？`, '提示', { type: 'warning' })
         await delTimetableSchedule(sch.scheduleId)

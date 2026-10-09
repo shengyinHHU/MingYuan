@@ -73,13 +73,14 @@ public class MiniAppParentController extends BaseController
 
     /**
      * 家长取消本人的课程报名
-     * 逻辑：校验归属本人→逻辑删除报名记录→释放排课名额→同步删除考勤记录
+     * 校验本人归属后共用取消事务，保留报名与已出勤历史。
      */
     @PreAuthorize("@ss.hasAnyRoles('parent')")
-    @Log(title = "家长取消报名", businessType = BusinessType.DELETE)
+    @Log(title = "家长取消报名", businessType = BusinessType.UPDATE)
     @DeleteMapping("/enrollment/{enrollmentId}")
     public AjaxResult cancelEnrollment(@PathVariable("enrollmentId") Long enrollmentId)
     {
-        return toAjax(miniAppParentService.cancelEnrollment(enrollmentId));
+        int count = miniAppParentService.cancelEnrollment(enrollmentId);
+        return AjaxResult.success(count == 0 ? "该报名已取消" : "取消报名成功", count);
     }
 }

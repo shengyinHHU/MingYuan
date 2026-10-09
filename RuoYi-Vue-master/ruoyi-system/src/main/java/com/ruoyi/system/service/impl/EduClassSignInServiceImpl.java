@@ -16,6 +16,8 @@ import com.ruoyi.common.core.domain.model.MiniAppSignReviewBody;
 import com.ruoyi.common.core.domain.model.MiniAppSignSubmitBody;
 import com.ruoyi.common.exception.ServiceException;
 import com.ruoyi.common.utils.StringUtils;
+import com.ruoyi.common.utils.SecurityUtils;
+import java.util.Objects;
 import com.ruoyi.system.domain.EduClassSignIn;
 import com.ruoyi.system.domain.EduCourseSchedule;
 import com.ruoyi.system.mapper.EduClassSignInMapper;
@@ -135,10 +137,14 @@ public class EduClassSignInServiceImpl implements IEduClassSignInService
         {
             throw new ServiceException("缺少排课、课次日期或签到明细");
         }
-        EduCourseSchedule schedule = scheduleMapper.selectEduCourseScheduleByScheduleId(scheduleId);
+        EduCourseSchedule schedule = scheduleMapper.lockSchedule(scheduleId);
         if (schedule == null || "2".equals(schedule.getDelFlag()))
         {
             throw new ServiceException("排课不存在或已删除");
+        }
+        if (!Objects.equals(schedule.getTeacherId(), SecurityUtils.getUserId()))
+        {
+            throw new ServiceException("排课教师已变更，无权提交该课程签到");
         }
         if (!classDate.matches("\\d{4}-\\d{2}-\\d{2}"))
         {

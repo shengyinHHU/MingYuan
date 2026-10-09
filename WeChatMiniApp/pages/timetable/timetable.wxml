@@ -7,19 +7,67 @@
   <view class="summary">
     <view class="summary-item">
       <view class="summary-value">{{timetableCount}}</view>
-      <view class="summary-label">已报名课次</view>
+      <view class="summary-label">{{teacherMode ? '负责班次' : '已报名课次'}}</view>
     </view>
-    <button class="summary-btn" bindtap="goEnrollment">继续报名</button>
+    <view class="summary-item" wx:if="{{teacherMode}}"><view class="summary-value">{{plannedLessonCount}}</view><view class="summary-label">本期计划课次</view></view>
+    <button wx:if="{{!teacherMode}}" class="summary-btn" bindtap="goEnrollment">继续报名</button>
   </view>
 
-  <view class="empty" wx:if="{{showEmpty}}">
+  <view wx:if="{{teacherMode}}" class="teacher-calendar">
+    <button class="summary-btn add-schedule" bindtap="addSchedule">新增一对一课程</button>
+    <view class="week-toolbar">
+      <button size="mini" bindtap="previousWeek">上一周</button>
+      <button size="mini" bindtap="currentWeek">本周</button>
+      <button size="mini" bindtap="nextWeek">下一周</button>
+      <picker mode="date" value="{{weekStart}}" bindchange="chooseDate"><view class="date-picker">选择日期</view></picker>
+    </view>
+    <view class="week-label">{{weekLabel}}</view>
+    <view class="calendar-note">本周 {{weekLessonCount}} 次课 · 全天 00:00–24:00 · 左右滑动查看整周，点击课程查看详情</view>
+    <view class="calendar-warning" wx:if="{{pendingCourses.length}}">有 {{pendingCourses.length}} 个班次尚未完成排课，空白区域不代表已确认可预约。待排课程见下方。</view>
+    <view class="calendar-warning" wx:if="{{overlapCount}}">有 {{overlapCount}} 次课程时间重叠，已分列显示，请核对。</view>
+    <view class="calendar-note" wx:if="{{loading}}">正在加载课表…</view>
+    <view class="calendar-warning" wx:if="{{loadError}}">{{loadError}}，请下拉重试。当前空白区域不能用于判断空闲时间。</view>
+    <view class="calendar-note" wx:if="{{!loading && !loadError && !weekLessonCount}}">本周暂无已确定的课次</view>
+    <view class="week-horizontal">
+      <view class="fixed-time-column">
+        <view class="time-head">时间</view>
+        <view class="time-viewport"><view class="time-axis" style="transform:translate3d(0,{{axisOffset}}px,0)"><view wx:for="{{hours}}" wx:key="label" class="hour-label" style="top:{{item.top}}rpx">{{item.label}}</view></view></view>
+      </view>
+      <scroll-view scroll-x class="day-scroll">
+        <view class="day-content">
+          <view class="day-header-row"><view class="day-head {{item.today ? 'today' : ''}}" wx:for="{{weekDays}}" wx:key="date"><view>{{item.label}}</view><view>{{item.shortDate}}</view></view></view>
+          <scroll-view scroll-y class="week-vertical" scroll-top="{{calendarScrollTop}}" bindscroll="onVerticalScroll">
+            <view class="day-body-row">
+              <view class="day-column {{day.today ? 'today-column' : ''}}" wx:for="{{weekDays}}" wx:for-item="day" wx:key="date">
+                <view wx:for="{{hours}}" wx:key="label" class="hour-line" style="top:{{item.top}}rpx"></view>
+                <view class="lesson-block {{course.overlap ? 'overlap' : ''}} {{course.classMode === '2' ? 'one-to-one' : ''}}" wx:for="{{day.blocks}}" wx:for-item="course" wx:key="key" style="{{course.style}}" bindtap="showCourse" data-id="{{course.scheduleId}}" data-date="{{course.date}}">
+                  <view class="block-time">{{course.timeText}}</view>
+                  <view class="block-name">{{course.courseClassName || '未命名课程'}}</view>
+                  <view>{{course.classroomName || '教室待配置'}}</view>
+                  <view>{{course.campusName}}</view>
+                  <view wx:if="{{course.overlap}}">时间重叠</view>
+                </view>
+              </view>
+            </view>
+          </scroll-view>
+        </view>
+      </scroll-view>
+    </view>
+    <view class="pending-section" wx:if="{{pendingCourses.length}}">
+      <view class="period-title">待排课程（{{pendingCourses.length}}）</view>
+      <view class="pending-course" wx:for="{{pendingCourses}}" wx:key="scheduleId" bindtap="showCourse" data-id="{{item.scheduleId}}"><view>{{item.courseClassName}}</view><view>{{item.timeText}} · {{item.classroomName || '教室待配置'}}</view><view class="pending-reason">{{item.pendingReason}}</view></view>
+    </view>
+    <view class="pending-section" wx:if="{{stoppedCourses.length}}"><view class="period-title">已停用班次</view><view class="pending-course" wx:for="{{stoppedCourses}}" wx:key="scheduleId" bindtap="showCourse" data-id="{{item.scheduleId}}">{{item.courseClassName}} · 已停用</view></view>
+  </view>
+
+  <view class="empty" wx:if="{{showEmpty && !teacherMode}}">
     <view class="empty-title">暂无课表</view>
-    <button class="primary-btn" bindtap="goEnrollment">去报名</button>
+    <button wx:if="{{!teacherMode}}" class="primary-btn" bindtap="goEnrollment">去报名</button>
   </view>
 
-  <view class="period" wx:for="{{groupedTimetable}}" wx:key="key">
+  <view class="period" wx:if="{{!teacherMode}}" wx:for="{{groupedTimetable}}" wx:key="key">
     <view class="period-title">{{item.key}}</view>
-    <view class="course-card" wx:for="{{item.items}}" wx:for-item="course" wx:key="enrollmentId">
+    <view class="course-card" wx:for="{{item.items}}" wx:for-item="course" wx:key="viewKey">
       <view class="next-class" wx:if="{{course.nextClassDate}}">
         <text class="next-label">下一次课</text>
         <text class="next-date">{{course.nextClassDate}}</text>
@@ -36,7 +84,8 @@
         <view class="course-name">{{course.courseClassName}}</view>
         <view class="course-meta">{{course.subjectTag}} · {{course.teacherName}}</view>
         <view class="course-meta">{{course.placeText}}</view>
-        <view class="course-footer">
+        <view class="course-meta" wx:if="{{teacherMode}}">班次 {{course.scheduleId}} · {{course.status === '1' ? '已停用' : '正常'}}</view>
+        <view class="course-footer" wx:if="{{!teacherMode}}">
           <view class="student">学生：{{course.studentName}}</view>
           <view class="cancel-btn"
                 catchtap="handleCancel"
@@ -45,7 +94,7 @@
                 data-student-name="{{course.studentName}}">取消</view>
         </view>
       </view>
-      <view class="pay-tag">{{course.payText}}</view>
+      <view class="pay-tag" wx:if="{{!teacherMode}}">{{course.payText}}</view>
     </view>
   </view>
 </view>

@@ -68,6 +68,14 @@ public class EduEnrollment extends BaseEntity
     /** 删除标志（0代表存在 2代表删除） */
     private String delFlag;
 
+    /** 关联课程及家长联系电话，非新增表字段。 */
+    private String courseClassName;
+    private String parentPhone;
+    public String getCourseClassName() { return courseClassName; }
+    public void setCourseClassName(String value) { this.courseClassName = value; }
+    public String getParentPhone() { return parentPhone; }
+    public void setParentPhone(String value) { this.parentPhone = value; }
+
     /** 排课-年级（关联查询，非表字段） */
     private String gradeName;
 
@@ -83,7 +91,29 @@ public class EduEnrollment extends BaseEntity
     /** 排课-招生状态（关联查询，非表字段：0招生中 1停招 2满班） */
     private String recruitStatus;
 
-    public void setEnrollmentId(Long enrollmentId) 
+    /** 按课次签到统计，非报名表字段；取消后仍保留。 */
+    @Excel(name = "已复核到课次数")
+    private Long attendedLessonCount;
+
+    @Excel(name = "待复核到课次数")
+    private Long pendingLessonCount;
+
+    @Excel(name = "录播次数")
+    private Long recordedLessonCount;
+
+    @Excel(name = "请假次数")
+    private Long leaveLessonCount;
+
+    public Long getAttendedLessonCount() { return attendedLessonCount; }
+    public void setAttendedLessonCount(Long count) { this.attendedLessonCount = count; }
+    public Long getPendingLessonCount() { return pendingLessonCount; }
+    public void setPendingLessonCount(Long count) { this.pendingLessonCount = count; }
+    public Long getRecordedLessonCount() { return recordedLessonCount; }
+    public void setRecordedLessonCount(Long count) { this.recordedLessonCount = count; }
+    public Long getLeaveLessonCount() { return leaveLessonCount; }
+    public void setLeaveLessonCount(Long count) { this.leaveLessonCount = count; }
+
+    public void setEnrollmentId(Long enrollmentId)
     {
         this.enrollmentId = enrollmentId;
     }

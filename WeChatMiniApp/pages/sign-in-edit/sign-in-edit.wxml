@@ -6,7 +6,7 @@
 
   <view class="date-bar">
     <view class="date-label">课次日期</view>
-    <picker mode="date" value="{{classDate}}" end="{{maxDate}}" bindchange="onDateChange">
+    <picker mode="date" value="{{classDate}}" end="{{maxDate}}" disabled="{{loading || submitting}}" bindchange="onDateChange">
       <view class="date-picker">{{classDate}} ▾</view>
     </picker>
     <view class="review-tag {{locked ? 'done' : 'pending'}}" wx:if="{{review}}">
@@ -26,21 +26,22 @@
   </view>
 
   <view class="student-list">
-    <view class="student-row" wx:for="{{rows}}" wx:key="studentName">
+    <view class="student-row" wx:for="{{rows}}" wx:for-item="row" wx:for-index="rowIndex" wx:key="rowKey">
       <view class="student-info">
         <view class="student-name">
-          {{item.studentName}}
-          <text class="source {{item.sourceType === '1' ? '' : 'extra'}}">{{item.sourceText}}</text>
+          {{row.studentName}}
+          <text class="source {{row.sourceType === '1' ? '' : 'extra'}}">{{row.sourceText}}</text>
         </view>
-        <view class="remove" wx:if="{{item.added && !locked}}" data-index="{{index}}" bindtap="removeRow">移除</view>
+        <view class="remove" wx:if="{{row.added && !locked && !loading && !submitting && ready}}" data-row-key="{{row.rowKey}}" bindtap="removeRow">移除</view>
       </view>
       <view class="status-btns">
         <view
-          wx:for="{{item.statusOptions}}"
+          wx:for="{{row.statusOptions}}"
           wx:for-item="opt"
+          wx:for-index="statusIndex"
           wx:key="key"
-          class="status-btn {{item.signStatus === opt.key ? 'active' : ''}} {{item.signStatus === opt.key && opt.key === '3' ? 'leave' : ''}}"
-          data-index="{{index}}"
+          class="status-btn {{row.signStatus === opt.key ? 'active' : ''}} {{row.signStatus === opt.key && opt.key === '3' ? 'leave' : ''}} {{locked || loading || submitting || !ready ? 'disabled' : ''}}"
+          data-row-key="{{row.rowKey}}"
           data-key="{{opt.key}}"
           bindtap="setStatus"
         >{{opt.label}}</view>
@@ -48,16 +49,17 @@
     </view>
   </view>
 
-  <view class="add-bar" wx:if="{{!locked}}">
+  <view class="add-bar" wx:if="{{!locked && !loading && !submitting && ready}}">
     <view class="add-btn audited" bindtap="addAudited">+ 试听学员</view>
     <view class="add-btn transferred" bindtap="addTransferred">+ 调课学员</view>
   </view>
 
+  <view class="empty" wx:if="{{loading}}">加载中...</view>
   <view class="empty" wx:if="{{!loading && rows.length === 0}}">该班级暂无报名学员</view>
 
   <view class="submit-wrap" wx:if="{{!locked}}">
-    <view class="submit-btn {{submitting ? 'disabled' : ''}}" bindtap="submit">
-      {{submitting ? '提交中...' : '提交签到'}}
+    <view class="submit-btn {{submitting || loading || !ready ? 'disabled' : ''}}" bindtap="submit">
+      {{loading ? '加载中...' : (submitting ? '提交中...' : '提交签到')}}
     </view>
   </view>
 </view>

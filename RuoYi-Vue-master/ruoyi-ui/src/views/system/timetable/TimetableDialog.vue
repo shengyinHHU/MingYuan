@@ -33,10 +33,10 @@
         </el-col>
 
         <el-col :span="12">
-          <el-form-item label="教师" prop="teacherName">
-            <el-select v-model="form.teacherName" placeholder="请选择教师" style="width:100%" filterable
+          <el-form-item label="教师" prop="teacherId">
+            <el-select v-model="form.teacherId" placeholder="请选择教师" style="width:100%" filterable
                        :disabled="!dims.isAdmin && dims.isTeacher">
-              <el-option v-for="t in dims.teachers" :key="t.userId" :label="t.userName" :value="t.nickName" />
+              <el-option v-for="t in dims.teachers" :key="t.userId" :label="`${t.nickName}（${t.userName}）`" :value="t.userId" />
             </el-select>
             <div v-if="!dims.isAdmin && dims.isTeacher" style="font-size:12px;color:#909399;line-height:1.4;margin-top:2px;">
               教师身份仅能为自己排课
@@ -81,6 +81,8 @@
             </el-select>
           </el-form-item>
         </el-col>
+        <el-col :span="12"><el-form-item label="授课形式"><el-select v-model="form.classMode" :disabled="!form.scheduleId && dims.isTeacher && !dims.isAdmin"><el-option label="班课" value="1" /><el-option label="一对一" value="2" /></el-select></el-form-item></el-col>
+        <el-col :span="12"><el-form-item label="排课状态"><el-select v-model="form.status"><el-option label="正常" value="0" /><el-option label="停用" value="1" /></el-select></el-form-item></el-col>
         <el-col :span="12">
           <el-form-item label="招生状态" prop="recruitStatus">
             <el-select v-model="form.recruitStatus" style="width:100%">
@@ -92,7 +94,7 @@
         </el-col>
         <el-col :span="12">
           <el-form-item label="已报名数" prop="enrolledCount">
-            <el-input-number v-model="form.enrolledCount" :min="0" :max="999" style="width:100%" />
+            <el-input :value="form.enrolledCount" disabled placeholder="由报名业务维护" />
           </el-form-item>
         </el-col>
 
@@ -112,7 +114,7 @@
 
     <div slot="footer" class="dialog-footer">
       <el-button @click="visible=false">取 消</el-button>
-      <el-button type="primary" :loading="submitting" @click="submit">确 定</el-button>
+      <el-button type="primary" :loading="submitting || detailLoading" :disabled="detailError" @click="submit">确 定</el-button>
     </div>
   </el-dialog>
 </template>
@@ -130,11 +132,13 @@ export default {
     return {
       visible: false,
       submitting: false,
+      detailLoading: false,
+      detailError: false,
       form: this.buildEmptyForm(),
       rules: {
         gradeName:    [{ required: true, message: '请选择年级', trigger: 'change' }],
         subjectName:  [{ required: true, message: '请选择科目', trigger: 'change' }],
-        teacherName:  [{ required: true, message: '请选择/填写教师', trigger: 'change' }],
+        teacherId:    [{ required: true, message: '请选择/填写教师', trigger: 'change' }],
         classType:    [{ required: true, message: '请选择班型', trigger: 'change' }],
         classroomId:  [{ required: true, message: '教室缺失，请重新选择单元格' }],
         timeSlot:     [{ required: true, message: '时段缺失，请重新选择单元格' }]
@@ -149,9 +153,9 @@ export default {
         termName: '', periodName: '',
         classroomId: null, classroomName: '', campusName: '',
         timeSlot: '',
-        gradeName: '', subjectName: '', teacherName: '', classType: '',
+        gradeName: '', subjectName: '', teacherName: '', teacherId: null, classType: '', classMode: this.dims.isTeacher && !this.dims.isAdmin ? '2' : '1', status: '0',
         startTime: '', endTime: '',
-        startDate: '', endDate: '', classPattern: 'WEEKLY',
+        startDate: null, endDate: null, classPattern: 'DAILY_5_1',
         recruitStatus: '0',
         enrolledCount: 0,
         courseClassName: '',
@@ -160,8 +164,12 @@ export default {
     },
     open() {
       this.form = this.buildEmptyForm()
+      this.detailError = false
       if (this.preset && this.preset.defaults) {
         Object.assign(this.form, this.preset.defaults || {})
+      }
+      if (this.preset && this.preset.mode === 'add') {
+        this.form.classPattern = ['周六', '周日'].includes(this.form.periodName) ? 'WEEKLY' : 'DAILY_5_1'
       }
       if (this.preset && this.preset.mode === 'edit' && this.form.scheduleId) {
         this.loadDetail(this.form.scheduleId)
@@ -172,10 +180,11 @@ export default {
       })
     },
     async loadDetail(id) {
+      this.detailLoading = true
       try {
         const res = await getTimetableSchedule(id)
         Object.assign(this.form, res.data || {})
-      } catch (e) { /* 由 request 拦截器统一处理 */ }
+      } catch (e) { this.detailError = true } finally { this.detailLoading = false }
     },
     autoFillClassName() {
       if (this.form.courseClassName) return
@@ -184,6 +193,7 @@ export default {
       this.form.courseClassName = parts.join('')
     },
     async submit() {
+      if (this.submitting || this.detailLoading || this.detailError) return
       const valid = await new Promise(res => this.$refs.form.validate(ok => res(ok)))
       if (!valid) return
       this.autoFillClassName()
@@ -193,6 +203,8 @@ export default {
         // 后端只认 classroomId，去掉 classroomName/campusName 这两个前端辅助字段
         delete payload.classroomName
         delete payload.campusName
+        delete payload.enrolledCount
+        delete payload.delFlag
         if (this.form.scheduleId) {
           await updateTimetableSchedule(payload)
           this.$message.success('修改成功')

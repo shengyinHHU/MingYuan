@@ -16,7 +16,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             s.end_time as endTime,
             s.grade_name as gradeName,
             s.subject_name as subjectName,
-            s.teacher_name as teacherName,
+            coalesce(nullif(trim(teacher.nick_name), ''), s.teacher_name) as teacherName,
+            s.teacher_id as teacherId,
             s.class_type as classType,
             s.course_class_name as courseClassName,
             c.campus_name as campusName,
@@ -26,6 +27,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             greatest(ifnull(c.capacity, 999999) - ifnull(s.enrolled_count, 0), 0) as remainingCount,
             case when e.enrollment_id is null then 0 else 1 end as enrolled
         from edu_course_schedule s
+        left join sys_user teacher on teacher.user_id = s.teacher_id
         inner join edu_classroom c on c.classroom_id = s.classroom_id
         left join edu_enrollment e
           on e.schedule_id = s.schedule_id
@@ -66,11 +68,12 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             s.time_slot as timeSlot,
             s.grade_name as gradeName,
             s.subject_name as subjectName,
-            s.teacher_name as teacherName,
+            coalesce(nullif(trim(teacher.nick_name), ''), s.teacher_name) as teacherName,
             c.campus_name as campusName,
             c.classroom_name as classroomName
         from edu_enrollment e
         inner join edu_course_schedule s on s.schedule_id = e.schedule_id
+        left join sys_user teacher on teacher.user_id = s.teacher_id
         inner join edu_classroom c on c.classroom_id = s.classroom_id
         where e.parent_id = #{parentId}
           and e.del_flag = '0'
@@ -97,12 +100,13 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             s.class_pattern as classPattern,
             s.grade_name as gradeName,
             s.subject_name as subjectName,
-            s.teacher_name as teacherName,
+            coalesce(nullif(trim(teacher.nick_name), ''), s.teacher_name) as teacherName,
             s.class_type as classType,
             c.campus_name as campusName,
             c.classroom_name as classroomName
         from edu_enrollment e
         inner join edu_course_schedule s on s.schedule_id = e.schedule_id
+        left join sys_user teacher on teacher.user_id = s.teacher_id
         inner join edu_classroom c on c.classroom_id = s.classroom_id
         where e.parent_id = #{parentId}
           and e.del_flag = '0'
@@ -143,7 +147,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
          and a.del_flag = '0'
         where e.parent_id = #{parentId}
           and e.del_flag = '0'
-          and e.enrollment_status in ('1', '报名成功')
+          and (e.enrollment_status in ('1', '报名成功') or a.attendance_status = '1')
           and s.del_flag = '0'
           and s.status = '0'
         group by s.course_class_name
@@ -177,7 +181,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
          and a.del_flag = '0'
         where e.parent_id = #{parentId}
           and e.del_flag = '0'
-          and e.enrollment_status in ('1', '报名成功')
+          and (e.enrollment_status in ('1', '报名成功') or a.attendance_status = '1')
           and s.del_flag = '0'
           and s.status = '0'
           and s.course_class_name = #{courseClassName}
@@ -298,41 +302,4 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         limit 1
     </select>
 
-    <update id="cancelEnrollmentById">
-        update edu_enrollment
-        set del_flag = '2',
-            enrollment_status = '2',
-            cancel_time = now(),
-            update_by = #{updateBy},
-            update_time = now()
-        where enrollment_id = #{enrollmentId}
-          and del_flag = '0'
-    </update>
-
-    <update id="decreaseScheduleEnrollment">
-        update edu_course_schedule s
-        inner join edu_classroom c on c.classroom_id = s.classroom_id
-        set s.enrolled_count = greatest(ifnull(s.enrolled_count, 0) - 1, 0),
-            s.recruit_status = case
-                when s.recruit_status = '2'
-                     and greatest(ifnull(s.enrolled_count, 0) - 1, 0) <![CDATA[<]]> ifnull(c.capacity, 999999)
-                then '0'
-                else s.recruit_status
-            end,
-            s.update_by = #{updateBy},
-            s.update_time = now()
-        where s.schedule_id = #{scheduleId}
-          and s.del_flag = '0'
-          and s.status = '0'
-          and ifnull(s.enrolled_count, 0) > 0
-    </update>
-
-    <update id="cancelAttendanceByEnrollmentId">
-        update edu_attendance
-        set del_flag = '2',
-            update_by = #{updateBy},
-            update_time = now()
-        where enrollment_id = #{enrollmentId}
-          and del_flag = '0'
-    </update>
 </mapper>

@@ -50,20 +50,18 @@
         />
       </el-form-item>
       <el-form-item label="开始时间" prop="startTime">
-        <el-date-picker clearable
+        <el-time-picker clearable
           v-model="queryParams.startTime"
-          type="date"
-          value-format="yyyy-MM-dd"
+          value-format="HH:mm:ss"
           placeholder="请选择开始时间">
-        </el-date-picker>
+        </el-time-picker>
       </el-form-item>
       <el-form-item label="结束时间" prop="endTime">
-        <el-date-picker clearable
+        <el-time-picker clearable
           v-model="queryParams.endTime"
-          type="date"
-          value-format="yyyy-MM-dd"
+          value-format="HH:mm:ss"
           placeholder="请选择结束时间">
-        </el-date-picker>
+        </el-time-picker>
       </el-form-item>
       <el-form-item label="年级" prop="gradeName">
         <el-input
@@ -192,12 +190,12 @@
       <el-table-column label="时段" align="center" prop="timeSlot" />
       <el-table-column label="开始时间" align="center" prop="startTime" width="180">
         <template slot-scope="scope">
-          <span>{{ parseTime(scope.row.startTime, '{y}-{m}-{d}') }}</span>
+          <span>{{ scope.row.startTime || '待配置' }}</span>
         </template>
       </el-table-column>
       <el-table-column label="结束时间" align="center" prop="endTime" width="180">
         <template slot-scope="scope">
-          <span>{{ parseTime(scope.row.endTime, '{y}-{m}-{d}') }}</span>
+          <span>{{ scope.row.endTime || '待配置' }}</span>
         </template>
       </el-table-column>
       <el-table-column label="年级" align="center" prop="gradeName" />
@@ -212,7 +210,9 @@
         </template>
       </el-table-column>
       <el-table-column label="已报名人数" align="center" prop="enrolledCount" />
-      <el-table-column label="招生状态" align="center" prop="recruitStatus" />
+      <el-table-column label="招生状态" align="center"><template slot-scope="scope">{{ { '0': '可报名', '1': '停招', '2': '满班' }[scope.row.recruitStatus] || '未知' }}</template></el-table-column>
+      <el-table-column label="排课状态" align="center"><template slot-scope="scope">{{ scope.row.status === '1' ? '停用' : '正常' }}</template></el-table-column>
+      <el-table-column label="排课日期" min-width="210"><template slot-scope="scope">{{ scope.row.startDate && scope.row.endDate ? `${scope.row.startDate} 至 ${scope.row.endDate}` : '待配置' }}</template></el-table-column>
       <el-table-column label="课程班名称" align="center" prop="courseClassName" />
       <el-table-column label="来源Sheet" align="center" prop="sourceSheet" />
       <el-table-column label="来源行" align="center" prop="sourceRow" />
@@ -253,12 +253,12 @@
         <el-row>
           <el-col :span="24">
             <el-form-item label="排课编码" prop="scheduleCode">
-              <el-input v-model="form.scheduleCode" placeholder="请输入排课编码" />
+              <el-input v-model="form.scheduleCode" placeholder="留空自动生成" :disabled="!!form.scheduleId" />
             </el-form-item>
           </el-col>
           <el-col :span="24">
-            <el-form-item label="教室ID" prop="classroomId">
-              <el-input v-model="form.classroomId" placeholder="请输入教室ID" />
+            <el-form-item label="教室" prop="classroomId">
+              <el-select v-model="form.classroomId" filterable placeholder="请选择教室"><el-option v-for="room in dims.classroomList" :key="room.classroomId" :value="room.classroomId" :label="`${room.campusName} · ${room.classroomName}`" /></el-select>
             </el-form-item>
           </el-col>
           <el-col :span="24">
@@ -283,22 +283,20 @@
           </el-col>
           <el-col :span="24">
             <el-form-item label="开始时间" prop="startTime">
-              <el-date-picker clearable
+              <el-time-picker clearable
                 v-model="form.startTime"
-                type="date"
-                value-format="yyyy-MM-dd"
+                      value-format="HH:mm:ss"
                 placeholder="请选择开始时间">
-              </el-date-picker>
+              </el-time-picker>
             </el-form-item>
           </el-col>
           <el-col :span="24">
             <el-form-item label="结束时间" prop="endTime">
-              <el-date-picker clearable
+              <el-time-picker clearable
                 v-model="form.endTime"
-                type="date"
-                value-format="yyyy-MM-dd"
+                      value-format="HH:mm:ss"
                 placeholder="请选择结束时间">
-              </el-date-picker>
+              </el-time-picker>
             </el-form-item>
           </el-col>
           <el-col :span="24">
@@ -312,13 +310,13 @@
             </el-form-item>
           </el-col>
           <el-col :span="24">
-            <el-form-item label="教师姓名" prop="teacherName">
-              <el-input v-model="form.teacherName" placeholder="请输入教师姓名" />
+            <el-form-item label="教师" prop="teacherId">
+              <el-select v-model="form.teacherId" filterable placeholder="请选择教师账号" :disabled="dims.isTeacher && !dims.isAdmin"><el-option v-for="teacher in dims.teachers" :key="teacher.userId" :value="teacher.userId" :label="`${teacher.nickName}（${teacher.userName}）`" /></el-select>
             </el-form-item>
           </el-col>
           <el-col :span="24">
             <el-form-item label="授课形式" prop="classMode">
-              <el-select v-model="form.classMode" placeholder="请选择授课形式">
+              <el-select v-model="form.classMode" placeholder="请选择授课形式" :disabled="!form.scheduleId && dims.isTeacher && !dims.isAdmin">
                 <el-option label="班课" value="1" />
                 <el-option label="一对一" value="2" />
               </el-select>
@@ -326,7 +324,7 @@
           </el-col>
           <el-col :span="24">
             <el-form-item label="已报名人数" prop="enrolledCount">
-              <el-input v-model="form.enrolledCount" placeholder="请输入已报名人数" />
+              <el-input v-model="form.enrolledCount" disabled placeholder="由报名业务维护" />
             </el-form-item>
           </el-col>
           <el-col :span="24">
@@ -349,11 +347,11 @@
               <el-input v-model="form.sourceCol" placeholder="请输入来源列" />
             </el-form-item>
           </el-col>
-          <el-col :span="24">
-            <el-form-item label="删除标志" prop="delFlag">
-              <el-input v-model="form.delFlag" placeholder="请输入删除标志" />
-            </el-form-item>
-          </el-col>
+          <el-col :span="24"><el-form-item label="开课日期"><el-date-picker v-model="form.startDate" type="date" value-format="yyyy-MM-dd" placeholder="待配置" /></el-form-item></el-col>
+          <el-col :span="24"><el-form-item label="结课日期"><el-date-picker v-model="form.endDate" type="date" value-format="yyyy-MM-dd" placeholder="待配置" /></el-form-item></el-col>
+          <el-col :span="24"><el-form-item label="上课模式"><el-select v-model="form.classPattern" clearable><el-option label="每周一次（周六／周日）" value="WEEKLY" /><el-option label="上5天休1天" value="DAILY_5_1" /></el-select></el-form-item></el-col>
+          <el-col :span="24"><el-form-item label="招生状态"><el-select v-model="form.recruitStatus"><el-option label="可报名" value="0" /><el-option label="停招" value="1" /><el-option label="满班" value="2" /></el-select></el-form-item></el-col>
+          <el-col :span="24"><el-form-item label="排课状态"><el-select v-model="form.status"><el-option label="正常" value="0" /><el-option label="停用" value="1" /></el-select></el-form-item></el-col>
           <el-col :span="24">
             <el-form-item label="备注" prop="remark">
               <el-input v-model="form.remark" type="textarea" placeholder="请输入内容" />
@@ -362,7 +360,7 @@
         </el-row>
       </el-form>
       <div slot="footer" class="dialog-footer">
-        <el-button type="primary" @click="submitForm">确 定</el-button>
+        <el-button type="primary" :loading="submitting" @click="submitForm">确 定</el-button>
         <el-button @click="cancel">取 消</el-button>
       </div>
     </el-dialog>
@@ -371,6 +369,7 @@
 
 <script>
 import { listSchedule, getSchedule, delSchedule, addSchedule, updateSchedule } from "@/api/system/schedule"
+import { getTimetableDimensions } from "@/api/system/timetable"
 
 export default {
   name: "Schedule",
@@ -378,6 +377,8 @@ export default {
     return {
       // 遮罩层
       loading: true,
+      submitting: false,
+      dims: { classroomList: [], teachers: [], isTeacher: false, isAdmin: false },
       // 选中数组
       ids: [],
       // 非单个禁用
@@ -422,9 +423,7 @@ export default {
       form: {},
       // 表单校验
       rules: {
-        scheduleCode: [
-          { required: true, message: "排课编码不能为空", trigger: "blur" }
-        ],
+        teacherId: [{ required: true, message: "请选择教师账号", trigger: "change" }],
         classroomId: [
           { required: true, message: "教室ID不能为空", trigger: "blur" }
         ],
@@ -451,6 +450,7 @@ export default {
   },
   created() {
     this.getList()
+    getTimetableDimensions().then(response => { this.dims = response.data || this.dims }).catch(() => {})
   },
   methods: {
     /** 查询课程排课列表 */
@@ -459,8 +459,7 @@ export default {
       listSchedule(this.queryParams).then(response => {
         this.scheduleList = response.rows
         this.total = response.total
-        this.loading = false
-      })
+      }).finally(() => { this.loading = false })
     },
     // 取消按钮
     cancel() {
@@ -473,24 +472,26 @@ export default {
         scheduleId: null,
         scheduleCode: null,
         classroomId: null,
-        courseYear: null,
+        courseYear: new Date().getFullYear(),
         termName: null,
         periodName: null,
         timeSlot: null,
         startTime: null,
         endTime: null,
+        startDate: null, endDate: null, classPattern: null,
         gradeName: null,
         subjectName: null,
         teacherName: null,
+        teacherId: this.dims.isTeacher && !this.dims.isAdmin ? this.dims.currentUserId : null,
         classType: null,
-        classMode: '1',
-        enrolledCount: null,
-        recruitStatus: null,
+        classMode: this.dims.isTeacher && !this.dims.isAdmin ? '2' : '1',
+        enrolledCount: 0,
+        recruitStatus: '0',
         courseClassName: null,
         sourceSheet: null,
         sourceRow: null,
         sourceCol: null,
-        status: null,
+        status: '0',
         delFlag: null,
         createBy: null,
         createTime: null,
@@ -525,7 +526,7 @@ export default {
     /** 修改按钮操作 */
     handleUpdate(row) {
       this.reset()
-      const scheduleId = row.scheduleId || this.ids
+      const scheduleId = row.scheduleId || this.ids[0]
       getSchedule(scheduleId).then(response => {
         this.form = response.data
         this.open = true
@@ -534,22 +535,20 @@ export default {
     },
     /** 提交按钮 */
     submitForm() {
-      this.$refs["form"].validate(valid => {
-        if (valid) {
-          if (this.form.scheduleId != null) {
-            updateSchedule(this.form).then(response => {
-              this.$modal.msgSuccess("修改成功")
-              this.open = false
-              this.getList()
-            })
-          } else {
-            addSchedule(this.form).then(response => {
-              this.$modal.msgSuccess("新增成功")
-              this.open = false
-              this.getList()
-            })
-          }
-        }
+      if (this.submitting) return
+      this.$refs.form.validate(async valid => {
+        if (!valid || this.submitting) return
+        this.submitting = true
+        try {
+          const payload = { ...this.form }
+          delete payload.enrolledCount
+          delete payload.delFlag
+          if (payload.scheduleId) await updateSchedule(payload)
+          else await addSchedule(payload)
+          this.$modal.msgSuccess(payload.scheduleId ? '修改成功' : '新增成功')
+          this.open = false
+          this.getList()
+        } finally { this.submitting = false }
       })
     },
     /** 删除按钮操作 */

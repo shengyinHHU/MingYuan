@@ -19,6 +19,8 @@ public interface EduCourseScheduleMapper
      */
     public EduCourseSchedule selectEduCourseScheduleByScheduleId(Long scheduleId);
 
+    EduCourseSchedule lockSchedule(Long scheduleId);
+
     /**
      * 查询课程排课列表
      * 
