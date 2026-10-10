@@ -16,6 +16,21 @@ public final class FinanceRules {
 
   public static final ZoneId ZONE = ZoneId.of("Asia/Shanghai");
 
+  /** Role guard complements each controller's specific menu permission. */
+  public static void tuitionStaff(com.ruoyi.system.shop.ShopRepository db, long actor) {
+    require(
+        db.jdbc()
+                .queryForObject(
+                    "SELECT COUNT(*) FROM sys_user u JOIN sys_user_role ur ON ur.user_id=u.user_id"
+                        + " JOIN sys_role r ON r.role_id=ur.role_id WHERE u.user_id=? AND"
+                        + " u.status='0' AND u.del_flag='0' AND r.role_key IN ('admin','education')"
+                        + " AND r.status='0' AND r.del_flag='0'",
+                    Integer.class,
+                    actor)
+            > 0,
+        "FORBIDDEN: 教务或管理员权限不足");
+  }
+
   public static String text(Object v) {
     return v == null ? "" : String.valueOf(v).trim();
   }

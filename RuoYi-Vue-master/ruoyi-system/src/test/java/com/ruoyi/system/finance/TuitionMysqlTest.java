@@ -92,8 +92,20 @@ class TuitionMysqlTest {
         "HISTORY_PENDING",
         db.one("SELECT billing_status FROM edu_enrollment WHERE enrollment_code='HISTORY'")
             .get("billingStatus"));
+    migrateLegacy();
     migrate();
     migrate();
+    assertEquals(
+        0,
+        db.jdbc()
+            .queryForObject(
+                "SELECT COUNT(*) FROM sys_user_role ur JOIN sys_role r ON r.role_id=ur.role_id"
+                    + " WHERE r.role_key='education'",
+                Integer.class));
+    db.jdbc().update("INSERT INTO sys_user VALUES(5,'education','教务','0','0')");
+    db.jdbc()
+        .update(
+            "INSERT INTO sys_user_role SELECT 5,role_id FROM sys_role WHERE role_key='education'");
     privateRoot = Files.createTempDirectory(Path.of("/private/tmp"), "codex-tuition-finance-test-");
     new com.ruoyi.common.config.RuoYiConfig().setProfile(privateRoot.resolve("public").toString());
     storage = new FinancePrivateStorage(privateRoot.resolve("private").toString());
@@ -101,15 +113,22 @@ class TuitionMysqlTest {
   }
 
   void migrate() throws Exception {
+    runMigration("20261010_tuition_offline_two_stage.sql");
+  }
+
+  void migrateLegacy() throws Exception {
+    runMigration("20261007_tuition_finance.sql", "20261010_tuition_refund_single_admin.sql");
+  }
+
+  void runMigration(String... files) throws Exception {
     Process p =
         new ProcessBuilder(
                 "/opt/homebrew/bin/mysql", "--protocol=TCP", "-h127.0.0.1", "-uroot", SCHEMA)
             .redirectErrorStream(true)
             .start();
     try (var out = p.getOutputStream()) {
-      out.write(
-          Files.readAllBytes(Path.of("../../database/migrations/20261007_tuition_finance.sql")));
-      out.write(Files.readAllBytes(Path.of("../../database/migrations/20261010_tuition_refund_single_admin.sql")));
+      for (String file : files)
+        out.write(Files.readAllBytes(Path.of("../../database/migrations/" + file)));
     }
     String output = new String(p.getInputStream().readAllBytes());
     assertEquals(0, p.waitFor(), output);
@@ -205,6 +224,34 @@ class TuitionMysqlTest {
         .toString();
   }
 
+  Map<String, Object> legacyRefund(long payment, long actor) throws Exception {
+    long id =
+        db.insert(
+            "edu_tuition_refund",
+            FinanceRules.values(
+                "refund_no",
+                FinanceRules.code("OLD"),
+                "payment_id",
+                payment,
+                "refund_kind",
+                "PARTIAL",
+                "requested_amount",
+                "300",
+                "refund_status",
+                "PENDING_REVIEW",
+                "reason",
+                "历史申请",
+                "calculation_snapshot",
+                "{\"ruleVersion\":\"tuition-refund-v1\"}",
+                "applicant_id",
+                actor,
+                "idempotency_key",
+                UUID.randomUUID().toString(),
+                "request_hash",
+                "a".repeat(64)));
+    return call(service("TuitionService"), "refund", id, 1L, true);
+  }
+
   Map<String, Object> templateBody(int quantity) {
     return Map.of(
         "couponName",
@@ -221,6 +268,333 @@ class TuitionMysqlTest {
         quantity,
         "templateStatus",
         "ACTIVE");
+  }
+
+  @Test
+  void parentCannotCreateOrConfirmCoursePaymentsEvenMockOrFree() throws Exception {
+    var s = service("TuitionService");
+    long id = fresh();
+    call(s, "price", id, 1L, priceBody("MOCK"));
+    assertThrows(
+        Exception.class, () -> call(s, "createPayment", id, 2L, false, payBody(1, "DENY" + id)));
+    var p = call(s, "createPayment", id, 1L, true, payBody(1, "STAFF" + id));
+    assertThrows(
+        Exception.class, () -> call(s, "confirmPayment", lid(p, "paymentId"), 2L, false, Map.of()));
+  }
+
+  @Test
+  void offlineRefundRequiresTwoStagesAndHidesProposedMoneyFromParent() throws Exception {
+    var s = service("TuitionService");
+    long id = fresh();
+    call(s, "price", id, 1L, priceBody("MOCK"));
+    var p = call(s, "createPayment", id, 1L, true, payBody(1, "OFF" + id));
+    long payment = lid(p, "paymentId");
+    call(s, "confirmPayment", payment, 1L, true, Map.of());
+    var body =
+        Map.<String, Object>of(
+            "paymentId",
+            payment,
+            "refundKind",
+            "PARTIAL",
+            "reason",
+            "费用调整",
+            "idempotencyKey",
+            "OFFR" + id);
+    var r = call(s, "applyRefund", 2L, false, body);
+    assertEquals("WAIT_EDU", r.get("refundStatus"));
+    assertNull(r.get("requestedAmount"));
+    long refund = lid(r, "refundId");
+    assertThrows(Exception.class, () -> call(s, "markRefunded", refund, 1L, Map.of("version", 0)));
+    assertThrows(Exception.class, () -> call(s, "cancelRefund", refund, 2L));
+    for (String amount : List.of("0", "-1", "1000.01"))
+      assertThrows(
+          Exception.class,
+          () ->
+              call(
+                  s,
+                  "reviewRefund",
+                  refund,
+                  1L,
+                  Map.of("approved", true, "approvedAmount", amount, "version", 0)));
+    call(
+        s,
+        "reviewRefund",
+        refund,
+        1L,
+        Map.of("approved", true, "approvedAmount", "300", "version", 0));
+    var pending = call(s, "refund", refund, 2L, false);
+    assertEquals("WAIT_ADMIN", pending.get("refundStatus"));
+    assertNull(pending.get("approvedAmount"));
+    assertNull(pending.get("calculationSnapshot"));
+    Map<?, ?> listed =
+        (Map<?, ?>)
+            ((List<?>)
+                    call(s, "listRefunds", 2L, false, Map.of("enrollmentId", "" + id)).get("rows"))
+                .get(0);
+    assertNull(listed.get("approvedAmount"));
+    assertNull(listed.get("calculationSnapshot"));
+    Map<?, ?> billRefund =
+        (Map<?, ?>) ((List<?>) call(s, "bill", id, 2L, false).get("refunds")).get(0);
+    assertNull(billRefund.get("approvedAmount"));
+    assertNull(billRefund.get("calculationSnapshot"));
+    Map<?, ?> listedBill =
+        (Map<?, ?>)
+            ((List<?>) call(s, "listBills", 2L, false, Map.of("enrollmentId", "" + id)).get("rows"))
+                .get(0);
+    assertNull(listedBill.get("refundableAmount"), "可退余额不能反推未完成退款金额");
+    assertEquals("OFFLINE_TWO_STAGE", pending.get("refundWorkflow"));
+    assertEquals("300.00", call(s, "refund", refund, 1L, true).get("approvedAmount"));
+    assertThrows(Exception.class, () -> call(s, "executeRefund", refund, 1L));
+    assertThrows(Exception.class, () -> call(s, "confirmRefund", refund, 1L, Map.of()));
+    assertThrows(Exception.class, () -> call(s, "markRefunded", refund, 1L, Map.of("version", 0)));
+    var done = call(s, "markRefunded", refund, 1L, Map.of("version", 1));
+    assertEquals("SUCCESS", done.get("refundStatus"));
+    call(s, "markRefunded", refund, 1L, Map.of("version", 1));
+    assertEquals("300.00", call(s, "refund", refund, 2L, false).get("approvedAmount"));
+    assertEquals("700.00", call(s, "bill", id, 2L, false).get("netAmount"));
+    assertEquals("报名成功", call(s, "bill", id, 2L, false).get("enrollmentStatus"));
+    assertThrows(
+        Exception.class,
+        () -> call(s, "markRefunded", refund, 1L, Map.of("version", 1, "approvedAmount", "1")));
+    assertThrows(
+        Exception.class,
+        () ->
+            call(
+                s,
+                "markRefunded",
+                refund,
+                1L,
+                Map.of("version", 1, "completedTime", "2020-01-01 00:00:00")));
+    var rest =
+        call(
+            s,
+            "applyRefund",
+            2L,
+            false,
+            Map.of(
+                "paymentId",
+                payment,
+                "refundKind",
+                "PARTIAL",
+                "reason",
+                "退剩余",
+                "idempotencyKey",
+                "REST" + id));
+    long restId = lid(rest, "refundId");
+    call(
+        s,
+        "reviewRefund",
+        restId,
+        1L,
+        Map.of("approved", true, "approvedAmount", "700", "version", 0));
+    assertEquals(
+        2,
+        race(
+            () -> {
+              call(s, "markRefunded", restId, 1L, Map.of("version", 1));
+              return true;
+            },
+            () -> {
+              call(s, "markRefunded", restId, 1L, Map.of("version", 1));
+              return true;
+            }));
+    assertEquals("0.00", call(s, "bill", id, 2L, false).get("netAmount"));
+    assertEquals("报名成功", call(s, "bill", id, 2L, false).get("enrollmentStatus"));
+    assertThrows(
+        Exception.class,
+        () ->
+            call(
+                s,
+                "applyRefund",
+                2L,
+                false,
+                Map.of(
+                    "paymentId",
+                    payment,
+                    "refundKind",
+                    "PARTIAL",
+                    "reason",
+                    "已退完",
+                    "idempotencyKey",
+                    "EMPTY" + id)));
+  }
+
+  @Test
+  void educationCollectsAndReviewsButOnlyAdminCompletesOrRejectsReviewedRefund() throws Exception {
+    var s = service("TuitionService");
+    long id = fresh(), other = fresh();
+    call(s, "price", id, 5L, priceBody("REAL"));
+    var p =
+        call(
+            s,
+            "createPayment",
+            id,
+            5L,
+            true,
+            Map.of(
+                "channel",
+                "CASH",
+                "expectedPayableAmount",
+                "1000.00",
+                "financialVersion",
+                1,
+                "idempotencyKey",
+                "EDU" + id,
+                "paidTime",
+                "2025-01-01 00:00:00",
+                "evidenceKey",
+                proof(5, "PAYMENT", id)));
+    call(s, "confirmPayment", lid(p, "paymentId"), 5L, true, Map.of());
+    assertEquals(
+        1,
+        ((List<?>) receiptService.list(5, true, Map.of("enrollmentId", "" + id)).get("rows"))
+            .size());
+    assertThrows(Exception.class, () -> new CouponService(db).admin(5));
+    long receipt =
+        lid(
+            db.one(
+                "SELECT receipt_id FROM edu_tuition_receipt WHERE payment_id=?",
+                p.get("paymentId")),
+            "receiptId");
+    assertNotNull(receiptService.download(receipt, 5, true));
+    assertThrows(Exception.class, () -> receiptService.replace(receipt, 5, "无权"));
+    var body =
+        new HashMap<String, Object>(
+            Map.of(
+                "paymentId",
+                p.get("paymentId"),
+                "refundKind",
+                "WITHDRAWAL",
+                "reason",
+                "退一门课",
+                "idempotencyKey",
+                "EDUR" + id));
+    body.put("requestedAmount", "300");
+    assertThrows(Exception.class, () -> call(s, "applyRefund", 2L, false, body));
+    body.remove("requestedAmount");
+    var r = call(s, "applyRefund", 2L, false, body);
+    long refund = lid(r, "refundId");
+    assertEquals(refund, lid(call(s, "applyRefund", 2L, false, body), "refundId"));
+    body.put("reason", "更改申请");
+    assertThrows(Exception.class, () -> call(s, "applyRefund", 2L, false, body));
+    var reviewed =
+        call(
+            s,
+            "reviewRefund",
+            refund,
+            5L,
+            Map.of("approved", true, "approvedAmount", "300", "reviewRemark", "核准", "version", 0));
+    assertThrows(Exception.class, () -> call(s, "markRefunded", refund, 5L, Map.of("version", 1)));
+    assertThrows(
+        Exception.class,
+        () ->
+            call(
+                s,
+                "reviewRefund",
+                refund,
+                5L,
+                Map.of("approved", false, "reviewRemark", "驳回", "version", 1)));
+    var rejected =
+        call(
+            s,
+            "reviewRefund",
+            refund,
+            1L,
+            Map.of("approved", false, "reviewRemark", "需重新核实", "version", 1));
+    assertEquals("REJECTED", rejected.get("refundStatus"));
+    assertEquals(reviewed.get("reviewerId"), rejected.get("reviewerId"));
+    assertEquals(reviewed.get("reviewTime"), rejected.get("reviewTime"));
+    assertEquals("核准", rejected.get("reviewRemark"));
+    assertEquals("300.00", rejected.get("approvedAmount"));
+    assertEquals("需重新核实", call(s, "refund", refund, 2L, false).get("reviewRemark"));
+    assertTrue(rejected.get("calculationSnapshot").toString().contains("adminRejectReason"));
+    assertNull(rejected.get("executorId"));
+    body.put("idempotencyKey", "EDUR2" + id);
+    r = call(s, "applyRefund", 2L, false, body);
+    long next = lid(r, "refundId");
+    call(
+        s,
+        "reviewRefund",
+        next,
+        1L,
+        Map.of("approved", true, "approvedAmount", "1000", "version", 0));
+    call(s, "markRefunded", next, 1L, Map.of("version", 1));
+    assertEquals("已取消", call(s, "bill", id, 2L, false).get("enrollmentStatus"));
+    assertEquals("报名成功", call(s, "bill", other, 2L, false).get("enrollmentStatus"));
+    body.put("idempotencyKey", "EDUR3" + id);
+    assertThrows(Exception.class, () -> call(s, "applyRefund", 2L, false, body));
+    var before = db.one("SELECT * FROM edu_tuition_refund WHERE refund_id=?", next);
+    migrate();
+    assertEquals(before, db.one("SELECT * FROM edu_tuition_refund WHERE refund_id=?", next));
+    assertThrows(
+        Exception.class,
+        () ->
+            db.jdbc()
+                .update(
+                    "UPDATE edu_tuition_refund SET calculation_snapshot='{}' WHERE refund_id=?",
+                    next));
+  }
+
+  @Test
+  void databaseRestrictsNullMoneyToNewWorkflowAndRequiresBothStageFacts() throws Exception {
+    var s = service("TuitionService");
+    long id = fresh();
+    call(s, "price", id, 1L, priceBody("MOCK"));
+    var p = call(s, "createPayment", id, 1L, true, payBody(1, "CHECK" + id));
+    long payment = lid(p, "paymentId");
+    call(s, "confirmPayment", payment, 1L, true, Map.of());
+    var r =
+        call(
+            s,
+            "applyRefund",
+            2L,
+            false,
+            Map.of(
+                "paymentId",
+                payment,
+                "refundKind",
+                "PARTIAL",
+                "reason",
+                "约束校验",
+                "idempotencyKey",
+                "CHECKR" + id));
+    long refund = lid(r, "refundId");
+    for (String invalid :
+        List.of(
+            "requested_amount=1",
+            "calculation_snapshot='{}'",
+            "refund_status='WAIT_ADMIN'",
+            "refund_status='SUCCESS',approved_amount=1,completed_time=NOW(3)",
+            "approved_amount=0")) {
+      assertThrows(
+          Exception.class,
+          () ->
+              db.jdbc()
+                  .update(
+                      "UPDATE edu_tuition_refund SET " + invalid + " WHERE refund_id=?", refund));
+    }
+    call(
+        s,
+        "reviewRefund",
+        refund,
+        1L,
+        Map.of("approved", false, "reviewRemark", "测试驳回", "version", 0));
+    var legacy = legacyRefund(payment, 1L);
+    assertThrows(
+        Exception.class,
+        () ->
+            db.jdbc()
+                .update(
+                    "UPDATE edu_tuition_refund SET requested_amount=NULL WHERE refund_id=?",
+                    legacy.get("refundId")));
+    assertEquals(
+        0,
+        db.jdbc()
+            .queryForObject(
+                "SELECT COUNT(*) FROM sys_role_menu rm JOIN sys_role r ON r.role_id=rm.role_id JOIN"
+                    + " sys_menu m ON m.menu_id=rm.menu_id WHERE r.role_key='education' AND m.perms"
+                    + " IN ('system:tuitionRefund:markRefunded','system:tuitionRefund:execute','system:tuition:historyVerify','system:tuitionReceipt:replace','system:coupon:grant')",
+                Integer.class));
   }
 
   @Test
@@ -389,8 +763,8 @@ class TuitionMysqlTest {
                 s,
                 "createPayment",
                 id,
-                2L,
-                false,
+                1L,
+                true,
                 Map.of(
                     "channel",
                     "MOCK",
@@ -400,12 +774,12 @@ class TuitionMysqlTest {
                     1,
                     "idempotencyKey",
                     "bad" + id)));
-    var p = call(s, "createPayment", id, 2L, false, payBody(1, "PAY" + id));
+    var p = call(s, "createPayment", id, 1L, true, payBody(1, "PAY" + id));
     assertEquals(
         p.get("paymentId"),
-        call(s, "createPayment", id, 2L, false, payBody(1, "PAY" + id)).get("paymentId"));
-    call(s, "confirmPayment", lid(p, "paymentId"), 2L, false, Map.of());
-    call(s, "confirmPayment", lid(p, "paymentId"), 2L, false, Map.of());
+        call(s, "createPayment", id, 1L, true, payBody(1, "PAY" + id)).get("paymentId"));
+    call(s, "confirmPayment", lid(p, "paymentId"), 1L, true, Map.of());
+    call(s, "confirmPayment", lid(p, "paymentId"), 1L, true, Map.of());
     assertEquals(
         1,
         db.jdbc()
@@ -431,9 +805,9 @@ class TuitionMysqlTest {
     var s = service("TuitionService");
     long id = fresh();
     call(s, "price", id, 1L, priceBody("MOCK"));
-    var p = call(s, "createPayment", id, 2L, false, payBody(1, "PR" + id));
+    var p = call(s, "createPayment", id, 1L, true, payBody(1, "PR" + id));
     long payment = lid(p, "paymentId");
-    call(s, "confirmPayment", payment, 2L, false, Map.of());
+    call(s, "confirmPayment", payment, 1L, true, Map.of());
     var r =
         call(
             s,
@@ -445,8 +819,6 @@ class TuitionMysqlTest {
                 payment,
                 "refundKind",
                 "PARTIAL",
-                "requestedAmount",
-                "300",
                 "reason",
                 "补偿",
                 "idempotencyKey",
@@ -465,8 +837,6 @@ class TuitionMysqlTest {
                     payment,
                     "refundKind",
                     "PARTIAL",
-                    "requestedAmount",
-                    "300",
                     "reason",
                     "重复",
                     "idempotencyKey",
@@ -481,8 +851,13 @@ class TuitionMysqlTest {
                 firstRefund,
                 2L,
                 Map.of("approved", true, "approvedAmount", "300")));
-    call(s, "reviewRefund", rid, 4L, Map.of("approved", true, "approvedAmount", "300"));
-    call(s, "executeRefund", rid, 1L);
+    call(
+        s,
+        "reviewRefund",
+        rid,
+        4L,
+        Map.of("approved", true, "approvedAmount", "300", "version", 0));
+    call(s, "markRefunded", rid, 1L, Map.of("version", 1));
     var bill = call(s, "bill", id, 2L, false);
     assertEquals("700.00", bill.get("netAmount"));
     assertEquals("0.00", bill.get("dueAmount"));
@@ -497,21 +872,24 @@ class TuitionMysqlTest {
                 payment,
                 "refundKind",
                 "WITHDRAWAL",
-                "requestedAmount",
-                "700",
                 "reason",
                 "退课",
                 "idempotencyKey",
                 "R3" + id));
     rid = lid(r, "refundId");
-    call(s, "reviewRefund", rid, 4L, Map.of("approved", true, "approvedAmount", "700"));
+    call(
+        s,
+        "reviewRefund",
+        rid,
+        4L,
+        Map.of("approved", true, "approvedAmount", "700", "version", 0));
     int before =
         db.jdbc()
             .queryForObject(
                 "SELECT enrolled_count FROM edu_course_schedule WHERE schedule_id=1",
                 Integer.class);
-    call(s, "executeRefund", rid, 1L);
-    call(s, "executeRefund", rid, 1L);
+    call(s, "markRefunded", rid, 1L, Map.of("version", 1));
+    call(s, "markRefunded", rid, 1L, Map.of("version", 1));
     assertEquals(
         before - 1,
         db.jdbc()
@@ -525,19 +903,42 @@ class TuitionMysqlTest {
   void cancellationInvalidatesOnlyUnusedAttendance() throws Exception {
     var s = service("TuitionService");
     long unused = fresh(), attended = fresh();
-    db.jdbc().update(
-        "INSERT INTO edu_attendance(attendance_code,schedule_id,enrollment_id,parent_id,student_name) VALUES(?,1,?,2,'学生')",
-        "unused" + unused, unused);
-    db.jdbc().update(
-        "INSERT INTO edu_attendance(attendance_code,schedule_id,enrollment_id,parent_id,student_name,attendance_status,attended_time,confirm_by,confirm_name) VALUES(?,1,?,2,'学生','1',NOW(),1,'经办')",
-        "attended" + attended, attended);
-    int before = db.jdbc().queryForObject("SELECT enrolled_count FROM edu_course_schedule WHERE schedule_id=1", Integer.class);
+    db.jdbc()
+        .update(
+            "INSERT INTO"
+                + " edu_attendance(attendance_code,schedule_id,enrollment_id,parent_id,student_name)"
+                + " VALUES(?,1,?,2,'学生')",
+            "unused" + unused,
+            unused);
+    db.jdbc()
+        .update(
+            "INSERT INTO"
+                + " edu_attendance(attendance_code,schedule_id,enrollment_id,parent_id,student_name,attendance_status,attended_time,confirm_by,confirm_name)"
+                + " VALUES(?,1,?,2,'学生','1',NOW(),1,'经办')",
+            "attended" + attended,
+            attended);
+    int before =
+        db.jdbc()
+            .queryForObject(
+                "SELECT enrolled_count FROM edu_course_schedule WHERE schedule_id=1",
+                Integer.class);
     call(s, "cancelEnrollment", unused, 2L, false);
     call(s, "cancelEnrollment", unused, 2L, false);
     call(s, "cancelEnrollment", attended, 2L, false);
-    assertEquals("2", db.one("SELECT attendance_status FROM edu_attendance WHERE enrollment_id=?", unused).get("attendanceStatus"));
-    assertEquals("1", db.one("SELECT attendance_status FROM edu_attendance WHERE enrollment_id=?", attended).get("attendanceStatus"));
-    assertEquals(before - 2, db.jdbc().queryForObject("SELECT enrolled_count FROM edu_course_schedule WHERE schedule_id=1", Integer.class));
+    assertEquals(
+        "2",
+        db.one("SELECT attendance_status FROM edu_attendance WHERE enrollment_id=?", unused)
+            .get("attendanceStatus"));
+    assertEquals(
+        "1",
+        db.one("SELECT attendance_status FROM edu_attendance WHERE enrollment_id=?", attended)
+            .get("attendanceStatus"));
+    assertEquals(
+        before - 2,
+        db.jdbc()
+            .queryForObject(
+                "SELECT enrolled_count FROM edu_course_schedule WHERE schedule_id=1",
+                Integer.class));
   }
 
   @Test
@@ -556,7 +957,7 @@ class TuitionMysqlTest {
                 () -> {
                   start.await();
                   try {
-                    call(s, "createPayment", id, 2L, false, payBody(1, key));
+                    call(s, "createPayment", id, 1L, true, payBody(1, key));
                     return true;
                   } catch (Exception e) {
                     return false;
@@ -613,25 +1014,12 @@ class TuitionMysqlTest {
     assertThrows(Exception.class, () -> call(s, "cancelEnrollment", id, 2L, false));
     assertThrows(Exception.class, () -> call(s, "confirmPayment", payment, 2L, false, Map.of()));
     call(s, "confirmPayment", payment, 4L, true, Map.of());
-    var r =
-        call(
-            s,
-            "applyRefund",
-            1L,
-            true,
-            Map.of(
-                "paymentId",
-                payment,
-                "refundKind",
-                "PARTIAL",
-                "requestedAmount",
-                "300",
-                "reason",
-                "测试退款",
-                "idempotencyKey",
-                "OFFR" + id));
+    var r = legacyRefund(payment, 1L);
     long refund = lid(r, "refundId");
-    var reviewed = call(s, "reviewRefund", refund, 1L, Map.of("approved", true, "approvedAmount", "300"));
+    migrate();
+    assertEquals("PENDING_REVIEW", call(s, "refund", refund, 1L, true).get("refundStatus"));
+    var reviewed =
+        call(s, "reviewRefund", refund, 1L, Map.of("approved", true, "approvedAmount", "300"));
     assertEquals("APPROVED", reviewed.get("refundStatus"));
     assertEquals(1L, lid(reviewed, "reviewerId"));
     assertThrows(Exception.class, () -> call(s, "cancelRefund", refund, 2L));
@@ -639,7 +1027,7 @@ class TuitionMysqlTest {
     assertThrows(Exception.class, () -> call(s, "cancelRefund", refund, 1L, true));
     call(s, "confirmRefund", refund, 1L, Map.of("outcome", "UNKNOWN", "reason", "转账结果待查"));
     assertThrows(Exception.class, () -> call(s, "cancelRefund", refund, 2L));
-    assertEquals("700.00", call(s, "bill", id, 2L, false).get("refundableAmount"));
+    assertEquals("700.00", call(s, "bill", id, 1L, true).get("refundableAmount"));
     assertEquals("1000.00", call(s, "bill", id, 2L, false).get("netAmount"));
     String rp = proof(1, "REFUND", refund);
     call(
@@ -656,33 +1044,44 @@ class TuitionMysqlTest {
             "2025-10-07 13:00:00"));
     assertEquals("700.00", call(s, "bill", id, 2L, false).get("netAmount"));
     assertThrows(Exception.class, () -> call(s, "cancelRefund", refund, 1L, true));
-    assertThrows(Exception.class, () -> db.jdbc().update(
-        "UPDATE edu_tuition_refund SET approved_amount=1 WHERE refund_id=?", refund));
+    assertThrows(
+        Exception.class,
+        () ->
+            db.jdbc()
+                .update(
+                    "UPDATE edu_tuition_refund SET approved_amount=1 WHERE refund_id=?", refund));
+    var legacyFact = db.one("SELECT * FROM edu_tuition_refund WHERE refund_id=?", refund);
+    migrate();
+    assertEquals(legacyFact, db.one("SELECT * FROM edu_tuition_refund WHERE refund_id=?", refund));
   }
 
   @Test
-  void parentCanWithdrawAdminApplicationAndAdminCanWithdrawOwnPendingApplication() throws Exception {
+  void onlyAdminCanWithdrawOwnLegacyPendingApplication() throws Exception {
     var s = service("TuitionService");
     long id = fresh();
     call(s, "price", id, 1L, priceBody("MOCK"));
-    var payment = call(s, "createPayment", id, 2L, false, payBody(1, "CANCEL" + id));
+    var payment = call(s, "createPayment", id, 1L, true, payBody(1, "CANCEL" + id));
     long paymentId = lid(payment, "paymentId");
-    call(s, "confirmPayment", paymentId, 2L, false, Map.of());
-    for (boolean adminCancel : List.of(false, true)) {
-      var refund = call(s, "applyRefund", 1L, true, Map.of(
-          "paymentId", paymentId, "refundKind", "PARTIAL", "requestedAmount", "300",
-          "reason", "撤回测试", "idempotencyKey", "WITHDRAW" + id + adminCancel));
+    call(s, "confirmPayment", paymentId, 1L, true, Map.of());
+    {
+      var refund = legacyRefund(paymentId, 1L);
       long refundId = lid(refund, "refundId");
       assertThrows(Exception.class, () -> call(s, "cancelRefund", refundId, 3L));
       assertThrows(Exception.class, () -> call(s, "cancelRefund", refundId, 4L, true));
-      var cancelled = adminCancel
-          ? call(s, "cancelRefund", refundId, 1L, true)
-          : call(s, "cancelRefund", refundId, 2L);
+      assertThrows(Exception.class, () -> call(s, "cancelRefund", refundId, 2L));
+      var cancelled = call(s, "cancelRefund", refundId, 1L, true);
       assertEquals("CANCELLED", cancelled.get("refundStatus"));
       assertEquals(1L, lid(cancelled, "applicantId"));
-      assertEquals("1000.00", call(s, "bill", id, 2L, false).get("refundableAmount"));
-      assertThrows(Exception.class, () -> call(s, "reviewRefund", refundId, 1L,
-          Map.of("approved", true, "approvedAmount", "300")));
+      assertEquals("1000.00", call(s, "bill", id, 1L, true).get("refundableAmount"));
+      assertThrows(
+          Exception.class,
+          () ->
+              call(
+                  s,
+                  "reviewRefund",
+                  refundId,
+                  1L,
+                  Map.of("approved", true, "approvedAmount", "300")));
     }
   }
 
@@ -769,7 +1168,7 @@ class TuitionMysqlTest {
             1,
             "idempotencyKey",
             "coupon" + first);
-    var payment = call(s, "createPayment", first, 2L, false, pay);
+    var payment = call(s, "createPayment", first, 1L, true, pay);
     assertThrows(
         Exception.class,
         () ->
@@ -777,8 +1176,8 @@ class TuitionMysqlTest {
                 s,
                 "createPayment",
                 second,
-                2L,
-                false,
+                1L,
+                true,
                 Map.of(
                     "channel",
                     "MOCK",
@@ -828,8 +1227,8 @@ class TuitionMysqlTest {
             s,
             "createPayment",
             id,
-            2L,
-            false,
+            1L,
+            true,
             Map.of(
                 "channel",
                 "FREE",
@@ -856,8 +1255,6 @@ class TuitionMysqlTest {
                     p.get("paymentId"),
                     "refundKind",
                     "PARTIAL",
-                    "requestedAmount",
-                    "1",
                     "reason",
                     "不能现金退款",
                     "idempotencyKey",
@@ -882,8 +1279,8 @@ class TuitionMysqlTest {
     var s = new TuitionService(db, storage, rs, new CouponService(db), true);
     long id = fresh();
     s.price(id, 1, priceBody("MOCK"));
-    var p = s.createPayment(id, 2, false, payBody(1, "PDF" + id));
-    s.confirmPayment(lid(p, "paymentId"), 2, false, Map.of());
+    var p = s.createPayment(id, 1, true, payBody(1, "PDF" + id));
+    s.confirmPayment(lid(p, "paymentId"), 1, true, Map.of());
     var r = db.one("SELECT * FROM edu_tuition_receipt WHERE payment_id=?", p.get("paymentId"));
     assertEquals("FAILED", r.get("fileStatus"));
     assertEquals("SUCCESS", s.payment(lid(p, "paymentId"), 2, false).get("paymentStatus"));
@@ -947,8 +1344,8 @@ class TuitionMysqlTest {
     var prod = new TuitionService(db, storage, receiptService, new CouponService(db), false);
     assertThrows(Exception.class, () -> prod.bill(id, 2, false));
     assertThrows(Exception.class, () -> prod.createPayment(id, 2, false, payBody(1, "PROD" + id)));
-    var p = call(s, "createPayment", id, 2L, false, payBody(1, "MD" + id));
-    call(s, "confirmPayment", lid(p, "paymentId"), 2L, false, Map.of());
+    var p = call(s, "createPayment", id, 1L, true, payBody(1, "MD" + id));
+    call(s, "confirmPayment", lid(p, "paymentId"), 1L, true, Map.of());
     var r =
         call(
             s,
@@ -960,14 +1357,14 @@ class TuitionMysqlTest {
                 p.get("paymentId"),
                 "refundKind",
                 "PARTIAL",
-                "requestedAmount",
-                "300",
                 "reason",
                 "审核展示",
                 "idempotencyKey",
                 "MD-r" + id));
     assertEquals(true, r.get("mockAllowed"));
-    assertEquals("700.00", r.get("refundableAmount"));
+    assertNull(r.get("refundableAmount"));
+    assertEquals(
+        "1000.00", call(s, "refund", lid(r, "refundId"), 1L, true).get("refundableAmount"));
   }
 
   @Test
@@ -1058,8 +1455,8 @@ class TuitionMysqlTest {
     var s = service("TuitionService");
     long id = fresh();
     call(s, "price", id, 1L, priceBody("MOCK"));
-    var p = call(s, "createPayment", id, 2L, false, payBody(1, "IMM" + id));
-    call(s, "confirmPayment", lid(p, "paymentId"), 2L, false, Map.of());
+    var p = call(s, "createPayment", id, 1L, true, payBody(1, "IMM" + id));
+    call(s, "confirmPayment", lid(p, "paymentId"), 1L, true, Map.of());
     assertThrows(
         Exception.class,
         () ->
@@ -1080,11 +1477,11 @@ class TuitionMysqlTest {
         () ->
             db.jdbc()
                 .update("UPDATE edu_enrollment SET student_name='换学生' WHERE enrollment_id=?", id));
-    db.jdbc().execute("ALTER TABLE edu_enrollment MODIFY billing_close_reason varchar(254) NULL");
+    db.jdbc().update("UPDATE sys_role SET role_name='冲突角色' WHERE role_key='education'");
     try {
       assertThrows(AssertionError.class, this::migrate);
     } finally {
-      db.jdbc().execute("ALTER TABLE edu_enrollment MODIFY billing_close_reason varchar(255) NULL");
+      db.jdbc().update("UPDATE sys_role SET role_name='教务' WHERE role_key='education'");
     }
     migrate();
   }
@@ -1128,8 +1525,8 @@ class TuitionMysqlTest {
     assertEquals("0.00", summary.get("dueAmount"));
     long mock = fresh();
     call(s, "price", mock, 1L, priceBody("MOCK"));
-    var mp = call(s, "createPayment", mock, 2L, false, payBody(1, "SM" + mock));
-    call(s, "confirmPayment", lid(mp, "paymentId"), 2L, false, Map.of());
+    var mp = call(s, "createPayment", mock, 1L, true, payBody(1, "SM" + mock));
+    call(s, "confirmPayment", lid(mp, "paymentId"), 1L, true, Map.of());
     assertEquals(
         "0.00",
         call(s, "summary", 1L, Map.of("enrollmentId", String.valueOf(mock))).get("receivedAmount"));
@@ -1260,17 +1657,17 @@ class TuitionMysqlTest {
     var s = service("TuitionService");
     long id = fresh();
     call(s, "price", id, 1L, priceBody("MOCK"));
-    var p = call(s, "createPayment", id, 2L, false, payBody(1, "RACE-R" + id));
+    var p = call(s, "createPayment", id, 1L, true, payBody(1, "RACE-R" + id));
     long payment = lid(p, "paymentId");
     assertEquals(
         2,
         race(
             () -> {
-              call(s, "confirmPayment", payment, 2L, false, Map.of());
+              call(s, "confirmPayment", payment, 1L, true, Map.of());
               return true;
             },
             () -> {
-              call(s, "confirmPayment", payment, 2L, false, Map.of());
+              call(s, "confirmPayment", payment, 1L, true, Map.of());
               return true;
             }));
     assertEquals(
@@ -1294,8 +1691,6 @@ class TuitionMysqlTest {
                         payment,
                         "refundKind",
                         "PARTIAL",
-                        "requestedAmount",
-                        "600",
                         "reason",
                         "并发申请",
                         "idempotencyKey",
@@ -1317,8 +1712,6 @@ class TuitionMysqlTest {
                         payment,
                         "refundKind",
                         "PARTIAL",
-                        "requestedAmount",
-                        "600",
                         "reason",
                         "并发申请",
                         "idempotencyKey",
@@ -1329,6 +1722,6 @@ class TuitionMysqlTest {
               }
             });
     assertEquals(1, applied);
-    assertEquals("400.00", call(s, "bill", id, 2L, false).get("refundableAmount"));
+    assertEquals("1000.00", call(s, "bill", id, 1L, true).get("refundableAmount"));
   }
 }
