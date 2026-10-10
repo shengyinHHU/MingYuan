@@ -229,4 +229,31 @@ class LessonSchemaMysqlTest {
     db.execute("INSERT INTO edu_teacher_salary_config(teacher_id,teacher_name,status) VALUES(4,'停用配置','1')");
     assertThrows(DataIntegrityViolationException.class, () -> db.execute("UPDATE edu_teacher_salary_config SET status='0' WHERE teacher_name='停用配置'"));
   }
+
+  @Test @Order(9)
+  void rerunRejectsCheckLiteralWhitespaceCaseAndBackslashChanges() throws Exception {
+    for (String literal : List.of("'O PEN'", "'open'", "'O\\\\PEN'")) {
+      resetFixture();
+      migrateSuccessfully();
+      db.execute("ALTER TABLE edu_one_to_one_slot DROP CHECK ck_lslot_rules");
+      db.execute("ALTER TABLE edu_one_to_one_slot ADD CONSTRAINT ck_lslot_rules CHECK(end_time=start_time+INTERVAL 2 HOUR AND status IN (" + literal + ",'CLOSED') AND version>=0)");
+      assertConflict("quoted literal " + literal, "ck_lslot_rules");
+      db.execute("ALTER TABLE edu_one_to_one_slot DROP CHECK ck_lslot_rules");
+      migrateSuccessfully();
+      migrateSuccessfully();
+    }
+  }
+
+  @Test @Order(10)
+  void rerunRejectsGeneratedLiteralWhitespaceCaseAndBackslashChanges() throws Exception {
+    for (String literal : List.of("'B OOKED'", "'booked'", "'B\\\\OOKED'")) {
+      resetFixture();
+      migrateSuccessfully();
+      db.execute("ALTER TABLE edu_one_to_one_booking MODIFY active_slot_guard tinyint GENERATED ALWAYS AS (CASE WHEN status IN (" + literal + ",'COMPLETED') THEN 1 END) STORED");
+      assertConflict("quoted generated literal " + literal, "active_slot_guard");
+      db.execute("ALTER TABLE edu_one_to_one_booking MODIFY active_slot_guard tinyint GENERATED ALWAYS AS (CASE WHEN status IN ('BOOKED','COMPLETED') THEN 1 END) STORED");
+      migrateSuccessfully();
+      migrateSuccessfully();
+    }
+  }
 }

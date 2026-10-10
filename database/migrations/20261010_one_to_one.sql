@@ -5,8 +5,6 @@
 SET NAMES utf8mb4;
 DELIMITER $$
 DROP FUNCTION IF EXISTS lesson_normalize$$
-CREATE FUNCTION lesson_normalize(s text) RETURNS text DETERMINISTIC
-RETURN REPLACE(REGEXP_REPLACE(REPLACE(REPLACE(REPLACE(LOWER(s),CHAR(92),''),'`',''),'_utf8mb4',''),'[[:space:]]',''),'!=','<>')$$
 DROP PROCEDURE IF EXISTS lesson_column$$
 CREATE PROCEDURE lesson_column(IN t varchar(64),IN c varchar(64),IN typ varchar(100),IN spec text,IN nullable varchar(3),IN def text,IN expression text)
 BEGIN
@@ -22,7 +20,8 @@ BEGIN
   SELECT generation_expression INTO canonical FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='__lesson_verify_probe' AND column_name=c;
   DROP TABLE __lesson_verify_probe; SET probe_created=FALSE;
  END IF;
- IF LOWER(actual)<>LOWER(typ) OR actualnull<>nullable OR NOT(BINARY actualdef<=>BINARY def) OR (expression IS NULL AND COALESCE(actualexpr,'')<>'') OR (expression IS NOT NULL AND (ext NOT LIKE '%STORED GENERATED%' OR lesson_normalize(actualexpr)<>lesson_normalize(canonical))) OR (spec LIKE '%AUTO_INCREMENT%' AND ext NOT LIKE '%auto_increment%') THEN
+ -- Both expressions are canonicalized by MySQL; binary equality preserves quoted literals.
+ IF LOWER(actual)<>LOWER(typ) OR actualnull<>nullable OR NOT(BINARY actualdef<=>BINARY def) OR (expression IS NULL AND COALESCE(actualexpr,'')<>'') OR (expression IS NOT NULL AND (ext NOT LIKE '%STORED GENERATED%' OR NOT(BINARY actualexpr<=>BINARY canonical))) OR (spec LIKE '%AUTO_INCREMENT%' AND ext NOT LIKE '%auto_increment%') THEN
   SET msg=CONCAT('Lesson column/generated conflict: ',t,'.',c); SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT=msg;
  END IF;
  END IF;
@@ -67,7 +66,7 @@ BEGIN
    SELECT check_clause INTO canonical FROM information_schema.check_constraints WHERE constraint_schema=DATABASE() AND constraint_name='ck_lesson_verify_probe';
    DROP TABLE __lesson_verify_probe; SET probe_created=FALSE;
   END IF;
-  IF actual IS NULL OR lesson_normalize(actual)<>lesson_normalize(canonical) THEN SET msg=CONCAT('Lesson check conflict: ',t,'.',n); SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT=msg; END IF;
+  IF actual IS NULL OR NOT(BINARY actual<=>BINARY canonical) THEN SET msg=CONCAT('Lesson check conflict: ',t,'.',n); SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT=msg; END IF;
  END IF;
 END$$
 DROP PROCEDURE IF EXISTS lesson_preflight$$
@@ -307,4 +306,3 @@ DROP PROCEDURE lesson_column;
 DROP PROCEDURE lesson_index;
 DROP PROCEDURE lesson_fk;
 DROP PROCEDURE lesson_check;
-DROP FUNCTION lesson_normalize;
