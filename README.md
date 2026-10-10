@@ -13,11 +13,16 @@
 | 若依后端源码 | 根目录下 `RuoYi-Vue-master/`，入口模块为 `ruoyi-admin` |
 | 若依网页前端源码 | 根目录下 `RuoYi-Vue-master/ruoyi-ui/` |
 | 数据库脚本目录 | `/Users/philo/Documents/HHU/小程序/MingYuan-collab/database/`；仓库相对路径为 `database/` |
-| 本机 MySQL 连接 | `127.0.0.1:3306`，数据库名 `mingyuaneduminiapp` |
+| 本机 MySQL 连接 | `127.0.0.1:3306`；本机当前开发库 `mingyuaneduminiapp_dev_20261010`，旧库 `mingyuaneduminiapp` 保留 |
 | 本机 MySQL 数据文件目录 | `/opt/homebrew/var/mysql/`，由 MySQL 管理，不要直接复制或修改数据文件 |
-| 后端数据库连接配置 | `RuoYi-Vue-master/ruoyi-admin/src/main/resources/application-druid.yml` |
+| 后端数据库连接配置 | `RuoYi-Vue-master/ruoyi-admin/src/main/resources/application-druid.yml`；本地覆盖见 `application-local.yml` |
 
 ## 数据库使用边界
+
+- 2026-10-10 本机已将老师的完整备份导入独立库 `mingyuaneduminiapp_dev_20261010`，并执行课程财务迁移；没有覆盖旧库。老师备份不含课程财务扩展，不能直接覆盖已经有财务记录的库。
+- `druid,local` 默认连接上述本机新库；协作者需先准备包含最新主分支结构及课程财务迁移的数据库，或通过 `MYSQL_DATABASE` 指定自己的兼容库名。基础 `druid` 配置仍指向原库，正式环境不启用 `local`。
+- 全量备份含真实业务数据，保存在仓库外，不提交 GitHub。旧库的本地收款、收据、退款和优惠券未迁入新库，仍留在原库供核对；不可按相同 ID 盲目拼接两个库。
+- 老师备份已包含财务驾驶舱与教室调整结果，不要再次执行非幂等的 `20261008_classroom_campus_adjust.sql`。
 
 - `database/schema.sql`：当前 48 张表的结构，不包含业务数据。仅用于新建的空数据库。
 - `database/seed.sql`：基础菜单、角色、字典、系统配置及虚构演示账号。只在空库导入表结构后执行，不得覆盖现有数据库。演示账号为 `admin`、`teacher_demo`，密码均为 `123456`，仅供本机测试。

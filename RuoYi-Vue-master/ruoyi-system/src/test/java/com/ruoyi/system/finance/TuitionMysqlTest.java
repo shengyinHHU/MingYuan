@@ -55,7 +55,8 @@ class TuitionMysqlTest {
             "sys_config",
             "edu_classroom",
             "edu_course_schedule",
-            "edu_enrollment")) {
+            "edu_enrollment",
+            "edu_attendance")) {
       Matcher m =
           Pattern.compile("CREATE TABLE `" + table + "` \\(.*?\\) ENGINE=.*?;", Pattern.DOTALL)
               .matcher(schema);
@@ -389,6 +390,25 @@ class TuitionMysqlTest {
                 "SELECT enrolled_count FROM edu_course_schedule WHERE schedule_id=1",
                 Integer.class));
     assertEquals("已取消", call(s, "bill", id, 2L, false).get("enrollmentStatus"));
+  }
+
+  @Test
+  void cancellationInvalidatesOnlyUnusedAttendance() throws Exception {
+    var s = service("TuitionService");
+    long unused = fresh(), attended = fresh();
+    db.jdbc().update(
+        "INSERT INTO edu_attendance(attendance_code,schedule_id,enrollment_id,parent_id,student_name) VALUES(?,1,?,2,'学生')",
+        "unused" + unused, unused);
+    db.jdbc().update(
+        "INSERT INTO edu_attendance(attendance_code,schedule_id,enrollment_id,parent_id,student_name,attendance_status,attended_time,confirm_by,confirm_name) VALUES(?,1,?,2,'学生','1',NOW(),1,'经办')",
+        "attended" + attended, attended);
+    int before = db.jdbc().queryForObject("SELECT enrolled_count FROM edu_course_schedule WHERE schedule_id=1", Integer.class);
+    call(s, "cancelEnrollment", unused, 2L, false);
+    call(s, "cancelEnrollment", unused, 2L, false);
+    call(s, "cancelEnrollment", attended, 2L, false);
+    assertEquals("2", db.one("SELECT attendance_status FROM edu_attendance WHERE enrollment_id=?", unused).get("attendanceStatus"));
+    assertEquals("1", db.one("SELECT attendance_status FROM edu_attendance WHERE enrollment_id=?", attended).get("attendanceStatus"));
+    assertEquals(before - 2, db.jdbc().queryForObject("SELECT enrolled_count FROM edu_course_schedule WHERE schedule_id=1", Integer.class));
   }
 
   @Test

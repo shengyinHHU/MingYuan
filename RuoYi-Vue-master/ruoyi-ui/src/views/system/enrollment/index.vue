@@ -99,10 +99,10 @@
           plain
           icon="el-icon-delete"
           size="mini"
-          :disabled="multiple"
-          @click="handleDelete"
+          :disabled="cancelIds.length === 0"
+          @click="handleCancelEnrollment"
           v-hasPermi="['system:enrollment:remove']"
-        >删除</el-button>
+        >取消报名</el-button>
       </el-col>
       <el-col :span="1.5">
         <el-button
@@ -140,7 +140,19 @@
       <el-table-column label="学生姓名" align="center" prop="studentName" />
       <el-table-column label="学生手机号" align="center" prop="studentPhone" />
       <el-table-column label="联系电话" align="center" prop="contactPhone" />
-      <el-table-column label="报名状态" align="center" prop="enrollmentStatus" />
+      <el-table-column label="上课记录" align="center" width="180">
+        <template slot-scope="scope">
+          <div>已复核到课：{{ scope.row.attendedLessonCount || 0 }} 次</div>
+          <div>待复核到课：{{ scope.row.pendingLessonCount || 0 }} 次</div>
+          <div>录播：{{ scope.row.recordedLessonCount || 0 }} 次</div>
+          <div>请假：{{ scope.row.leaveLessonCount || 0 }} 次</div>
+        </template>
+      </el-table-column>
+      <el-table-column label="报名状态" align="center" prop="enrollmentStatus">
+        <template slot-scope="scope">
+          {{ getEnrollmentStatusLabel(scope.row.enrollmentStatus) }}
+        </template>
+      </el-table-column>
       <el-table-column label="支付状态" align="center" width="120">
         <template slot-scope="scope">
           <el-tag :type="getPayStatusType(scope.row.payStatus)" size="small">
@@ -163,7 +175,11 @@
         </template>
       </el-table-column>
       <el-table-column label="取消原因" align="center" prop="cancelReason" />
-      <el-table-column label="状态" align="center" prop="status" />
+      <el-table-column label="状态" align="center" prop="status">
+        <template slot-scope="scope">
+          {{ getStatusLabel(scope.row.status) }}
+        </template>
+      </el-table-column>
       <el-table-column label="备注" align="center" prop="remark" />
       <el-table-column label="操作" align="center" class-name="small-padding fixed-width">
         <template slot-scope="scope">
@@ -178,9 +194,10 @@
             size="mini"
             type="text"
             icon="el-icon-delete"
-            @click="handleDelete(scope.row)"
+            :disabled="isEnrollmentCancelled(scope.row)"
+            @click="handleCancelEnrollment(scope.row)"
             v-hasPermi="['system:enrollment:remove']"
-          >删除</el-button>
+          >取消报名</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -199,17 +216,17 @@
         <el-row>
           <el-col :span="24">
             <el-form-item label="报名编码" prop="enrollmentCode">
-              <el-input v-model="form.enrollmentCode" placeholder="请输入报名编码" />
+              <el-input v-model="form.enrollmentCode" placeholder="请输入报名编码" :disabled="form.enrollmentId != null" />
             </el-form-item>
           </el-col>
           <el-col :span="24">
             <el-form-item label="排课ID" prop="scheduleId">
-              <el-input v-model="form.scheduleId" placeholder="请输入排课ID" />
+              <el-input v-model="form.scheduleId" placeholder="请输入排课ID" :disabled="form.enrollmentId != null" />
             </el-form-item>
           </el-col>
           <el-col :span="24">
             <el-form-item label="家长用户ID" prop="parentId">
-              <el-input v-model="form.parentId" placeholder="请输入家长用户ID" />
+              <el-input v-model="form.parentId" placeholder="请输入家长用户ID" :disabled="form.enrollmentId != null" />
             </el-form-item>
           </el-col>
           <el-col :span="24">
@@ -231,6 +248,7 @@
             <el-form-item label="取消时间" prop="cancelTime">
               <el-date-picker clearable
                 v-model="form.cancelTime"
+                disabled
                 type="date"
                 value-format="yyyy-MM-dd"
                 placeholder="请选择取消时间">
@@ -244,7 +262,7 @@
           </el-col>
           <el-col :span="24">
             <el-form-item label="删除标志" prop="delFlag">
-              <el-input v-model="form.delFlag" placeholder="请输入删除标志" />
+              <el-input v-model="form.delFlag" disabled />
             </el-form-item>
           </el-col>
           <el-col :span="24">
@@ -263,7 +281,7 @@
 </template>
 
 <script>
-import { listEnrollment, getEnrollment, delEnrollment, addEnrollment, updateEnrollment } from "@/api/system/enrollment"
+import { listEnrollment, getEnrollment, cancelEnrollment, addEnrollment, updateEnrollment } from "@/api/system/enrollment"
 
 export default {
   name: "Enrollment",
@@ -273,6 +291,7 @@ export default {
       loading: true,
       // 选中数组
       ids: [],
+      cancelIds: [],
       // 非单个禁用
       single: true,
       // 非多个禁用
@@ -377,6 +396,7 @@ export default {
     // 多选框选中数据
     handleSelectionChange(selection) {
       this.ids = selection.map(item => item.enrollmentId)
+      this.cancelIds = selection.filter(item => !this.isEnrollmentCancelled(item)).map(item => item.enrollmentId)
       this.single = selection.length !== 1
       this.multiple = !selection.length
     },
@@ -416,14 +436,18 @@ export default {
         }
       })
     },
-    /** 删除按钮操作 */
-    handleDelete(row) {
-      const enrollmentIds = row.enrollmentId || this.ids
-      this.$modal.confirm('是否确认删除课程报名编号为"' + enrollmentIds + '"的数据项？').then(function() {
-        return delEnrollment(enrollmentIds)
-      }).then(() => {
+    isEnrollmentCancelled(row) {
+      return ['2', '已取消'].includes(String(row.enrollmentStatus)) || String(row.delFlag) === '2'
+    },
+    /** 取消报名，保留记录及已出勤历史 */
+    handleCancelEnrollment(row) {
+      const enrollmentIds = row.enrollmentId ? [row.enrollmentId] : this.cancelIds
+      if (!enrollmentIds.length || (row.enrollmentId && this.isEnrollmentCancelled(row))) return
+      this.$modal.confirm('确认取消选中的 ' + enrollmentIds.length + ' 条报名？报名和已出勤历史将保留，未使用考勤设为无效，并释放课程名额。').then(function() {
+        return cancelEnrollment(enrollmentIds.join(','))
+      }).then(response => {
         this.getList()
-        this.$modal.msgSuccess("删除成功")
+        this.$modal.msgSuccess(response.msg || "取消报名成功")
       }).catch(() => {})
     },
     /** 导出按钮操作 */
@@ -438,6 +462,16 @@ export default {
       if (status === '2') return '满班'
       if (status === '0') return '招生中'
       return '-'
+    },
+    /** 报名状态显示文字 */
+    getEnrollmentStatusLabel(status) {
+      const labels = { '0': '待确认', '1': '报名成功', '2': '已取消' }
+      return labels[String(status)] || status || '-'
+    },
+    /** 记录状态显示文字 */
+    getStatusLabel(status) {
+      const labels = { '0': '正常', '1': '停用' }
+      return labels[String(status)] || status || '-'
     },
     /** 支付状态标签颜色 */
     getPayStatusType(status) {

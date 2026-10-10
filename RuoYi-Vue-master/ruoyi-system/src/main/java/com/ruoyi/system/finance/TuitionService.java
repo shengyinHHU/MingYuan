@@ -1279,12 +1279,20 @@ public class TuitionService {
         "报名状态已变化");
     db.jdbc()
         .update(
-            "UPDATE edu_course_schedule SET"
-                + " enrolled_count=GREATEST(COALESCE(enrolled_count,0)-1,0),recruit_status=CASE"
-                + " WHEN recruit_status='2' THEN '0' ELSE recruit_status END,update_time=? WHERE"
+            "UPDATE edu_course_schedule s SET"
+                + " recruit_status=CASE WHEN recruit_status='2'"
+                + " AND GREATEST(COALESCE(enrolled_count,0)-1,0)<"
+                + " (SELECT IFNULL(c.capacity,999999) FROM edu_classroom c WHERE c.classroom_id=s.classroom_id)"
+                + " THEN '0' ELSE recruit_status END,"
+                + " enrolled_count=GREATEST(COALESCE(enrolled_count,0)-1,0),update_time=? WHERE"
                 + " schedule_id=?",
             now(),
             e.get("scheduleId"));
+    db.jdbc().update(
+        "UPDATE edu_attendance SET attendance_status='2',status='1',update_by=?,update_time=?"
+            + " WHERE enrollment_id=? AND del_flag='0' AND attendance_status IN ('0','未上课')"
+            + " AND attended_time IS NULL AND confirm_by IS NULL AND IFNULL(confirm_name,'')=''",
+        coupons.username(actor), now(), enrollment);
   }
 
   private void complete(

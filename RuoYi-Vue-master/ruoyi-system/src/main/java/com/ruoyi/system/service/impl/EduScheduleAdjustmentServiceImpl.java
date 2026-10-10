@@ -219,7 +219,7 @@ public class EduScheduleAdjustmentServiceImpl implements IEduScheduleAdjustmentS
 
     /**
      * 计算某排课在开课~结课日期内的全部上课日
-     * 规则与小程序端保持一致：WEEKLY 仅“周日”按周日对齐、其余一律按周六对齐；
+     * 规则与小程序端保持一致：WEEKLY 按明确的周一至周日对齐；
      * 模式为空时期次为周六/周日按 WEEKLY，否则按 DAILY_5_1（上5天休1天）
      */
     private Set<LocalDate> computeClassDates(LocalDate start, LocalDate end, String classPattern, String periodName)
@@ -236,7 +236,9 @@ public class EduScheduleAdjustmentServiceImpl implements IEduScheduleAdjustmentS
         }
         if ("WEEKLY".equals(pattern))
         {
-            DayOfWeek targetDay = "周日".equals(periodName) ? DayOfWeek.SUNDAY : DayOfWeek.SATURDAY;
+            int weekday = com.ruoyi.system.service.ScheduleCalendar.weekday(periodName);
+            if (weekday == 0) return dates;
+            DayOfWeek targetDay = DayOfWeek.of(weekday);
             LocalDate cur = start;
             while (!cur.isAfter(end) && cur.getDayOfWeek() != targetDay)
             {

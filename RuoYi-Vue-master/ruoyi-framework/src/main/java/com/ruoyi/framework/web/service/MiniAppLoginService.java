@@ -3,8 +3,11 @@ package com.ruoyi.framework.web.service;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -57,6 +60,9 @@ public class MiniAppLoginService
     private String mockTeacherPhone;
 
     @Autowired
+    private MiniAppDevelopmentSession developmentSession;
+
+    @Autowired
     private ISysUserService userService;
 
     @Autowired
@@ -76,9 +82,22 @@ public class MiniAppLoginService
 
     public String login(String loginCode, String phoneCode, String nickName, String devRole)
     {
+        return login(loginCode, phoneCode, nickName, devRole, null);
+    }
+
+    public String login(String loginCode, String phoneCode, String nickName, String devRole, Long devTeacherId)
+    {
+        if (devTeacherId != null && !EduRoleConstants.TEACHER.equalsIgnoreCase(StringUtils.trim(devRole)))
+        {
+            throw new ServiceException("教师账号参数仅适用于教师开发登录");
+        }
+        if (devTeacherId != null || EduRoleConstants.TEACHER.equalsIgnoreCase(StringUtils.trim(devRole)))
+        {
+            assertDevelopmentTeacherLogin();
+        }
         if (mockEnabled && StringUtils.isNotBlank(devRole))
         {
-            return loginMockRole(devRole, nickName);
+            return loginMockRole(devRole, nickName, devTeacherId);
         }
 
         String openid;
@@ -111,7 +130,7 @@ public class MiniAppLoginService
         return createLoginToken(user);
     }
 
-    private String loginMockRole(String devRole, String nickName)
+    private String loginMockRole(String devRole, String nickName, Long devTeacherId)
     {
         String role = StringUtils.defaultString(devRole).trim().toLowerCase();
         SysUser user;
@@ -130,10 +149,10 @@ public class MiniAppLoginService
         }
         else if (EduRoleConstants.TEACHER.equals(role))
         {
-            user = findMockTeacherUser();
-            if (user == null)
+            user = devTeacherId == null ? findMockTeacherUser() : userService.selectUserById(devTeacherId);
+            if (!isEligibleTeacher(user))
             {
-                throw new ServiceException("没有可用的教师账号，请在用户管理中检查账号状态及教师角色");
+                throw new ServiceException("该教师不存在、已停用或不具备独立教师身份，请刷新教师列表");
             }
         }
         else if (EduRoleConstants.PARENT.equals(role))
@@ -153,6 +172,11 @@ public class MiniAppLoginService
         return createLoginToken(user);
     }
 
+    private void assertDevelopmentTeacherLogin()
+    {
+        developmentSession.getVersion();
+    }
+
     private SysUser findMockTeacherUser()
     {
         // Explicit configuration must not silently log in as a different teacher.
@@ -162,7 +186,7 @@ public class MiniAppLoginService
             SysUser user = byUsername
                     ? userService.selectUserByUserName(mockTeacherUsername.trim())
                     : findExistingTeacher(mockTeacherPhone.trim());
-            if (!isAvailableTeacher(user))
+            if (!isEligibleTeacher(user))
             {
                 throw new ServiceException("配置的模拟教师不可用，请检查账号、启用状态和教师角色（WECHAT_MOCK_TEACHER_USERNAME / WECHAT_MOCK_TEACHER_PHONE）");
             }
@@ -175,7 +199,8 @@ public class MiniAppLoginService
     {
         // Reuse existing users and role assignments; never create a demo teacher.
         SysRole teacherRole = roleMapper.checkRoleKeyUnique(EduRoleConstants.TEACHER);
-        if (teacherRole == null || !UserConstants.ROLE_NORMAL.equals(teacherRole.getStatus()))
+        if (teacherRole == null || !UserConstants.ROLE_NORMAL.equals(teacherRole.getStatus())
+                || !UserConstants.NORMAL.equals(teacherRole.getDelFlag()))
         {
             return null;
         }
@@ -186,7 +211,7 @@ public class MiniAppLoginService
                 .filter(user -> phone == null || phone.equals(user.getPhonenumber()))
                 .sorted(Comparator.comparing(SysUser::getUserId))
                 .map(user -> userService.selectUserById(user.getUserId()))
-                .filter(this::isAvailableTeacher)
+                .filter(this::isEligibleTeacher)
                 .limit(phone == null ? 1 : 2).toList();
         if (candidates.size() > 1)
         {
@@ -195,17 +220,68 @@ public class MiniAppLoginService
         return candidates.isEmpty() ? null : candidates.get(0);
     }
 
-    private boolean isAvailableTeacher(SysUser user)
+    public String developmentSessionVersion()
     {
-        if (user == null || !UserConstants.NORMAL.equals(user.getStatus())
-                || !UserConstants.NORMAL.equals(user.getDelFlag()))
+        return developmentSession.getVersion();
+    }
+
+    public String loginDevelopmentSessionVersion()
+    {
+        return developmentSession.isEnabled() ? developmentSession.getVersion() : null;
+    }
+
+    public List<Map<String, Object>> developmentTeachers()
+    {
+        assertDevelopmentTeacherLogin();
+        List<Map<String, Object>> options = new ArrayList<>();
+        SysRole teacherRole = roleMapper.checkRoleKeyUnique(EduRoleConstants.TEACHER);
+        if (teacherRole == null || !"0".equals(teacherRole.getStatus()) || !"0".equals(teacherRole.getDelFlag()))
+        {
+            return options;
+        }
+        SysUser query = new SysUser();
+        query.setRoleId(teacherRole.getRoleId());
+        // Reuse the existing teacher-role query used by timetable management.
+        List<SysUser> users = new ArrayList<>(userMapper.selectAllocatedList(query));
+        users.sort(Comparator.comparing(SysUser::getNickName, Comparator.nullsLast(String::compareTo))
+                .thenComparing(SysUser::getUserId));
+        for (SysUser candidate : users)
+        {
+            SysUser user = userService.selectUserById(candidate.getUserId());
+            if (!isEligibleTeacher(user))
+            {
+                continue;
+            }
+            Map<String, Object> option = new LinkedHashMap<>();
+            option.put("userId", String.valueOf(user.getUserId()));
+            option.put("name", StringUtils.defaultIfBlank(user.getNickName(), user.getUserName()));
+            option.put("userName", user.getUserName());
+            options.add(option);
+        }
+        return options;
+    }
+
+    private boolean isEligibleTeacher(SysUser user)
+    {
+        if (user == null || user.isAdmin() || !"0".equals(user.getStatus())
+                || !"0".equals(user.getDelFlag()) || user.getRoles() == null)
         {
             return false;
         }
-        // This query excludes deleted roles, unlike the roles joined by selectUserById.
+        for (SysRole role : user.getRoles())
+        {
+            // An administrator account must not enter through the teacher shortcut.
+            if (role.isAdmin() || EduRoleConstants.ADMIN.equals(role.getRoleKey())
+                    || "administrator".equals(role.getRoleKey()))
+            {
+                return false;
+            }
+        }
+        // Check active role assignments directly so a deleted teacher role cannot grant login.
         return roleMapper.selectRolePermissionByUserId(user.getUserId()).stream()
                 .anyMatch(role -> EduRoleConstants.TEACHER.equals(role.getRoleKey())
-                        && UserConstants.ROLE_NORMAL.equals(role.getStatus()));
+                        && UserConstants.ROLE_NORMAL.equals(role.getStatus())
+                        && UserConstants.NORMAL.equals(role.getDelFlag()));
     }
 
     private String createLoginToken(SysUser user)
@@ -213,6 +289,10 @@ public class MiniAppLoginService
         userService.updateLoginInfo(user.getUserId(), IpUtils.getIpAddr(), DateUtils.getNowDate());
         Set<String> permissions = permissionService.getMenuPermission(user);
         LoginUser loginUser = new LoginUser(user.getUserId(), user.getDeptId(), user, permissions);
+        if (developmentSession.isEnabled())
+        {
+            return tokenService.createDevelopmentToken(loginUser);
+        }
         return tokenService.createToken(loginUser);
     }
 

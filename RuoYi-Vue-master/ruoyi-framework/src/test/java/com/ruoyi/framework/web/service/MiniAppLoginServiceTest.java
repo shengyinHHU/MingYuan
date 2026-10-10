@@ -24,6 +24,7 @@ class MiniAppLoginServiceTest
     private List<SysUser> users;
     private SysRole teacherRole;
     private LoginUser issuedToken;
+    private boolean developmentEnabled;
 
     @BeforeEach
     void setup() throws Exception
@@ -35,6 +36,14 @@ class MiniAppLoginServiceTest
         teacherRole.setDelFlag("0");
         users = List.of(user(10L, "teacher_a", "0", List.of(teacherRole)));
         issuedToken = null;
+        developmentEnabled = true;
+        set("developmentSession", new MiniAppDevelopmentSession() {
+            @Override public boolean isEnabled() { return developmentEnabled; }
+            @Override public String getVersion() {
+                if (!developmentEnabled) throw new ServiceException("Development login disabled");
+                return "test-session";
+            }
+        });
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(
                 proxy(HttpServletRequest.class, (method, args) -> switch (method) {
                     case "getHeader" -> null;
@@ -73,6 +82,9 @@ class MiniAppLoginServiceTest
             @Override public String createToken(LoginUser loginUser) {
                 issuedToken = loginUser;
                 return "test-token";
+            }
+            @Override public String createDevelopmentToken(LoginUser loginUser) {
+                return createToken(loginUser);
             }
         });
     }
@@ -209,6 +221,54 @@ class MiniAppLoginServiceTest
         set("secret", "");
         assertThrows(ServiceException.class, this::login);
         assertNull(issuedToken);
+    }
+
+    @Test
+    void selectedTeacherOverridesConfiguredFallback() throws Exception
+    {
+        users = List.of(users.get(0), user(20L, "teacher_b", "0", List.of(teacherRole)));
+        set("mockTeacherUsername", "teacher_a");
+        assertEquals("test-token", service.login("mock", "mock", "Teacher", "teacher", 20L));
+        assertEquals(20L, issuedToken.getUserId());
+    }
+
+    @Test
+    void administratorCannotEnterThroughTeacherLogin() throws Exception
+    {
+        SysRole administrator = new SysRole(8L);
+        administrator.setRoleKey("administrator");
+        administrator.setStatus("0");
+        administrator.setDelFlag("0");
+        users.get(0).setRoles(List.of(teacherRole, administrator));
+        assertThrows(ServiceException.class, this::login);
+        assertThrows(ServiceException.class, () -> service.login("mock", "mock", "Teacher", "teacher", 10L));
+        assertTrue(service.developmentTeachers().isEmpty());
+        assertNull(issuedToken);
+    }
+
+    @Test
+    void teacherLoginAndTeacherListRequireLocalDevelopmentSession()
+    {
+        developmentEnabled = false;
+        assertThrows(ServiceException.class, this::login);
+        assertThrows(ServiceException.class, () -> service.login("mock", "mock", "Teacher", "teacher", 10L));
+        assertThrows(ServiceException.class, service::developmentTeachers);
+        assertNull(issuedToken);
+    }
+
+    @Test
+    void selectedTeacherIdCannotBeUsedForAnotherRole()
+    {
+        assertThrows(ServiceException.class, () -> service.login("mock", "mock", "Teacher", "parent", 10L));
+        assertNull(issuedToken);
+    }
+
+    @Test
+    void teacherListContainsExistingEligibleTeachers()
+    {
+        users = List.of(users.get(0), user(20L, "disabled_teacher", "1", List.of(teacherRole)));
+        assertEquals(1, service.developmentTeachers().size());
+        assertEquals("10", service.developmentTeachers().get(0).get("userId"));
     }
 
     private String login() { return service.login("mock", "mock", "Test Teacher", "teacher"); }

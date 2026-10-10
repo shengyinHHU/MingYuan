@@ -110,6 +110,7 @@ public class MiniAppParentServiceImpl implements IMiniAppParentService
         int rows = miniAppParentMapper.insertParentEnrollment(enrollmentCode, body.getScheduleId(), parentId, studentName,
                 StringUtils.defaultString(body.getStudentPhone()), contactPhone, SecurityUtils.getUsername());
         Long enrollmentId = miniAppParentMapper.selectEnrollmentIdByCode(enrollmentCode);
+        if (rows != 1 || enrollmentId == null) throw new ServiceException("报名失败，请重试");
         if (enrollmentId != null)
         {
             tuition.initializeBill(enrollmentId, parentId);
@@ -126,7 +127,12 @@ public class MiniAppParentServiceImpl implements IMiniAppParentService
     public int cancelEnrollment(Long enrollmentId)
     {
         if (enrollmentId == null) throw new ServiceException("请选择要取消的课程");
+        Map<String, Object> owner = miniAppParentMapper.selectEnrollmentOwnerInfo(enrollmentId);
+        if (owner == null) throw new ServiceException("报名记录不存在");
+        if (!SecurityUtils.getUserId().equals(Long.valueOf(String.valueOf(owner.get("parentId")))))
+            throw new ServiceException("无权取消他人的报名");
+        boolean alreadyCancelled = java.util.Set.of("2", "已取消").contains(String.valueOf(owner.get("enrollmentStatus")));
         tuition.cancelEnrollment(enrollmentId, SecurityUtils.getUserId(), false);
-        return 1;
+        return alreadyCancelled ? 0 : 1;
     }
 }

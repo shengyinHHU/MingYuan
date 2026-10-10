@@ -76,10 +76,11 @@ public class MiniAppParentController extends BaseController
      * 财务安全取消：校验归属与收款状态，关闭账单并释放一次名额，保留历史考勤。
      */
     @PreAuthorize("@ss.hasAnyRoles('parent')")
-    @Log(title = "家长取消报名", businessType = BusinessType.DELETE)
+    @Log(title = "家长取消报名", businessType = BusinessType.UPDATE)
     @DeleteMapping("/enrollment/{enrollmentId}")
     public AjaxResult cancelEnrollment(@PathVariable("enrollmentId") Long enrollmentId)
     {
-        return toAjax(miniAppParentService.cancelEnrollment(enrollmentId));
+        int count = miniAppParentService.cancelEnrollment(enrollmentId);
+        return AjaxResult.success(count == 0 ? "该报名已取消" : "取消报名成功", count);
     }
 }

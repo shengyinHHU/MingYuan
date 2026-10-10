@@ -1,5 +1,4 @@
 const { request } = require('../../utils/request')
-const app = getApp()
 
 // 各来源可选的签到状态：报名=到课/录播/请假，试听=试听到课/请假，调课=调课到课/请假
 const STATUS_OPTIONS = {
@@ -30,10 +29,12 @@ Page({
     review: null,
     stats: null,
     loading: false,
+    ready: false,
     submitting: false
   },
 
   onLoad(query) {
+    this._unloaded = false
     this.setData({
       scheduleId: Number(query.scheduleId),
       course: decodeURIComponent(query.course || ''),
@@ -44,18 +45,25 @@ Page({
   },
 
   onDateChange(e) {
+    if (this.data.loading || this.data.submitting || this._unloaded) return
     this.setData({ classDate: e.detail.value })
     this.loadDetail()
   },
 
   async loadDetail() {
+    if (this.data.submitting || this._unloaded) return
     const { scheduleId, classDate } = this.data
-    this.setData({ loading: true })
+    const version = this._loadVersion = (this._loadVersion || 0) + 1
+    const token = wx.getStorageSync('token')
+    const current = () => !this._unloaded && version === this._loadVersion &&
+      this.data.classDate === classDate && wx.getStorageSync('token') === token
+    this.setData({ loading: true, ready: false, rows: [], stats: null, review: null, locked: false })
     try {
       const detail = await request({
         url: '/miniapp/teacher/sign/detail',
         data: { scheduleId, classDate }
       })
+      if (!current()) return
       const data = detail.data || {}
       const review = data.review || {}
       const details = data.details || []
@@ -73,6 +81,7 @@ Page({
           url: '/miniapp/teacher/sign/students',
           data: { scheduleId }
         })
+        if (!current()) return
         rows = (res.data || []).map((s) => this.decorateRow({
           enrollmentId: s.enrollment_id,
           studentName: s.student_name,
@@ -81,22 +90,35 @@ Page({
           remark: ''
         }, '1'))
       }
+      this._loadedToken = token
       this.setData({
+        ready: true,
         rows,
         review,
-        locked: review.reviewStatus === '1',
+        locked: String(review.reviewStatus) === '1',
         stats: this.buildStats(rows)
       })
     } catch (error) {
-      wx.showToast({ title: error.message || '加载失败', icon: 'none' })
+      if (current()) wx.showToast({ title: error.message || '加载失败', icon: 'none' })
     } finally {
-      this.setData({ loading: false })
+      if (current()) this.setData({ loading: false })
     }
   },
 
+  onUnload() { this._unloaded = true; this._loadVersion = (this._loadVersion || 0) + 1 },
+
+  canEdit() {
+    return !this._unloaded && this.data.ready && !this.data.locked && !this.data.loading && !this.data.submitting &&
+      wx.getStorageSync('token') === this._loadedToken
+  },
+
   decorateRow(row, sourceType) {
+    this._rowSequence = (this._rowSequence || 0) + 1
+    sourceType = String(sourceType)
     return {
       ...row,
+      rowKey: `student:${this._rowSequence}`,
+      signStatus: String(row.signStatus),
       sourceType,
       sourceText: SOURCE_LABELS[sourceType] || '报名',
       statusText: STATUS_LABELS[row.signStatus] || '',
@@ -119,11 +141,13 @@ Page({
   },
 
   setStatus(e) {
-    const { index, key } = e.currentTarget.dataset
-    if (this.data.locked) return
-    const rows = this.data.rows
-    rows[index].signStatus = key
-    rows[index].statusText = STATUS_LABELS[key]
+    if (!this.canEdit()) return
+    const { rowKey, key } = e.currentTarget.dataset
+    const index = this.data.rows.findIndex((row) => row.rowKey === rowKey)
+    const row = this.data.rows[index]
+    const status = String(key)
+    if (!row || !(STATUS_OPTIONS[row.sourceType] || []).some((option) => option.key === status)) return
+    const rows = this.data.rows.map((item, i) => i === index ? { ...item, signStatus: status, statusText: STATUS_LABELS[status] } : item)
     this.setData({ rows, stats: this.buildStats(rows) })
   },
 
@@ -132,13 +156,14 @@ Page({
   addTransferred() { this.addStudent('3') },
 
   addStudent(sourceType) {
-    if (this.data.locked) return
+    if (!this.canEdit() || !['2', '3'].includes(sourceType)) return
+    const version = this._loadVersion
     wx.showModal({
       title: sourceType === '2' ? '添加试听学员' : '添加调课学员',
       editable: true,
       placeholderText: '请输入学生姓名',
       success: (res) => {
-        if (!res.confirm) return
+        if (!res.confirm || !this.canEdit() || version !== this._loadVersion) return
         const name = (res.content || '').trim()
         if (!name) {
           wx.showToast({ title: '姓名不能为空', icon: 'none' })
@@ -162,24 +187,24 @@ Page({
   },
 
   removeRow(e) {
-    if (this.data.locked) return
-    const { index } = e.currentTarget.dataset
-    const row = this.data.rows[index]
+    if (!this.canEdit()) return
+    const { rowKey } = e.currentTarget.dataset
+    const row = this.data.rows.find((item) => item.rowKey === rowKey)
     if (!row || !row.added) return
     wx.showModal({
       title: '移除学员',
       content: `确定移除「${row.studentName}」吗？`,
       success: (res) => {
-        if (!res.confirm) return
-        const rows = this.data.rows.filter((_, i) => i !== index)
+        if (!res.confirm || !this.canEdit()) return
+        const rows = this.data.rows.filter((item) => item.rowKey !== rowKey)
         this.setData({ rows, stats: this.buildStats(rows) })
       }
     })
   },
 
   async submit() {
-    const { scheduleId, classDate, rows, submitting, locked } = this.data
-    if (submitting || locked) return
+    const { scheduleId, classDate, rows } = this.data
+    if (!this.canEdit()) return
     if (!rows.length) {
       wx.showToast({ title: '暂无学员可签到', icon: 'none' })
       return
@@ -201,12 +226,16 @@ Page({
           }))
         }
       })
+      if (this._unloaded || wx.getStorageSync('token') !== this._loadedToken) return
+      this.setData({ ready: false })
       wx.showToast({ title: `提交成功，实到 ${res.actualCount} 人`, icon: 'none' })
-      setTimeout(() => wx.navigateBack(), 900)
+      setTimeout(() => {
+        if (!this._unloaded && wx.getStorageSync('token') === this._loadedToken) wx.navigateBack()
+      }, 900)
     } catch (error) {
-      wx.showToast({ title: error.message || '提交失败', icon: 'none' })
+      if (!this._unloaded) wx.showToast({ title: error.message || '提交失败', icon: 'none' })
     } finally {
-      this.setData({ submitting: false })
+      if (!this._unloaded) this.setData({ submitting: false })
     }
   }
 })

@@ -10,9 +10,9 @@ import com.ruoyi.common.exception.ServiceException;
 import com.ruoyi.system.finance.FinanceEnrollmentGuard;
 import com.ruoyi.system.finance.TuitionService;
 import com.ruoyi.system.shop.ShopRepository;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import com.ruoyi.system.mapper.EduEnrollmentMapper;
 import com.ruoyi.system.domain.EduEnrollment;
 import com.ruoyi.system.service.IEduEnrollmentService;
@@ -88,11 +88,22 @@ public class EduEnrollmentServiceImpl implements IEduEnrollmentService
     @Transactional(rollbackFor = Exception.class)
     public int updateEduEnrollment(EduEnrollment eduEnrollment)
     {
+        if (eduEnrollment.getEnrollmentId() == null) throw new ServiceException("报名ID不能为空");
         var identity=db.one("SELECT schedule_id FROM edu_enrollment WHERE enrollment_id=?",eduEnrollment.getEnrollmentId());
+        if (identity == null || identity.isEmpty()) throw new ServiceException("报名记录不存在");
         db.one("SELECT schedule_id FROM edu_course_schedule WHERE schedule_id=? FOR UPDATE",identity.get("scheduleId"));
         db.one("SELECT enrollment_id FROM edu_enrollment WHERE enrollment_id=? FOR UPDATE",eduEnrollment.getEnrollmentId());
         FinanceEnrollmentGuard.checkUpdate(eduEnrollmentMapper.selectEduEnrollmentByEnrollmentId(eduEnrollment.getEnrollmentId()),eduEnrollment);
         eduEnrollment.setUpdateBy(SecurityUtils.getUsername());
+        // 财务保护已校验身份与支付状态，普通编辑不重写这些事实。
+        eduEnrollment.setEnrollmentCode(null);
+        eduEnrollment.setScheduleId(null);
+        eduEnrollment.setParentId(null);
+        eduEnrollment.setPayStatus(null);
+        // 取消状态及时间只能由取消事务维护，避免旧编辑窗口恢复已取消报名。
+        eduEnrollment.setEnrollmentStatus(null);
+        eduEnrollment.setDelFlag(null);
+        eduEnrollment.setCancelTime(null);
         eduEnrollment.setUpdateTime(DateUtils.getNowDate());
         return eduEnrollmentMapper.updateEduEnrollment(eduEnrollment);
     }
@@ -105,16 +116,25 @@ public class EduEnrollmentServiceImpl implements IEduEnrollmentService
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public int deleteEduEnrollmentByEnrollmentIds(Long[] enrollmentIds)
+    public int cancelEduEnrollmentByEnrollmentIds(Long[] enrollmentIds)
     {
-        if(enrollmentIds==null||enrollmentIds.length==0)throw new ServiceException("请选择报名记录");
+        if(enrollmentIds==null||enrollmentIds.length==0||Arrays.stream(enrollmentIds).anyMatch(Objects::isNull))throw new ServiceException("请选择报名记录");
         var sorted=Arrays.stream(enrollmentIds).distinct().map(eduEnrollmentMapper::selectEduEnrollmentByEnrollmentId).toList();
         if(sorted.stream().anyMatch(Objects::isNull))throw new ServiceException("部分报名记录不存在");
         int count=0;
         for(var record:sorted.stream().sorted(Comparator.comparing(EduEnrollment::getScheduleId).thenComparing(EduEnrollment::getEnrollmentId)).toList()) {
-            tuition.cancelEnrollment(record.getEnrollmentId(),SecurityUtils.getUserId(),true);count++;
+            boolean alreadyCancelled=java.util.Set.of("2","已取消").contains(Objects.toString(record.getEnrollmentStatus(),""));
+            tuition.cancelEnrollment(record.getEnrollmentId(),SecurityUtils.getUserId(),true);
+            if(!alreadyCancelled)count++;
         }
         return count;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int deleteEduEnrollmentByEnrollmentIds(Long[] enrollmentIds)
+    {
+        return cancelEduEnrollmentByEnrollmentIds(enrollmentIds);
     }
 
     /**
@@ -124,9 +144,9 @@ public class EduEnrollmentServiceImpl implements IEduEnrollmentService
      * @return 结果
      */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public int deleteEduEnrollmentByEnrollmentId(Long enrollmentId)
     {
-        tuition.cancelEnrollment(enrollmentId,SecurityUtils.getUserId(),true);
-        return 1;
+        return cancelEduEnrollmentByEnrollmentIds(new Long[] { enrollmentId });
     }
 }
