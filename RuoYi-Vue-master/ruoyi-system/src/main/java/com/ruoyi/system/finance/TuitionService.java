@@ -4,6 +4,7 @@ import static com.ruoyi.system.finance.FinanceRules.*;
 
 import com.alibaba.fastjson2.JSON;
 import com.ruoyi.common.exception.ServiceException;
+import com.ruoyi.system.lesson.LessonFinance;
 import com.ruoyi.system.shop.ShopRepository;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
@@ -23,6 +24,7 @@ public class TuitionService {
   private final TuitionReceiptService receipts;
   private final CouponService coupons;
   private final boolean mockEnabled;
+  private final LessonFinance lessons;
 
   @Autowired
   public TuitionService(
@@ -50,6 +52,7 @@ public class TuitionService {
     this.receipts = receipts;
     this.coupons = coupons;
     this.mockEnabled = mockEnabled;
+    this.lessons = new LessonFinance(db);
   }
 
   private <T> T tx(Supplier<T> op) {
@@ -212,9 +215,10 @@ public class TuitionService {
   /** Lock schedule first for every mutation, including callbacks and cancellation. */
   private Map<String, Object> lockEnrollment(long enrollment, long actor, boolean admin) {
     var e = enrollment(enrollment, actor, admin, false);
-    db.one(
-        "SELECT schedule_id FROM edu_course_schedule WHERE schedule_id=? FOR UPDATE",
-        e.get("scheduleId"));
+    if (!"LESSON_PACKAGE".equals(e.get("billType")))
+      db.one(
+          "SELECT schedule_id FROM edu_course_schedule WHERE schedule_id=? FOR UPDATE",
+          e.get("scheduleId"));
     return enrollment(enrollment, actor, admin, true);
   }
 
@@ -258,8 +262,9 @@ public class TuitionService {
   }
 
   private static final String BILL_FROM =
-      " FROM edu_enrollment e JOIN sys_user u ON u.user_id=e.parent_id JOIN edu_course_schedule s"
-          + " ON s.schedule_id=e.schedule_id JOIN edu_classroom c ON c.classroom_id=s.classroom_id";
+      " FROM edu_enrollment e JOIN sys_user u ON u.user_id=e.parent_id LEFT JOIN"
+          + " edu_course_schedule s ON s.schedule_id=e.schedule_id LEFT JOIN edu_classroom c ON"
+          + " c.classroom_id=s.classroom_id";
   private static final String BILL_SELECT =
       "SELECT e.*,u.nick_name parent_name,COALESCE(e.fee_title_snapshot,s.course_class_name)"
           + " course_class_name,COALESCE(e.campus_name_snapshot,c.campus_name) campus_name,(SELECT"
@@ -268,8 +273,12 @@ public class TuitionService {
           + " received_amount,(SELECT COALESCE(SUM(r.approved_amount),0) FROM edu_tuition_refund r"
           + " JOIN edu_tuition_payment p ON p.payment_id=r.payment_id WHERE"
           + " p.enrollment_id=e.enrollment_id AND r.refund_status='SUCCESS')"
-          + " refunded_amount,(SELECT COALESCE(SUM(CASE WHEN r.refund_status='PENDING_REVIEW' THEN"
-          + " r.requested_amount ELSE r.approved_amount END),0) FROM edu_tuition_refund r JOIN"
+          + " refunded_amount,(SELECT COUNT(*) FROM edu_tuition_refund r JOIN edu_tuition_payment p"
+          + " ON p.payment_id=r.payment_id WHERE p.enrollment_id=e.enrollment_id AND"
+          + " r.refund_status IN"
+          + " ('PENDING_REVIEW','APPROVED','PROCESSING','UNKNOWN','WAIT_EDU','WAIT_ADMIN'))"
+          + " active_refund_count,(SELECT COALESCE(SUM(CASE WHEN r.refund_status='PENDING_REVIEW'"
+          + " THEN r.requested_amount ELSE r.approved_amount END),0) FROM edu_tuition_refund r JOIN"
           + " edu_tuition_payment p ON p.payment_id=r.payment_id WHERE"
           + " p.enrollment_id=e.enrollment_id AND r.refund_status IN"
           + " ('PENDING_REVIEW','APPROVED','PROCESSING','UNKNOWN','WAIT_ADMIN'))"
@@ -303,6 +312,14 @@ public class TuitionService {
               ? e.get("payableAmount")
               : "0.00");
     }
+    e.put(
+        "canApplyRefund",
+        "OPEN".equals(e.get("billingStatus"))
+            && !Set.of("已取消", "2").contains(str(e, "enrollmentStatus"))
+            && e.get("refundableAmount") != null
+            && money(e.get("refundableAmount")).signum() > 0
+            && ((Number) e.get("activeRefundCount")).intValue() == 0);
+    e.remove("activeRefundCount");
     e.remove("reservedAmount");
     e.remove("successCount");
     e.remove("historyVerificationSnapshot");
@@ -825,6 +842,7 @@ public class TuitionService {
         paid.toLocalDateTime()
             .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
     p.put("confirmedBy", String.valueOf(actor));
+    lessons.activate(enrollment, actor);
     return createReceipt(p, actor);
   }
 
@@ -975,9 +993,20 @@ public class TuitionService {
     String key = key(b),
         reason = reason(b, "reason", 500),
         kind = str(b, "refundKind"),
-        hash = fingerprint(payment, b, "refundKind", "reason");
+        hash =
+            "SESSION".equals(kind)
+                ? fingerprint(
+                    payment, b, "refundKind", "reason", "classSignInId", "lessonBookingId")
+                : fingerprint(payment, b, "refundKind", "reason");
     require(b.get("requestedAmount") == null, "退费金额由教务确认，请勿填写申请金额");
-    require(Set.of("PARTIAL", "WITHDRAWAL").contains(kind), "退费类型无效");
+    require(Set.of("PARTIAL", "WITHDRAWAL", "SESSION").contains(kind), "退费类型无效");
+    Long signIn = b.get("classSignInId") == null ? null : id(b.get("classSignInId"));
+    Long booking = b.get("lessonBookingId") == null ? null : id(b.get("lessonBookingId"));
+    require(
+        "SESSION".equals(kind)
+            ? (signIn == null) != (booking == null)
+            : signIn == null && booking == null,
+        "单次退款必须且只能指定一个课次；其他退款不能指定课次");
     return tx(
         () -> {
           var p = lockPayment(payment, actor, admin);
@@ -1004,11 +1033,26 @@ public class TuitionService {
                   .isEmpty(),
               "REFUND_IN_PROGRESS: 当前已有在途退款");
           var e = enrollment(id(p.get("enrollmentId")), actor, admin, true);
-          require(!"CLOSED".equals(e.get("billingStatus")), "已退课账单不能再次申请退款");
+          require(
+              "OPEN".equals(e.get("billingStatus"))
+                  && !Set.of("2", "已取消").contains(str(e, "enrollmentStatus")),
+              "已退课或未核验账单不能再次申请退款");
+          require(
+              db.rows(
+                      "SELECT r.refund_id FROM edu_tuition_refund r JOIN edu_tuition_payment p ON"
+                          + " p.payment_id=r.payment_id WHERE p.enrollment_id=? AND r.refund_status"
+                          + " IN ('PENDING_REVIEW','APPROVED','PROCESSING','UNKNOWN','WAIT_EDU','WAIT_ADMIN')"
+                          + " FOR UPDATE",
+                      e.get("enrollmentId"))
+                  .isEmpty(),
+              "REFUND_IN_PROGRESS: 当前报名已有在途退款");
           BigDecimal previous = refunded(payment);
           require(
               money(p.get("amount")).subtract(previous).signum() > 0,
               "REFUND_LIMIT_EXCEEDED: 超过现金可退金额");
+          // Lock package before booking, including the booking FK lock taken by refund INSERT.
+          if ("SESSION".equals(kind))
+            lessons.validateSessionTarget(id(e.get("enrollmentId")), signIn, booking, actor);
           long refund =
               db.insert(
                   "edu_tuition_refund",
@@ -1019,6 +1063,10 @@ public class TuitionService {
                       payment,
                       "refund_kind",
                       kind,
+                      "class_sign_in_id",
+                      signIn,
+                      "lesson_booking_id",
+                      booking,
                       "requested_amount",
                       null,
                       "refund_status",
@@ -1048,6 +1096,9 @@ public class TuitionService {
                       coupons.username(actor),
                       "update_by",
                       coupons.username(actor)));
+          if ("SESSION".equals(kind))
+            lessons.reserveSession(id(e.get("enrollmentId")), refund, actor);
+          if ("WITHDRAWAL".equals(kind)) lessons.freeze(id(e.get("enrollmentId")), refund, actor);
           return refund(refund, actor, admin);
         });
   }
@@ -1204,6 +1255,7 @@ public class TuitionService {
                 values(
                     "refund_status", "REJECTED", "calculation_snapshot", JSON.toJSONString(audit)),
                 actor);
+            releaseTeaching(r, actor);
             return refund(refund, actor, true);
           }
           require(
@@ -1217,6 +1269,7 @@ public class TuitionService {
           require(remark.length() <= 500, "审核说明过长");
           BigDecimal amount = approved ? money(b.get("approvedAmount")) : null;
           if (approved) {
+            lessons.validateSession(id(p.get("enrollmentId")), refund, actor);
             require(
                 amount.signum() > 0
                     && (offline || amount.compareTo(money(r.get("requestedAmount"))) <= 0)
@@ -1255,6 +1308,7 @@ public class TuitionService {
                   "calculation_snapshot",
                   JSON.toJSONString(calc)),
               actor);
+          if (!approved) releaseTeaching(r, actor);
           return refund(refund, actor, true);
         });
   }
@@ -1431,6 +1485,7 @@ public class TuitionService {
         money(r.get("approvedAmount")).compareTo(money(p.get("amount")).subtract(refunded(payment)))
             <= 0,
         "REFUND_LIMIT_EXCEEDED");
+    lessons.validateSession(enrollment, refund, actor);
     update(
         "edu_tuition_refund",
         "refund_id",
@@ -1457,7 +1512,29 @@ public class TuitionService {
         e,
         values("pay_status", refunded.compareTo(money(p.get("amount"))) == 0 ? "已退款" : "部分退款"),
         actor);
-    if ("WITHDRAWAL".equals(r.get("refundKind"))) withdraw(enrollment, e, actor, str(r, "reason"));
+    if ("SESSION".equals(r.get("refundKind"))) lessons.reclaimSession(enrollment, refund, actor);
+    if ("WITHDRAWAL".equals(r.get("refundKind"))) {
+      lessons.close(enrollment, refund, actor);
+      withdraw(enrollment, e, actor, str(r, "reason"));
+    }
+  }
+
+  private void releaseTeaching(Map<String, Object> r, long actor) {
+    long enrollment =
+        id(
+            db.one(
+                    "SELECT enrollment_id FROM edu_tuition_payment WHERE payment_id=?",
+                    r.get("paymentId"))
+                .get("enrollmentId"));
+    if ("SESSION".equals(r.get("refundKind")))
+      lessons.releaseSession(enrollment, id(r.get("refundId")), actor);
+    if ("WITHDRAWAL".equals(r.get("refundKind"))) lessons.unfreeze(enrollment, actor);
+  }
+
+  public Map<String, Object> refundTargets(long enrollment, long actor, boolean admin) {
+    actor(actor, admin);
+    var e = enrollment(enrollment, actor, admin, false);
+    return values("rows", lessons.refundTargets(e));
   }
 
   public Map<String, Object> confirmRefund(long refund, long actor, Map<String, Object> b) {

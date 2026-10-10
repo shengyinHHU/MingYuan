@@ -56,6 +56,7 @@ class TuitionMysqlTest {
             "edu_classroom",
             "edu_course_schedule",
             "edu_enrollment",
+            "edu_class_sign_in",
             "edu_attendance")) {
       Matcher m =
           Pattern.compile("CREATE TABLE `" + table + "` \\(.*?\\) ENGINE=.*?;", Pattern.DOTALL)
@@ -106,6 +107,8 @@ class TuitionMysqlTest {
     db.jdbc()
         .update(
             "INSERT INTO sys_user_role SELECT 5,role_id FROM sys_role WHERE role_key='education'");
+    runMigration("20261010_one_to_one.sql", "20261010_tuition_session_refund.sql");
+    runMigration("20261010_tuition_session_refund.sql");
     privateRoot = Files.createTempDirectory(Path.of("/private/tmp"), "codex-tuition-finance-test-");
     new com.ruoyi.common.config.RuoYiConfig().setProfile(privateRoot.resolve("public").toString());
     storage = new FinancePrivateStorage(privateRoot.resolve("private").toString());
@@ -113,7 +116,15 @@ class TuitionMysqlTest {
   }
 
   void migrate() throws Exception {
-    runMigration("20261010_tuition_offline_two_stage.sql");
+    boolean session =
+        db.jdbc()
+                .queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE()"
+                        + " AND table_name='edu_tuition_refund' AND column_name='class_sign_in_id'",
+                    Integer.class)
+            > 0;
+    runMigration(
+        session ? "20261010_tuition_session_refund.sql" : "20261010_tuition_offline_two_stage.sql");
   }
 
   void migrateLegacy() throws Exception {
@@ -191,6 +202,234 @@ class TuitionMysqlTest {
             code,
             "enrollment_status",
             "报名成功"));
+  }
+
+  @Test
+  void sessionRefundPreservesOtherDatesAndChecksCurrentLeave() throws Exception {
+    var s = (TuitionService) service("TuitionService");
+    long bill = fresh();
+    s.price(bill, 1, priceBody("MOCK"));
+    long payment = lid(s.createPayment(bill, 1, true, payBody(1, "SESSION" + bill)), "paymentId");
+    s.confirmPayment(payment, 1, true, Map.of());
+    long first = signIn(bill, "2026-10-01"), second = signIn(bill, "2026-10-02");
+    assertEquals(true, s.bill(bill, 2, false).get("canApplyRefund"));
+    var r =
+        assertDoesNotThrow(
+            () ->
+                s.applyRefund(
+                    2,
+                    false,
+                    Map.of(
+                        "paymentId",
+                        payment,
+                        "refundKind",
+                        "SESSION",
+                        "classSignInId",
+                        first,
+                        "reason",
+                        "请假退费",
+                        "idempotencyKey",
+                        "S" + bill)));
+    assertEquals(false, s.bill(bill, 2, false).get("canApplyRefund"));
+    long refund = lid(r, "refundId");
+    db.jdbc().update("UPDATE edu_class_sign_in SET sign_status='1' WHERE sign_in_id=?", first);
+    assertThrows(
+        Exception.class,
+        () ->
+            s.reviewRefund(
+                refund, 1, Map.of("approved", true, "approvedAmount", "37.19", "version", 0)));
+    assertEquals("WAIT_EDU", s.refund(refund, 1, true).get("refundStatus"));
+    db.jdbc().update("UPDATE edu_class_sign_in SET sign_status='3' WHERE sign_in_id=?", first);
+    s.reviewRefund(refund, 1, Map.of("approved", true, "approvedAmount", "37.19", "version", 0));
+    db.jdbc().update("UPDATE edu_class_sign_in SET del_flag='2' WHERE sign_in_id=?", first);
+    assertThrows(Exception.class, () -> s.markRefunded(refund, 1, Map.of("version", 1)));
+    assertEquals("WAIT_ADMIN", s.refund(refund, 1, true).get("refundStatus"));
+    db.jdbc().update("UPDATE edu_class_sign_in SET del_flag='0' WHERE sign_in_id=?", first);
+    s.markRefunded(refund, 1, Map.of("version", 1));
+    s.markRefunded(refund, 1, Map.of("version", 1));
+    assertEquals("37.19", s.refund(refund, 2, false).get("approvedAmount"));
+    assertEquals(
+        "报名成功",
+        db.one("SELECT enrollment_status FROM edu_enrollment WHERE enrollment_id=?", bill)
+            .get("enrollmentStatus"));
+    assertEquals(
+        "3",
+        db.one("SELECT sign_status FROM edu_class_sign_in WHERE sign_in_id=?", second)
+            .get("signStatus"));
+    assertEquals(true, s.bill(bill, 2, false).get("canApplyRefund"));
+  }
+
+  long signIn(long bill, String date) {
+    return db.insert(
+        "edu_class_sign_in",
+        Map.of(
+            "schedule_id",
+            1,
+            "class_date",
+            date,
+            "enrollment_id",
+            bill,
+            "student_name",
+            "S" + bill,
+            "sign_status",
+            "3",
+            "review_status",
+            "1"));
+  }
+
+  @Test
+  void existingOfflinePartialRequestRetainsItsIdempotencyFingerprint() throws Exception {
+    var s = (TuitionService) service("TuitionService");
+    long bill = fresh();
+    s.price(bill, 1, priceBody("MOCK"));
+    long p = lid(s.createPayment(bill, 1, true, payBody(1, "OLDKEY" + bill)), "paymentId");
+    s.confirmPayment(p, 1, true, Map.of());
+    var request =
+        Map.<String, Object>of(
+            "paymentId",
+            p,
+            "refundKind",
+            "PARTIAL",
+            "reason",
+            "旧版本请求",
+            "idempotencyKey",
+            "OLD-R" + bill);
+    var r = s.applyRefund(2, false, request);
+    db.jdbc()
+        .update(
+            "UPDATE edu_tuition_refund SET request_hash=? WHERE refund_id=?",
+            FinanceRules.fingerprint(p, request, "refundKind", "reason"),
+            r.get("refundId"));
+    assertEquals(
+        r.get("refundId"),
+        assertDoesNotThrow(() -> s.applyRefund(2, false, request)).get("refundId"));
+  }
+
+  @Test
+  void sessionTargetsValidateOwnerReviewExactIdsAndGlobalUniqueness() throws Exception {
+    var s = (TuitionService) service("TuitionService");
+    long bill = fresh();
+    s.price(bill, 1, priceBody("MOCK"));
+    long p = lid(s.createPayment(bill, 1, true, payBody(1, "TARGET" + bill)), "paymentId");
+    s.confirmPayment(p, 1, true, Map.of());
+    long target = signIn(bill, "2026-09-01"), wrong = signIn(fresh(), "2026-09-01");
+    db.jdbc()
+        .update(
+            "UPDATE edu_class_sign_in SET sign_in_id=9007199254740993 WHERE sign_in_id=?", target);
+    target = 9007199254740993L;
+    assertThrows(Exception.class, () -> s.refundTargets(bill, 3, false));
+    var targets = (List<Map<String, Object>>) s.refundTargets(bill, 2, false).get("rows");
+    assertEquals("9007199254740993", targets.get(0).get("targetId"));
+    assertEquals("CLASS_SIGN_IN", targets.get(0).get("targetType"));
+    for (var body :
+        List.of(
+            Map.of("refundKind", "SESSION"),
+            Map.of("refundKind", "SESSION", "classSignInId", target, "lessonBookingId", 1L),
+            Map.of("refundKind", "PARTIAL", "classSignInId", target),
+            Map.of("refundKind", "SESSION", "classSignInId", wrong))) {
+      var request = new HashMap<String, Object>(body);
+      request.putAll(
+          Map.of("paymentId", p, "reason", "核对", "idempotencyKey", UUID.randomUUID().toString()));
+      assertThrows(Exception.class, () -> s.applyRefund(2, false, request));
+    }
+    var request =
+        Map.<String, Object>of(
+            "paymentId",
+            p,
+            "refundKind",
+            "SESSION",
+            "classSignInId",
+            target,
+            "reason",
+            "请假",
+            "idempotencyKey",
+            "TARGET-R" + bill);
+    db.jdbc().update("UPDATE edu_class_sign_in SET review_status='0' WHERE sign_in_id=?", target);
+    assertTrue(((List<?>) s.refundTargets(bill, 2, false).get("rows")).isEmpty());
+    assertThrows(Exception.class, () -> s.applyRefund(2, false, request));
+    db.jdbc().update("UPDATE edu_class_sign_in SET review_status='1' WHERE sign_in_id=?", target);
+    var r = s.applyRefund(2, false, request);
+    long refund = lid(r, "refundId");
+    assertEquals(r.get("refundId"), s.applyRefund(2, false, request).get("refundId"));
+    assertTrue(((List<?>) s.refundTargets(bill, 2, false).get("rows")).isEmpty());
+    var row =
+        ((List<Map<String, Object>>)
+                s.listBills(2, false, Map.of("enrollmentId", String.valueOf(bill))).get("rows"))
+            .get(0);
+    assertEquals(false, row.get("canApplyRefund"));
+    assertFalse(row.containsKey("refundableAmount"));
+    assertFalse(row.containsKey("reservedAmount"));
+    s.reviewRefund(refund, 1, Map.of("approved", true, "approvedAmount", "18.09", "version", 0));
+    s.markRefunded(refund, 1, Map.of("version", 1));
+    long secondPayment =
+        db.insert(
+            "edu_tuition_payment",
+            FinanceRules.values(
+                "payment_no",
+                FinanceRules.code("CLOSED"),
+                "enrollment_id",
+                bill,
+                "channel",
+                "MOCK",
+                "payment_status",
+                "CLOSED",
+                "finance_mode",
+                "MOCK",
+                "amount",
+                "1000",
+                "payer_name",
+                "家长",
+                "bill_snapshot",
+                "{}",
+                "recorded_by",
+                1,
+                "idempotency_key",
+                UUID.randomUUID().toString(),
+                "request_hash",
+                "b".repeat(64)));
+    long exactTarget = target;
+    assertThrows(
+        Exception.class,
+        () ->
+            db.insert(
+                "edu_tuition_refund",
+                FinanceRules.values(
+                    "refund_no",
+                    FinanceRules.code("DUP"),
+                    "payment_id",
+                    secondPayment,
+                    "refund_kind",
+                    "SESSION",
+                    "class_sign_in_id",
+                    exactTarget,
+                    "requested_amount",
+                    null,
+                    "refund_status",
+                    "WAIT_EDU",
+                    "reason",
+                    "重复目标",
+                    "calculation_snapshot",
+                    "{\"ruleVersion\":\"tuition-refund-offline-v2\"}",
+                    "applicant_id",
+                    2,
+                    "idempotency_key",
+                    UUID.randomUUID().toString(),
+                    "request_hash",
+                    "c".repeat(64))));
+    assertThrows(
+        Exception.class,
+        () ->
+            db.jdbc()
+                .update(
+                    "UPDATE edu_tuition_refund SET class_sign_in_id=? WHERE refund_id=?",
+                    wrong,
+                    refund));
+    assertEquals(
+        true,
+        ((List<Map<String, Object>>)
+                s.listBills(2, false, Map.of("enrollmentId", String.valueOf(bill))).get("rows"))
+            .get(0)
+            .get("canApplyRefund"));
   }
 
   Map<String, Object> priceBody(String mode) {
@@ -425,7 +664,10 @@ class TuitionMysqlTest {
     // This account exists only in the isolated fixture, above JavaScript's exact integer range.
     long rejectingAdmin = 9007199254740993L;
     db.jdbc()
-        .update("INSERT INTO sys_user VALUES(?,'large-admin','大ID管理员','0','0')", rejectingAdmin);
+        .update(
+            "INSERT INTO sys_user(user_id,user_name,nick_name,status,del_flag)"
+                + " VALUES(?,'large-admin','大ID管理员','0','0')",
+            rejectingAdmin);
     db.jdbc().update("INSERT INTO sys_user_role VALUES(?,1)", rejectingAdmin);
     long id = fresh(), other = fresh();
     call(s, "price", id, 5L, priceBody("REAL"));
@@ -515,7 +757,10 @@ class TuitionMysqlTest {
     assertTrue(rejected.get("calculationSnapshot").toString().contains("adminRejectReason"));
     assertEquals(
         "9007199254740993",
-        com.alibaba.fastjson2.JSON.parseObject(rejected.get("calculationSnapshot").toString())
+        com.alibaba
+            .fastjson2
+            .JSON
+            .parseObject(rejected.get("calculationSnapshot").toString())
             .get("adminRejectBy"));
     assertEquals(
         "STRING",
@@ -618,7 +863,7 @@ class TuitionMysqlTest {
   void couponRecipientsMatchOneActiveEnrollmentAndGrantRechecksFrozenFilters() {
     db.jdbc()
         .update(
-            "INSERT INTO sys_user"
+            "INSERT INTO sys_user(user_id,user_name,nick_name,status,del_flag)"
                 + " VALUES(51,'coupon-a','家长A','0','0'),(52,'coupon-b','家长B','0','0'),(53,'coupon-c','取消家长','0','0'),(54,'coupon-d','非家长','0','0')");
     db.jdbc().update("INSERT INTO sys_user_role VALUES(51,2),(52,2),(53,2)");
     for (int i = 51; i <= 54; i++)

@@ -33,6 +33,9 @@ class LessonMysqlTest {
     }
     db.execute("INSERT INTO sys_role(role_id,role_name,role_key,role_sort,status) VALUES(3,'教师','teacher',3,'0')");
     db.execute("INSERT INTO sys_user_role VALUES(1,1),(2,2),(3,2),(4,3),(5,3)");
+    for(String migration:List.of("20261010_tuition_refund_single_admin.sql","20261010_tuition_offline_two_stage.sql","20261010_tuition_session_refund.sql")) {
+      var result=fixture.migrate(Path.of("../../database/migrations/"+migration));assertEquals(0,result.exit(),result.output());
+    }
     db.execute("INSERT INTO sys_dict_data(dict_type,dict_value,dict_label) VALUES('edu_subject','math','数学'),('edu_subject','english','英语'),('edu_grade','grade5','五年级')");
     db.execute("UPDATE edu_course_schedule SET status='1' WHERE schedule_id=1");
     db.execute("INSERT INTO edu_classroom(classroom_id,classroom_code,campus_name,classroom_name) VALUES(2,'TEST2','测试校区','B')");
@@ -75,6 +78,100 @@ class LessonMysqlTest {
   long slot(long teacher,long room,String start) {return id(call("saveSlot",1L,true,values("teacherId",teacher,"classroomId",room,"subjectCode","math","startTime",start,"endTime",java.sql.Timestamp.valueOf(start).toLocalDateTime().plusHours(2).format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))).get("slotId"));}
   Map<String,Object> book(long parent,long student,long pack,long slot,String key) {return call("book",parent,values("studentId",student,"studentPackageId",pack,"slotId",slot,"idempotencyKey",key));}
   int balance(long p) {return db.queryForObject("SELECT available_units FROM edu_student_package WHERE student_package_id=?",Integer.class,p);}
+  com.ruoyi.system.finance.TuitionService tuition() { return new com.ruoyi.system.finance.TuitionService(repo,null,null,new com.ruoyi.system.finance.CouponService(repo),true); }
+  long[] sessionCase(int total,String level) {
+    long s=student(2),p=active(2,s,product("math",total),"P"),e=db.queryForObject("SELECT enrollment_id FROM edu_student_package WHERE student_package_id=?",Long.class,p);
+    long payment=db.queryForObject("SELECT payment_id FROM edu_tuition_payment WHERE enrollment_id=?",Long.class,e);
+    call("setTeacherLevel",1L,values("teacherId",4L,"level",level));
+    long b=id(book(2,s,p,slot(4,1,"2099-10-11 10:00:00"),"B").get("bookingId"));
+    call("cancel",2L,false,b,values("reason","请假"));
+    return new long[]{s,p,e,payment,b};
+  }
+  Map<String,Object> sessionRequest(long[] c,String key) {return values("paymentId",c[3],"refundKind","SESSION","lessonBookingId",c[4],"reason","请假退款","idempotencyKey",key);}
+  int reserved(long p) {return db.queryForObject("SELECT reserved_refund_units FROM edu_student_package WHERE student_package_id=?",Integer.class,p);}
+  @Test void rejectionReleasesBothStagesAndReclaimFailureRollsBackEverything() {
+    var c=sessionCase(10,"elite");var t=tuition();
+    assertEquals(1,((List<?>)t.refundTargets(c[2],2,false).get("rows")).size());
+    for(boolean adminStage:List.of(false,true)) {
+      long r=id(t.applyRefund(2,false,sessionRequest(c,"R"+adminStage)).get("refundId"));assertEquals(1,reserved(c[1]));
+      assertEquals(0,((List<?>)t.refundTargets(c[2],2,false).get("rows")).size());
+      if(adminStage)t.reviewRefund(r,1,values("approved",true,"approvedAmount","7.13","version",0));
+      t.reviewRefund(r,1,values("approved",false,"reviewRemark","核对驳回","version",adminStage?1:0));
+      assertEquals(0,reserved(c[1]));ledger(c[1],10);
+    }
+    long r=id(t.applyRefund(2,false,sessionRequest(c,"R3")).get("refundId"));
+    t.reviewRefund(r,1,values("approved",true,"approvedAmount","7.13","version",0));
+    var before=repo.one("SELECT financial_version,pay_status FROM edu_enrollment WHERE enrollment_id=?",c[2]);
+    db.execute("CREATE TRIGGER test_reclaim_failure BEFORE INSERT ON edu_lesson_unit_log FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='reclaim rollback'");
+    assertThrows(RuntimeException.class,()->t.markRefunded(r,1,values("version",1)));
+    assertEquals("WAIT_ADMIN",t.refund(r,1,true).get("refundStatus"));assertEquals(1,reserved(c[1]));ledger(c[1],10);
+    assertEquals(0,db.queryForObject("SELECT cash_refunded_units FROM edu_one_to_one_booking WHERE booking_id=?",Integer.class,c[4]));
+    assertEquals(before,repo.one("SELECT financial_version,pay_status FROM edu_enrollment WHERE enrollment_id=?",c[2]));
+    db.execute("DROP TRIGGER test_reclaim_failure");t.markRefunded(r,1,values("version",1));ledger(c[1],9);
+    assertEquals(0,((List<?>)t.refundTargets(c[2],2,false).get("rows")).size());
+    // A previous successful SESSION must not block releasing a later whole-package freeze.
+    long whole=id(t.applyRefund(2,false,values("paymentId",c[3],"refundKind","WITHDRAWAL","reason","终止","idempotencyKey","WHOLE1")).get("refundId"));
+    t.reviewRefund(whole,1,values("approved",false,"reviewRemark","继续上课","version",0));
+    assertEquals("ACTIVE",repo.one("SELECT status FROM edu_student_package WHERE student_package_id=?",c[1]).get("status"));ledger(c[1],9);
+    whole=id(t.applyRefund(2,false,values("paymentId",c[3],"refundKind","WITHDRAWAL","reason","终止","idempotencyKey","WHOLE2")).get("refundId"));
+    t.reviewRefund(whole,1,values("approved",true,"approvedAmount","50","version",0));t.markRefunded(whole,1,values("version",1));ledger(c[1],0);
+    assertEquals("CLOSED",repo.one("SELECT status FROM edu_student_package WHERE student_package_id=?",c[1]).get("status"));
+    assertEquals("CLOSED",repo.one("SELECT billing_status FROM edu_enrollment WHERE enrollment_id=?",c[2]).get("billingStatus"));
+  }
+  @Test void spentReturnedUnitsWrongPackageAndPartialRefundRules() {
+    var c=sessionCase(2,"senior");var t=tuition();
+    assertThrows(RuntimeException.class,()->t.applyRefund(3,false,sessionRequest(c,"OTHER")));
+    long other=active(2,c[0],product("math",2),"OTHER-P");long otherBill=db.queryForObject("SELECT enrollment_id FROM edu_student_package WHERE student_package_id=?",Long.class,other);
+    long otherPay=db.queryForObject("SELECT payment_id FROM edu_tuition_payment WHERE enrollment_id=?",Long.class,otherBill);
+    var wrong=sessionRequest(c,"WRONG");wrong.put("paymentId",otherPay);assertThrows(RuntimeException.class,()->t.applyRefund(2,false,wrong));
+    book(2,c[0],c[1],slot(5,2,"2099-10-12 10:00:00"),"SPEND");ledger(c[1],1);
+    assertThrows(ServiceException.class,()->t.applyRefund(2,false,sessionRequest(c,"SPENT")));assertEquals(0,reserved(c[1]));
+    long partial=id(t.applyRefund(2,false,values("paymentId",c[3],"refundKind","PARTIAL","reason","差额","idempotencyKey","PART")).get("refundId"));
+    t.reviewRefund(partial,1,values("approved",true,"approvedAmount","4.99","version",0));t.markRefunded(partial,1,values("version",1));ledger(c[1],1);
+    assertEquals("ACTIVE",repo.one("SELECT status FROM edu_student_package WHERE student_package_id=?",c[1]).get("status"));
+  }
+  @RepeatedTest(3) void concurrentReservationAndBookingCannotSpendSameReturnedUnits() throws Exception {
+    var c=sessionCase(2,"senior");var t=tuition();long sl=slot(5,2,"2099-10-12 10:00:00");
+    assertEquals(1,Collections.frequency(race(()->t.applyRefund(2,false,sessionRequest(c,"RACE")),()->book(2,c[0],c[1],sl,"RACE-B")),true));
+    assertTrue(balance(c[1])-reserved(c[1])>=0);
+    assertTrue((reserved(c[1])==2 && balance(c[1])==2)||(reserved(c[1])==0&&balance(c[1])==1));
+  }
+  @RepeatedTest(3) void withdrawalAndSessionAreMutuallyExclusiveWithoutDeadlock() throws Exception {
+    var c=sessionCase(2,"senior");var t=tuition();
+    assertEquals(1,Collections.frequency(race(()->t.applyRefund(2,false,sessionRequest(c,"RACE-S")),()->t.applyRefund(2,false,values("paymentId",c[3],"refundKind","WITHDRAWAL","reason","退包","idempotencyKey","RACE-W"))),true));
+    assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM edu_tuition_refund WHERE refund_status='WAIT_EDU'",Integer.class));
+    long r=db.queryForObject("SELECT refund_id FROM edu_tuition_refund",Long.class);t.reviewRefund(r,1,values("approved",false,"reviewRemark","释放","version",0));
+    assertEquals(0,reserved(c[1]));assertEquals("ACTIVE",repo.one("SELECT status FROM edu_student_package WHERE student_package_id=?",c[1]).get("status"));
+  }
+  @Test void freeStaffPaymentActivatesPackageOnceAndParentListContainsPackage() {
+    long product=product("math",10);db.update("UPDATE edu_lesson_package SET price=0 WHERE package_id=?",product);
+    var p=buy(2,student(2),product,"FREE");long e=id(p.get("enrollmentId"));var t=tuition();
+    var payment=t.createPayment(e,1,true,values("channel","FREE","expectedPayableAmount","0.00","financialVersion",0,"idempotencyKey","FREE-P"));
+    t.confirmPayment(id(payment.get("paymentId")),1,true,Map.of());ledger(id(p.get("studentPackageId")),10);
+    assertEquals(false,t.bill(e,2,false).get("canApplyRefund"));
+    assertEquals(1,((List<?>)t.listBills(2,false,Map.of("enrollmentId",String.valueOf(e))).get("rows")).size());
+  }
+  @Test void tuitionActivationAndSessionReservationReclaimAreAtomic() {
+    var tuition=new com.ruoyi.system.finance.TuitionService(repo,null,null,new com.ruoyi.system.finance.CouponService(repo),true);
+    long s=student(2);var bought=buy(2,s,product("math",10),"SESSION-BUY");
+    long e=id(bought.get("enrollmentId")),p=id(bought.get("studentPackageId"));
+    var payment=tuition.createPayment(e,1,true,values("channel","MOCK","expectedPayableAmount","100.00","financialVersion",0,"idempotencyKey","SESSION-PAY"));
+    tuition.confirmPayment(id(payment.get("paymentId")),1,true,Map.of());ledger(p,10);
+    assertEquals("ACTIVE",repo.one("SELECT status FROM edu_student_package WHERE student_package_id=?",p).get("status"));
+    call("setTeacherLevel",1L,values("teacherId",4L,"level","senior"));
+    var b=book(2,s,p,slot(4,1,"2099-10-11 10:00:00"),"SESSION-BOOK");
+    long booking=id(b.get("bookingId"));call("cancel",2L,false,booking,values("reason","请假"));ledger(p,10);
+    var request=values("paymentId",payment.get("paymentId"),"refundKind","SESSION","lessonBookingId",booking,"reason","单次退款","idempotencyKey","SESSION-REFUND");
+    var r=tuition.applyRefund(2,false,request);long refund=id(r.get("refundId"));
+    assertEquals(2,repo.one("SELECT reserved_refund_units FROM edu_student_package WHERE student_package_id=?",p).get("reservedRefundUnits"));
+    tuition.reviewRefund(refund,1,values("approved",true,"approvedAmount","12.34","version",0));
+    tuition.markRefunded(refund,1,values("version",1));tuition.markRefunded(refund,1,values("version",1));
+    ledger(p,8);
+    assertEquals(0,repo.one("SELECT reserved_refund_units FROM edu_student_package WHERE student_package_id=?",p).get("reservedRefundUnits"));
+    assertEquals(2,repo.one("SELECT cash_refunded_units FROM edu_one_to_one_booking WHERE booking_id=?",booking).get("cashRefundedUnits"));
+    call("returnUnits",1L,booking,values("reason","重复返次"));ledger(p,8);
+    assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM edu_lesson_unit_log WHERE event_type='REFUND_RECLAIM' AND booking_id=? AND refund_id=?",Integer.class,booking,refund));
+  }
   void ledger(long p,int expect) {
     assertEquals(expect,balance(p));
     assertEquals(expect,db.queryForObject("SELECT COALESCE(SUM(delta_units),0) FROM edu_lesson_unit_log WHERE student_package_id=?",Integer.class,p));

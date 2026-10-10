@@ -34,6 +34,12 @@ public class EduTuitionController {
     return result;
   }
 
+  @PreAuthorize("@ss.hasPermi('system:tuition:query')")
+  @GetMapping("/{id}/refund-targets")
+  public AjaxResult refundTargets(@PathVariable long id) {
+    return ok(tuition.refundTargets(id, SecurityUtils.getUserId(), true));
+  }
+
   @PreAuthorize("@ss.hasPermi('system:tuition:list')")
   @GetMapping("/list")
   public TableDataInfo list(@RequestParam Map<String, String> q) {
