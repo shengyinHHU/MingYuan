@@ -45,6 +45,7 @@ public class EduClassSignInServiceImpl implements IEduClassSignInService
 
     @Autowired
     private EduCourseScheduleMapper scheduleMapper;
+    @Autowired private com.ruoyi.system.shop.ShopRepository singleDb;
 
     @Override
     public List<EduClassSignIn> selectTeacherSchedules(Long teacherId)
@@ -141,6 +142,13 @@ public class EduClassSignInServiceImpl implements IEduClassSignInService
         if (schedule == null || "2".equals(schedule.getDelFlag()))
         {
             throw new ServiceException("排课不存在或已删除");
+        }
+        if ("2".equals(schedule.getClassMode()) && body.getDetails() != null) {
+            for (var detail : body.getDetails()) {
+                if (detail.getEnrollmentId() == null) throw new ServiceException("一对一签到需关联已确认的单次报名");
+                var rows = singleDb.rows("SELECT enrollment_id FROM edu_enrollment WHERE enrollment_id=? AND schedule_id=? AND class_date=? AND enrollment_status='1' AND del_flag='0' FOR UPDATE",detail.getEnrollmentId(),body.getScheduleId(),body.getClassDate());
+                if (rows.isEmpty()) throw new ServiceException("单次报名日期或确认状态已变化，请刷新");
+            }
         }
         if (!Objects.equals(schedule.getTeacherId(), SecurityUtils.getUserId()))
         {

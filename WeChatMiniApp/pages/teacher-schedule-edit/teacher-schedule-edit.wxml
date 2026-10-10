@@ -1,17 +1,21 @@
 <view class="page">
-  <view class="title">{{editing ? '修改排课' : '新增一对一课程'}}</view>
-  <view class="note">当前教师：{{teacherName}}。排课与若依共用数据，报名人数由报名业务维护。</view>
+  <view class="title">{{editing ? (form.classMode === '2' ? '修改一对一课程' : '修改排课') : '新增一对一课程'}}</view>
+  <view class="note">{{teacherName}} · {{simpleMode ? '每次 2 小时，每周同一时段' : '调整当前课程的授课安排'}}</view>
   <view class="message" wx:if="{{loading}}">正在加载…</view>
   <view class="message error" wx:if="{{error}}">{{error}}<button size="mini" bindtap="loadForm">重试</button></view>
-  <view wx:if="{{!loading && !error && !editing}}">
+  <view wx:if="{{!loading && !error && simpleMode}}">
+    <view class="teacher-profile"><text>{{form.subjectName || '学科尚未配置，请联系管理员'}}</text><text class="ui-pill">{{teacherLevelText}}</text></view>
+    <view class="field"><view>上课地点</view><input maxlength="255" value="{{form.lessonLocation}}" data-field="lessonLocation" bindinput="input" placeholder="请输入详细上课地点，可填写机构外地点" disabled="{{submitting}}" /></view>
     <view class="field"><view>课名</view><input maxlength="100" value="{{form.courseClassName}}" data-field="courseClassName" bindinput="input" placeholder="请输入课名" disabled="{{submitting}}" /></view>
     <view class="field" wx:for="{{pickers}}" wx:key="field"><view>{{item.label}}</view><picker range="{{item.options}}" range-key="label" value="{{item.index}}" data-field="{{item.field}}" bindchange="choose" disabled="{{submitting}}"><view class="picker">{{item.text}}　›</view></picker></view>
     <view class="field"><view>开始日期</view><picker mode="date" value="{{form.startDate}}" data-field="startDate" bindchange="chooseDate" disabled="{{submitting}}"><view class="picker">{{form.startDate}}　›</view></picker></view>
-    <view class="field"><view>开始时间</view><picker mode="time" value="{{startPickerTime}}" data-field="startTime" bindchange="chooseTime" disabled="{{submitting}}"><view class="picker">{{form.startTime}}　›</view></picker><view class="note">固定2小时，结束时间：{{endPreview || '请选择早于22:00的时间'}}</view></view>
-    <view class="field"><view>持续周数</view><picker range="{{weekOptions}}" value="{{weeks - 1}}" bindchange="chooseWeeks" disabled="{{submitting}}"><view class="picker">{{weeks}}周　›</view></picker><view class="note">从开始日期起，每周同一天、同一时段，共{{weeks}}次。最后一次：{{lastDate}}</view></view>
-    <button class="save" loading="{{submitting}}" disabled="{{submitting}}" bindtap="save">创建一对一课程</button>
+    <view class="field"><view>开始时间</view><picker mode="time" value="{{startPickerTime}}" data-field="startTime" bindchange="chooseTime" disabled="{{submitting}}"><view class="picker">{{form.startTime}}　›</view></picker><view class="note">结束 {{endPreview || '请选择早于22:00的时间'}} · 时长 2 小时</view></view>
+    <view class="field"><view>持续周数</view><picker range="{{weekOptions}}" value="{{weeks - 1}}" bindchange="chooseWeeks" disabled="{{submitting}}"><view class="picker">{{weeks}} 周 / {{weeks}} 个课次　›</view></picker><view class="note">每周同一天，家长按日期报名。最后一次：{{lastDate}}</view></view>
+    <button class="save" loading="{{submitting}}" disabled="{{submitting || (!editing && !subjectConfigured)}}" bindtap="save">{{editing ? '保存一对一课程' : '创建一对一课程'}}</button>
+    <button wx:if="{{editing}}" class="delete" disabled="{{submitting}}" bindtap="remove">删除课程</button>
   </view>
-  <view wx:if="{{!loading && !error && editing}}">
+  <view wx:if="{{!loading && !error && editing && !simpleMode}}">
+    <view class="field" wx:if="{{form.classMode === '2'}}"><view>上课地点</view><input maxlength="255" value="{{form.lessonLocation}}" data-field="lessonLocation" bindinput="input" disabled="{{submitting}}" /></view>
     <view class="field" wx:if="{{editing}}"><view>排课编码（只读）</view><view class="value">{{form.scheduleCode}}</view></view>
     <view class="field"><view>课程班名称</view><input maxlength="100" value="{{form.courseClassName}}" data-field="courseClassName" bindinput="input" placeholder="请输入课程班名称" disabled="{{submitting}}" /></view>
     <view class="field"><view>课程年份</view><input type="number" maxlength="4" value="{{form.courseYear}}" data-field="courseYear" bindinput="input" disabled="{{submitting}}" /></view>

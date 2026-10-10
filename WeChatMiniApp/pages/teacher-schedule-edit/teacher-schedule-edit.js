@@ -30,10 +30,10 @@ Page({
   async loadForm() {
     this.setData({ loading: true, error: '' })
     try {
-      const [dimensions, detail, ownCourses] = await Promise.all([
+      const [dimensions, detail, profile] = await Promise.all([
         request({ url: '/system/courseTimetable/dimensions' }),
         this._id ? request({ url: `/miniapp/teacher/course/schedule/${this._id}/edit` }) : Promise.resolve({ data: {} }),
-        this._id ? Promise.resolve({ data: [] }) : request({ url: '/miniapp/teacher/course/schedules' })
+        request({ url: '/miniapp/teacher/course/profile' })
       ])
       if (!this.current()) return
       this._dims = dimensions.data || {}
@@ -42,8 +42,8 @@ Page({
       const form = {
         scheduleId: course.scheduleId || null, scheduleCode: course.scheduleCode || '',
         courseYear: course.courseYear || this._dims.currentYear || new Date().getFullYear(),
-        classroomId: course.classroomId || '', termName: course.termName || '', periodName: course.periodName || '',
-        timeSlot: course.timeSlot || '', gradeName: course.gradeName || '', subjectName: course.subjectName || (ownCourses.data || []).find(item => item.subjectName)?.subjectName || (this._dims.subjects || [])[0]?.value || '',
+        classroomId: course.classroomId || '', lessonLocation: course.lessonLocation || '', termName: course.termName || '', periodName: course.periodName || '',
+        timeSlot: course.timeSlot || '', gradeName: course.gradeName || '', subjectName: course.subjectName || (profile.data || {}).teacherSubject || '',
         classType: course.classType || '', classMode: course.classMode || (this._id ? '1' : '2'),
         startTime: course.startTime || (this._id ? '' : '08:00:00'), endTime: course.endTime || '',
         startDate: course.startDate || (this._id ? '' : calendar.formatDate(new Date())), endDate: course.endDate || '',
@@ -51,7 +51,7 @@ Page({
         courseClassName: course.courseClassName || '', recruitStatus: course.recruitStatus || '0',
         status: course.status || '0', remark: course.remark || ''
       }
-      this.setData({ form, editing: !!this._id, teacherName: this._dims.currentUserNick || '当前教师', enrolledCount: course.enrolledCount || 0 })
+      this.setData({ form, simpleMode: !this._id || (String(form.classMode) === '2' && form.classPattern === 'WEEKLY'), weeks: course.startDate && course.endDate ? Math.floor((calendar.parseDate(course.endDate) - calendar.parseDate(course.startDate)) / 86400000 / 7) + 1 : 1, editing: !!this._id, teacherName: this._dims.currentUserNick || '当前教师', teacherLevelText: ({ elite: '精英教师', senior: '资深教师' })[(profile.data || {}).teacherLevel] || '后台未配置', subjectConfigured: !!(profile.data || {}).teacherSubject, enrolledCount: course.enrolledCount || 0 })
       this.updatePickers()
       this.updatePreview()
     } catch (error) {
@@ -68,7 +68,7 @@ Page({
       ['classType', '班型', dims.classTypes], ['classMode', '授课形式', this._id ? MODE : MODE.filter(item => item.value === '2')], ['classPattern', '上课模式', PATTERN],
       ['recruitStatus', '招生状态', RECRUIT], ['status', '排课状态', STATUS]
     ]
-    const visible = this._id ? definitions : definitions.filter(item => ['classroomId', 'gradeName', 'subjectName'].includes(item[0]))
+    const visible = this.data.simpleMode ? definitions.filter(item => ['gradeName'].includes(item[0]) || (this._id && ['recruitStatus','status'].includes(item[0]))) : definitions.filter(item => form.classMode !== '2' || !['classroomId','subjectName','classMode'].includes(item[0]))
     const pickers = visible.map(([field, label, source]) => {
       const options = (source || []).map(option => ({ value: option.value, label: option.label }))
       if (form[field] && !options.some(option => String(option.value) === String(form[field]))) options.unshift({ value: form[field], label: String(form[field]) })
@@ -81,7 +81,7 @@ Page({
   input(e) {
     if (!this.current() || this.data.submitting) return
     const field = e.currentTarget.dataset.field
-    if (!['courseClassName', 'courseYear', 'remark'].includes(field)) return
+    if (!['courseClassName', 'courseYear', 'remark', 'lessonLocation'].includes(field)) return
     this.setData({ [`form.${field}`]: e.detail.value })
   },
   choose(e) {
@@ -104,7 +104,7 @@ Page({
   },
   updatePreview() {
     this.setData({ startPickerTime: String(this.data.form.startTime || '').slice(0, 5), endPickerTime: String(this.data.form.endTime || '').slice(0, 5) })
-    if (this.data.editing) return
+    if (this.data.editing && !this.data.simpleMode) return
     const start = calendar.timeMinutes(this.data.form.startTime), date = calendar.parseDate(this.data.form.startDate)
     const end = start === null || start >= 1320 ? '' : `${String(Math.floor((start + 120) / 60)).padStart(2, '0')}:${String((start + 120) % 60).padStart(2, '0')}`
     this.setData({ endPreview: end, lastDate: date ? calendar.formatDate(calendar.addDays(date, (this.data.weeks - 1) * 7)) : '' })
@@ -119,8 +119,8 @@ Page({
   validation() {
     const form = this.data.form
     if (!this.data.editing && form.classMode !== '2') return '教师只能新增一对一课程'
-    if (!this.data.editing) {
-      for (const [field, label] of [['classroomId', '教室'], ['gradeName', '年级'], ['subjectName', '学科'], ['courseClassName', '课名']]) {
+    if (this.data.simpleMode) {
+      for (const [field, label] of [['lessonLocation', '上课地点'], ['gradeName', '年级'], ['subjectName', '后台授课学科'], ['courseClassName', '课名']]) {
         if (!String(form[field] || '').trim()) return `请填写${label}`
       }
       if (!calendar.parseDate(form.startDate)) return '请选择开始日期'
@@ -129,6 +129,7 @@ Page({
       return ''
     }
     for (const [field, label] of [['classroomId', '教室'], ['termName', '学期'], ['periodName', '期次／上课日'], ['timeSlot', '时段'], ['gradeName', '年级'], ['subjectName', '学科'], ['courseClassName', '课程班名称']]) {
+      if (field === 'classroomId' && form.classMode === '2') { if (!form.lessonLocation.trim()) return '请填写上课地点'; continue }
       if (!String(form[field] || '').trim()) return `请填写${label}`
     }
     const start = calendar.timeMinutes(form.startTime), end = calendar.timeMinutes(form.endTime)
@@ -151,9 +152,15 @@ Page({
     this.setData({ submitting: true })
     try {
       const form = this.data.form
-      let payload = { ...form, classPattern: form.classPattern || null, startDate: form.startDate || null, endDate: form.endDate || null, classroomId: Number(form.classroomId), courseYear: Number(form.courseYear),
+      let payload = { ...form, classPattern: form.classPattern || null, startDate: form.startDate || null, endDate: form.endDate || null, classroomId: form.classMode === '2' ? null : Number(form.classroomId), courseYear: Number(form.courseYear),
         courseClassName: form.courseClassName.trim(), remark: form.remark.trim() }
-      if (!this.data.editing) payload = { classroomId: Number(form.classroomId), gradeName: form.gradeName, courseClassName: form.courseClassName.trim(), subjectName: form.subjectName, startDate: form.startDate, startTime: form.startTime, weeks: this.data.weeks }
+      if (this.data.editing && this.data.simpleMode) {
+        payload.endTime = this.data.endPreview + ':00'; payload.endDate = this.data.lastDate
+        payload.periodName = ['周日','周一','周二','周三','周四','周五','周六'][calendar.parseDate(form.startDate).getDay()]
+        payload.courseYear = calendar.parseDate(form.startDate).getFullYear(); payload.classPattern = 'WEEKLY'
+        payload.timeSlot = String(form.startTime).slice(0,5) + '-' + this.data.endPreview
+      }
+      if (!this.data.editing) payload = { lessonLocation: form.lessonLocation.trim(), gradeName: form.gradeName, courseClassName: form.courseClassName.trim(), startDate: form.startDate, startTime: form.startTime, weeks: this.data.weeks }
       await request({ url: '/miniapp/teacher/course/schedule', method: this.data.editing ? 'PUT' : 'POST', data: payload })
       if (!this.current()) return
       wx.showToast({ title: '已保存', icon: 'success' })
@@ -178,7 +185,7 @@ Page({
   confirm(title, content) { return new Promise(resolve => wx.showModal({ title, content, success: result => resolve(result.confirm), fail: () => resolve(false) })) },
   backToCalendar() {
     const pages = getCurrentPages(), previous = pages[pages.length - 2]
-    if (previous) previous._scheduleDirty = true
+    pages.forEach(page => { if (page !== this) page._scheduleDirty = true })
     wx.navigateBack()
   }
 })

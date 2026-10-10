@@ -24,6 +24,7 @@ public class EduEnrollmentServiceImpl implements IEduEnrollmentService
 {
     @Autowired
     private EduEnrollmentMapper eduEnrollmentMapper;
+    @Autowired private com.ruoyi.system.mapper.EduCourseScheduleMapper scheduleMapper;
 
     /**
      * 查询课程报名
@@ -58,6 +59,8 @@ public class EduEnrollmentServiceImpl implements IEduEnrollmentService
     @Override
     public int insertEduEnrollment(EduEnrollment eduEnrollment)
     {
+        var schedule = scheduleMapper.selectEduCourseScheduleByScheduleId(eduEnrollment.getScheduleId());
+        if (schedule != null && "2".equals(schedule.getClassMode())) throw new ServiceException("一对一须选择具体日期提交，不能作为班课代报名");
         eduEnrollment.setCreateTime(DateUtils.getNowDate());
         return eduEnrollmentMapper.insertEduEnrollment(eduEnrollment);
     }
@@ -85,6 +88,10 @@ public class EduEnrollmentServiceImpl implements IEduEnrollmentService
                 || (eduEnrollment.getParentId() != null && !Objects.equals(eduEnrollment.getParentId(), current.getParentId())))
         {
             throw new ServiceException("报名编码、排课和家长不可通过修改报名信息变更");
+        }
+        if (current.getClassDate() != null) {
+            if (eduEnrollment.getPayStatus() != null && !java.util.List.of("0","未支付").contains(eduEnrollment.getPayStatus())) throw new ServiceException("单次一对一当前不处理支付");
+            eduEnrollment.setPayStatus(null);
         }
         // 支付状态等局部更新不会提交这些字段；普通编辑也不允许修改报名归属。
         eduEnrollment.setEnrollmentCode(null);
@@ -123,6 +130,7 @@ public class EduEnrollmentServiceImpl implements IEduEnrollmentService
             {
                 throw new ServiceException("报名记录不存在或已被删除：" + enrollmentId);
             }
+            if (current.getClassDate() != null) throw new ServiceException("单次一对一须由教师处理取消申请，不能直接取消");
             // 条件更新持有报名行锁；只有赢得首次取消的事务才处理名额和考勤。
             if (eduEnrollmentMapper.cancelEnrollment(enrollmentId, updateBy) == 0)
             {

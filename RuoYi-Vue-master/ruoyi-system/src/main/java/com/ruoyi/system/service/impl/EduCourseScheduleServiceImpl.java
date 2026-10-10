@@ -23,6 +23,7 @@ public class EduCourseScheduleServiceImpl implements IEduCourseScheduleService {
     @Autowired private EduCourseScheduleMapper eduCourseScheduleMapper;
     @Autowired private MiniAppParentMapper parentMapper;
     @Autowired private ShopRepository db;
+    @Autowired private com.ruoyi.system.service.OneToOneEnrollmentService singleService;
 
     private boolean teacherOnly() {
         return SecurityUtils.hasRole("teacher") && !SecurityUtils.hasRole("admin") && !SecurityUtils.isAdmin();
@@ -54,6 +55,7 @@ public class EduCourseScheduleServiceImpl implements IEduCourseScheduleService {
         require(schedule != null && schedule.getScheduleId() == null, "新增排课不能指定排课ID");
         if (teacherOnly()) require("2".equals(schedule.getClassMode()), "教师只能新增一对一课程");
         bindTeacher(schedule, null);
+        if ("2".equals(schedule.getClassMode())) schedule.setSubjectName(singleService.subject(schedule.getTeacherId()));
         if (blank(schedule.getScheduleCode())) schedule.setScheduleCode("SCH" + UUID.randomUUID().toString().replace("-", "").substring(0, 28));
         if (schedule.getCourseYear() == null) schedule.setCourseYear((long) LocalDate.now(java.time.ZoneId.of("Asia/Shanghai")).getYear());
         if (blank(schedule.getClassMode())) schedule.setClassMode("1");
@@ -80,12 +82,19 @@ public class EduCourseScheduleServiceImpl implements IEduCourseScheduleService {
         own(current);
         require(Objects.equals(before.getTeacherId(), current.getTeacherId()) && Objects.equals(before.getClassroomId(), current.getClassroomId()), "排课已被其他人调整，请刷新后重试");
         require(blank(input.getScheduleCode()) || input.getScheduleCode().equals(current.getScheduleCode()), "排课编码不可修改");
+        if (input.getLessonLocation() != null && "2".equals(current.getClassMode())) { input.setClassroomId(null); input.setClassMode("2"); }
+        if (teacherOnly() && "2".equals(current.getClassMode())) {
+            require(input.getClassMode() == null || "2".equals(input.getClassMode()), "不能把一对一改成班课");
+            input.setSubjectName(current.getSubjectName());
+        }
         EduCourseSchedule effective = merge(current, input);
         validate(effective);
-        if (hasAttendance(current.getScheduleId())) {
+        if (hasAttendance(current.getScheduleId()) || !db.rows("SELECT enrollment_id FROM edu_enrollment WHERE schedule_id=? AND class_date IS NOT NULL FOR UPDATE", current.getScheduleId()).isEmpty()) {
             require(Objects.equals(current.getTeacherId(), effective.getTeacherId())
                 && Objects.equals(current.getClassroomId(), effective.getClassroomId())
                 && Objects.equals(current.getClassMode(), effective.getClassMode())
+                && Objects.equals(current.getLessonLocation(), effective.getLessonLocation())
+                && Objects.equals(current.getSubjectName(), effective.getSubjectName())
                 && Objects.equals(current.getStartTime(), effective.getStartTime())
                 && Objects.equals(current.getEndTime(), effective.getEndTime())
                 && Objects.equals(ScheduleCalendar.date(current.getStartDate()), ScheduleCalendar.date(effective.getStartDate()))
@@ -147,7 +156,8 @@ public class EduCourseScheduleServiceImpl implements IEduCourseScheduleService {
         required(s.getScheduleCode(), 32, "排课编码"); required(s.getTermName(), 20, "学期"); required(s.getPeriodName(), 20, "期次或上课日");
         required(s.getTimeSlot(), 30, "时段"); required(s.getGradeName(), 20, "年级"); required(s.getSubjectName(), 20, "学科");
         required(s.getCourseClassName(), 100, "课程班名称");
-        require(s.getClassroomId() != null, "请选择教室");
+        if ("1".equals(s.getClassMode())) require(s.getClassroomId() != null, "请选择教室");
+        else if (s.getClassroomId() == null) required(s.getLessonLocation(), 255, "上课地点");
         require(s.getCourseYear() != null && s.getCourseYear() >= 2000 && s.getCourseYear() <= 2100, "课程年份应为2000至2100");
         require(s.getStartTime() != null && s.getEndTime() != null && s.getStartTime().isBefore(s.getEndTime()), "请填写正确的开始、结束时间，结束必须晚于开始");
         require(List.of("1", "2").contains(s.getClassMode()), "授课形式无效");
@@ -162,9 +172,9 @@ public class EduCourseScheduleServiceImpl implements IEduCourseScheduleService {
             require(List.of("WEEKLY", "DAILY_5_1").contains(s.getClassPattern() == null ? "" : s.getClassPattern()), "请明确上课模式");
             if ("WEEKLY".equals(s.getClassPattern())) require(ScheduleCalendar.weekday(s.getPeriodName()) > 0, "每周排课需明确周一至周日的上课星期");
         }
-        Map<String,Object> classroom = db.one("SELECT status,capacity FROM edu_classroom WHERE classroom_id=?", s.getClassroomId());
+        Map<String,Object> classroom = s.getClassroomId() == null ? Map.of("status","0") : db.one("SELECT status,capacity FROM edu_classroom WHERE classroom_id=?", s.getClassroomId());
         if ("0".equals(s.getStatus())) require("0".equals(classroom.get("status")), "所选教室已停用");
-        long enrolled = s.getScheduleId() == null ? 0 : db.rows("SELECT enrollment_id FROM edu_enrollment WHERE schedule_id=? AND del_flag='0' AND enrollment_status NOT IN('2','已取消') FOR UPDATE", s.getScheduleId()).size();
+        long enrolled = s.getScheduleId() == null ? 0 : db.rows("SELECT enrollment_id FROM edu_enrollment WHERE schedule_id=? AND del_flag='0' AND class_date IS NULL AND enrollment_status NOT IN('2','3','已取消') FOR UPDATE", s.getScheduleId()).size();
         Number capacity = (Number) classroom.get("capacity");
         require(capacity == null || enrolled <= capacity.longValue(), "所选教室容量少于当前报名人数");
         if ("2".equals(s.getClassMode())) require(enrolled <= 1, "一对一课程不能保留多名有效报名学员");
@@ -207,6 +217,7 @@ public class EduCourseScheduleServiceImpl implements IEduCourseScheduleService {
     private static void require(boolean condition, String message) { if (!condition) throw new ServiceException(message); }
     private EduCourseSchedule merge(EduCourseSchedule old, EduCourseSchedule in) {
         EduCourseSchedule s = new EduCourseSchedule(); s.setScheduleId(old.getScheduleId()); s.setScheduleCode(old.getScheduleCode());
+        s.setLessonLocation(in.getLessonLocation() == null ? old.getLessonLocation() : in.getLessonLocation());
         s.setTeacherId(in.getTeacherId()); s.setTeacherName(in.getTeacherName()); s.setClassroomId(in.getClassroomId());
         s.setCourseYear(in.getCourseYear() == null ? old.getCourseYear() : in.getCourseYear());
         s.setTermName(in.getTermName() == null ? old.getTermName() : in.getTermName()); s.setPeriodName(in.getPeriodName() == null ? old.getPeriodName() : in.getPeriodName());

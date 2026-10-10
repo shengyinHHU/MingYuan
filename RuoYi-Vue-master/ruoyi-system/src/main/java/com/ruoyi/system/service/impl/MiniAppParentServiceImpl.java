@@ -22,6 +22,7 @@ import com.ruoyi.system.service.IEduEnrollmentService;
 @Service
 public class MiniAppParentServiceImpl implements IMiniAppParentService
 {
+    @Autowired private com.ruoyi.system.service.OneToOneEnrollmentService singleService;
     @Autowired
     private MiniAppParentMapper miniAppParentMapper;
 
@@ -74,6 +75,7 @@ public class MiniAppParentServiceImpl implements IMiniAppParentService
     @Transactional(rollbackFor = Exception.class)
     public int enroll(MiniAppEnrollmentBody body)
     {
+        if (body != null && body.getScheduleId() != null && singleService.isSingle(body.getScheduleId())) return singleService.enroll(body);
         if (body == null || body.getScheduleId() == null)
         {
             throw new ServiceException("Please select a schedule");
@@ -142,6 +144,7 @@ public class MiniAppParentServiceImpl implements IMiniAppParentService
         {
             throw new ServiceException("该报名已取消，请勿重复操作");
         }
+        if (singleService.isSingle(Long.valueOf(owner.get("scheduleId").toString()))) throw new ServiceException("一对一报名请提交取消申请，由老师处理");
         return enrollmentService.cancelEduEnrollmentByEnrollmentIds(new Long[] { enrollmentId });
     }
 }

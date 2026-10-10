@@ -30,6 +30,7 @@ public class ScheduleCrudTest {
         principal(21, "teacher"); db = new FakeDb(); current = course(); current.setScheduleId(10L);
         service = new EduCourseScheduleServiceImpl();
         inject(service, "db", db);
+        inject(service, "singleService", new OneToOneEnrollmentService() { @Override public String subject(Long id) { return "数学"; } });
         inject(service, "parentMapper", proxy(MiniAppParentMapper.class, (p,m,a) -> List.of()));
         inject(service, "eduCourseScheduleMapper", proxy(EduCourseScheduleMapper.class, (p,m,a) -> {
             switch(m.getName()) {
@@ -55,18 +56,19 @@ public class ScheduleCrudTest {
     }
     @Test void simpleDraftUsesExactWeeksWeekdayAndTwoHours() {
         var draft = new com.ruoyi.system.domain.TeacherOneToOneDraft();
-        draft.classroomId = 1L; draft.gradeName = "一年级"; draft.subjectName = "数学"; draft.courseClassName = " 一对一数学 ";
+        draft.lessonLocation = "校外自定义地点"; draft.gradeName = "一年级"; draft.courseClassName = " 一对一数学 ";
         draft.startDate = LocalDate.parse("2026-12-28"); draft.startTime = LocalTime.of(8,30); draft.weeks = 4;
-        EduCourseSchedule schedule = draft.toSchedule();
+        EduCourseSchedule schedule = draft.toSchedule("数学");
+        assertNull(schedule.getClassroomId()); assertEquals("校外自定义地点",schedule.getLessonLocation());
         assertEquals("周一", schedule.getPeriodName()); assertEquals(LocalTime.of(10,30), schedule.getEndTime());
         assertEquals(LocalDate.parse("2027-01-18"), ScheduleCalendar.date(schedule.getEndDate()));
         assertEquals(4, ScheduleCalendar.dates(draft.startDate, ScheduleCalendar.date(schedule.getEndDate()), schedule.getClassPattern(), schedule.getPeriodName(), List.of()).size());
         assertEquals(1, service.insertEduCourseSchedule(schedule));
-        draft.weeks = 1; assertEquals(draft.startDate, ScheduleCalendar.date(draft.toSchedule().getEndDate()));
-        draft.weeks = 0; assertThrows(ServiceException.class, draft::toSchedule);
-        draft.weeks = 53; assertThrows(ServiceException.class, draft::toSchedule);
-        draft.weeks = 2; draft.startTime = LocalTime.of(22,0); assertThrows(ServiceException.class, draft::toSchedule);
-        draft.startTime = LocalTime.of(21,59); assertEquals(LocalTime.of(23,59), draft.toSchedule().getEndTime());
+        draft.weeks = 1; assertEquals(draft.startDate, ScheduleCalendar.date(draft.toSchedule("数学").getEndDate()));
+        draft.weeks = 0; assertThrows(ServiceException.class, () -> draft.toSchedule("数学"));
+        draft.weeks = 53; assertThrows(ServiceException.class, () -> draft.toSchedule("数学"));
+        draft.weeks = 2; draft.startTime = LocalTime.of(22,0); assertThrows(ServiceException.class, () -> draft.toSchedule("数学"));
+        draft.startTime = LocalTime.of(21,59); assertEquals(LocalTime.of(23,59), draft.toSchedule("数学").getEndTime());
     }
     @Test void teacherCanOnlyCreateOneToOneButAdminCanCreateClass() {
         EduCourseSchedule input = course(); input.setClassMode("1");
