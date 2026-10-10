@@ -78,6 +78,7 @@ public class EduCourseScheduleServiceImpl implements IEduCourseScheduleService {
         lockResources(List.of(before, input));
         EduCourseSchedule current = eduCourseScheduleMapper.lockSchedule(input.getScheduleId());
         own(current);
+        requireNoActiveEnrollments(current);
         require(Objects.equals(before.getTeacherId(), current.getTeacherId()) && Objects.equals(before.getClassroomId(), current.getClassroomId()), "排课已被其他人调整，请刷新后重试");
         require(blank(input.getScheduleCode()) || input.getScheduleCode().equals(current.getScheduleCode()), "排课编码不可修改");
         EduCourseSchedule effective = merge(current, input);
@@ -110,6 +111,7 @@ public class EduCourseScheduleServiceImpl implements IEduCourseScheduleService {
         for (EduCourseSchedule course : courses) {
             EduCourseSchedule locked = eduCourseScheduleMapper.lockSchedule(course.getScheduleId());
             own(locked);
+            requireNoActiveEnrollments(locked);
             require(Objects.equals(course.getClassroomId(), locked.getClassroomId()) && Objects.equals(course.getTeacherId(), locked.getTeacherId()), "排课已被其他人调整，请刷新后重试");
             require(referenceCount(course.getScheduleId()) == 0, "排课「" + course.getCourseClassName() + "」已有报名、考勤、调课或作业，不能删除，请改为停用");
         }
@@ -191,6 +193,12 @@ public class EduCourseScheduleServiceImpl implements IEduCourseScheduleService {
     private boolean hasAttendance(Long id) {
         return !db.rows("SELECT sign_in_id FROM edu_class_sign_in WHERE schedule_id=? FOR UPDATE", id).isEmpty()
             || !db.rows("SELECT attendance_id FROM edu_attendance WHERE schedule_id=? AND attendance_status='1' FOR UPDATE", id).isEmpty();
+    }
+    private void requireNoActiveEnrollments(EduCourseSchedule course) {
+        // Check actual registrations after locking the schedule shared by enrollment transactions.
+        require(db.rows("SELECT enrollment_id FROM edu_enrollment WHERE schedule_id=? AND del_flag='0'"
+            + " AND COALESCE(enrollment_status,'') NOT IN ('2','已取消') FOR UPDATE", course.getScheduleId()).isEmpty(),
+            "排课「" + course.getCourseClassName() + "」已有学员报名，禁止修改或删除。请先与学员沟通并处理报名，清空班次后再操作。");
     }
     private long referenceCount(Long id) {
         // 包含无外键但引用 schedule_id 的历史表，例如签到、调课和作业。
