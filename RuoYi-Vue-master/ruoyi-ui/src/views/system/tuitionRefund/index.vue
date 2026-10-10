@@ -715,7 +715,8 @@ export default {
           if (
             !result ||
             !result.data ||
-            typeof result.data.refundId !== 'string'
+            typeof result.data.refundId !== 'string' ||
+            !result.data.refundId.trim()
           )
             throw new Error('申请结果尚未确定，请核对申请记录后重试原申请')
           this.applyIntent = null

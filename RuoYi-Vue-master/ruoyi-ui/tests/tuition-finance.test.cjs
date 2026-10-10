@@ -1055,6 +1055,56 @@ test('staff application has no amount and freezes SESSION target and key after u
   await instance.openApply()
   assert.equal(instance.form.idempotencyKey, 'original')
 })
+for (const [name, refundId] of [
+  ['empty', ''],
+  ['whitespace', ' \t\n'],
+  ['missing', undefined],
+  ['numeric', 9],
+  ['null', null],
+]) {
+  test(`malformed ${name} application ID preserves web dialog and original retry intent`, async () => {
+    const sent = []
+    const instance = staffRefund({
+      applyRefund: async (data) => {
+        sent.push(JSON.parse(JSON.stringify(data)))
+        return { data: { refundId: sent.length === 1 ? refundId : '9' } }
+      },
+    })
+    instance.bill = { enrollmentId: '1' }
+    instance.successfulPayments = [{ paymentId: '2' }]
+    instance.operation = 'apply'
+    instance.operationOpen = true
+    instance.form = {
+      enrollmentId: '1',
+      paymentId: '2',
+      refundKind: 'PARTIAL',
+      reason: '费用调整',
+      idempotencyKey: 'original',
+    }
+    const originalForm = { ...instance.form }
+    instance.getList = async () => {}
+    await instance.submitOperation()
+    assert.equal(instance.operationOpen, true)
+    assert.deepEqual(instance.form, originalForm)
+    assert.deepEqual(JSON.parse(JSON.stringify(instance.applyForm)), originalForm)
+    assert.deepEqual(JSON.parse(JSON.stringify(instance.applyIntent)), {
+      paymentId: '2',
+      refundKind: 'PARTIAL',
+      reason: '费用调整',
+      idempotencyKey: 'original',
+    })
+    assert.match(instance.formError, /结果尚未确定/)
+    assert.match(renderedRefund(instance).text, /结果尚未确定/)
+    instance.form.reason = 'changed'
+    instance.form.idempotencyKey = 'replacement'
+    await instance.submitOperation()
+    assert.equal(sent.length, 2)
+    assert.deepEqual(sent[1], sent[0])
+    assert.equal(instance.applyIntent, null)
+    assert.equal(instance.operationOpen, false)
+  })
+}
+
 test('role and menu permission both guard staff writes and rendered actions', async () => {
   let writes = 0
   for (const [roles, permissions] of [

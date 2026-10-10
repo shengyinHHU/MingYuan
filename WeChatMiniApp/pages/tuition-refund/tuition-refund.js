@@ -68,7 +68,7 @@ Page({
       const payload = t.intent('refund', this.id, saved || { paymentId: String(payment.paymentId), refundKind, reason, ...(target ? { [target.targetType === 'CLASS_SIGN_IN' ? 'classSignInId' : 'lessonBookingId']: target.targetId } : {}) })
       this.setData({ retrying: true })
       const res = await t.request({ url: `${t.parentUrl}/refunds`, method: 'POST', data: payload })
-      if (!res.data || typeof res.data.refundId !== 'string' || !res.data.refundId) { const failure = new Error('申请结果尚未确定'); failure.uncertain = true; throw failure }
+      if (!res.data || typeof res.data.refundId !== 'string' || !res.data.refundId.trim()) { const failure = new Error('申请结果尚未确定'); failure.uncertain = true; throw failure }
       t.clearIntent('refund', this.id)
       if (this._active && visit === this._visit) { this.setData({ reason: '', retrying: false, legacyIntent: false }); await this.load(true) }
     } catch (error) { if (this._active && visit === this._visit) {

@@ -192,6 +192,17 @@ test('malformed application success preserves immutable original intent and dupl
   assert.equal(saved.refundKind, 'PARTIAL'); assert.equal(Object.hasOwn(saved, 'requestedAmount'), false)
 })
 
+test('whitespace application ID preserves miniapp reason and original retry intent', async () => {
+  storage = new Map(); const sent = []
+  refundEnv(o => { sent.push(structuredClone(o.data)); ok(o, { refundId: sent.length === 1 ? ' \t\n' : '9' }) })
+  const p = page('tuition-refund'); p.onLoad({ id: bill.enrollmentId }); await p.onShow(); p.setData({ reason: '费用调整' })
+  await p.apply()
+  assert.equal(p.data.retrying, true); assert.equal(p.data.reason, '费用调整'); assert.match(p.data.error, /结果尚未确定/)
+  assert.deepEqual(helper().savedIntent('refund', bill.enrollmentId), sent[0])
+  p.setData({ reason: 'changed', kindIndex: 1 }); await p.apply()
+  assert.equal(sent.length, 2); assert.deepEqual(sent[1], sent[0]); assert.equal(storage.size, 0); assert.equal(p.data.retrying, false)
+})
+
 test('legacy completed refund explains history instead of claiming new two-stage progress', () => {
   env(o => ok(o, {})); const t = helper()
   for (const refundWorkflow of ['LEGACY', undefined]) {
