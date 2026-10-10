@@ -444,7 +444,7 @@ export default {
       })
     },
     isEnrollmentCancelled(row) {
-      return ['2', '已取消'].includes(String(row.enrollmentStatus)) || String(row.delFlag) === '2'
+      return !!row.classDate || ['2', '已取消'].includes(String(row.enrollmentStatus)) || String(row.delFlag) === '2'
     },
     /** 取消报名，保留记录及已出勤历史 */
     handleCancelEnrollment(row) {
@@ -472,7 +472,7 @@ export default {
     },
     /** 报名状态显示文字 */
     getEnrollmentStatusLabel(status) {
-      const labels = { '0': '待确认', '1': '报名成功', '2': '已取消' }
+      const labels = { '0': '待确认', '1': '报名成功', '2': '已取消', '3': '老师已拒绝' }
       return labels[String(status)] || status || '-'
     },
     /** 记录状态显示文字 */

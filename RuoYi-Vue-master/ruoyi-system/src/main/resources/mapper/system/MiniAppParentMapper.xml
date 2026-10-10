@@ -16,7 +16,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             s.end_time as endTime,
             s.grade_name as gradeName,
             s.subject_name as subjectName,
-            coalesce(nullif(trim(teacher.nick_name), ''), s.teacher_name) as teacherName,
+            coalesce(nullif(trim(teacher.user_name), ''), nullif(trim(teacher.nick_name), ''), s.teacher_name) as teacherName,
             s.teacher_id as teacherId,
             s.class_type as classType,
             s.course_class_name as courseClassName,
@@ -38,6 +38,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             s.del_flag = '0'
             and s.status = '0'
             and s.recruit_status = '0'
+            and s.class_mode != '2'
             and c.status = '0'
             <if test="gradeName != null and gradeName != ''">
                 and s.grade_name = #{gradeName}
@@ -55,6 +56,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     <select id="selectParentEnrollments" resultType="java.util.HashMap">
         select
             e.enrollment_id as enrollmentId,
+            e.class_date as classDate, e.cancel_request_status as cancelRequestStatus,
+            s.class_mode as classMode, s.lesson_location as lessonLocation,
+            s.start_time as startTime, s.end_time as endTime,
             e.enrollment_code as enrollmentCode,
             e.schedule_id as scheduleId,
             e.student_name as studentName,
@@ -68,13 +72,13 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             s.time_slot as timeSlot,
             s.grade_name as gradeName,
             s.subject_name as subjectName,
-            coalesce(nullif(trim(teacher.nick_name), ''), s.teacher_name) as teacherName,
+            coalesce(nullif(trim(teacher.user_name), ''), nullif(trim(teacher.nick_name), ''), s.teacher_name) as teacherName,
             c.campus_name as campusName,
             c.classroom_name as classroomName
         from edu_enrollment e
         inner join edu_course_schedule s on s.schedule_id = e.schedule_id
         left join sys_user teacher on teacher.user_id = s.teacher_id
-        inner join edu_classroom c on c.classroom_id = s.classroom_id
+        left join edu_classroom c on c.classroom_id = s.classroom_id
         where e.parent_id = #{parentId}
           and e.del_flag = '0'
         order by e.create_time desc, e.enrollment_id desc
@@ -83,6 +87,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     <select id="selectParentTimetable" resultType="java.util.HashMap">
         select
             e.enrollment_id as enrollmentId,
+            e.class_date as classDate,e.cancel_request_status as cancelRequestStatus,
+            s.class_mode as classMode,s.lesson_location as lessonLocation,
             e.schedule_id as scheduleId,
             e.student_name as studentName,
             e.enrollment_status as enrollmentStatus,
@@ -95,19 +101,19 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             s.time_slot as timeSlot,
             s.start_time as startTime,
             s.end_time as endTime,
-            s.start_date as startDate,
-            s.end_date as endDate,
+            coalesce(e.class_date,s.start_date) as startDate,
+            coalesce(e.class_date,s.end_date) as endDate,
             s.class_pattern as classPattern,
             s.grade_name as gradeName,
             s.subject_name as subjectName,
-            coalesce(nullif(trim(teacher.nick_name), ''), s.teacher_name) as teacherName,
+            coalesce(nullif(trim(teacher.user_name), ''), nullif(trim(teacher.nick_name), ''), s.teacher_name) as teacherName,
             s.class_type as classType,
             c.campus_name as campusName,
             c.classroom_name as classroomName
         from edu_enrollment e
         inner join edu_course_schedule s on s.schedule_id = e.schedule_id
         left join sys_user teacher on teacher.user_id = s.teacher_id
-        inner join edu_classroom c on c.classroom_id = s.classroom_id
+        left join edu_classroom c on c.classroom_id = s.classroom_id
         where e.parent_id = #{parentId}
           and e.del_flag = '0'
           and e.enrollment_status in ('1', '报名成功')

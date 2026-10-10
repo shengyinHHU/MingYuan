@@ -230,6 +230,9 @@ page {
 }
 
 .teacher-calendar { margin: 0 24rpx; }
+.load-status { margin: 20rpx 24rpx; text-align: center; color: #647286; font-size: 25rpx; }
+.load-error { margin: 20rpx 24rpx; }
+.load-error button { margin: 16rpx 0 0; color: #0b326a; background: #fff; }
 .week-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8rpx; }
 .week-toolbar button { margin: 0; padding: 0 16rpx; font-size: 24rpx; color: #0b326a; background: #fff; }
 .date-picker { padding: 14rpx 12rpx; font-size: 24rpx; color: #0f58a8; background: #fff; border-radius: 10rpx; }
@@ -262,3 +265,11 @@ page {
 .pending-reason { color: #a66b12; }
 
 .add-schedule { margin-bottom: 18rpx; }
+
+.lesson-block.one-to-one.empty { background: #e7e9ed; border-left-color: #8c939e; color: #4b5260; margin: 0; text-align: left; box-shadow: none; }
+.lesson-block.one-to-one.pending { background: #fff0bd; border-left-color: #cc9400; color: #745600; }
+.lesson-block.one-to-one.confirmed { background: #dcecff; border-left-color: #367ccd; color: #123b6b; }
+.lesson-block.one-to-one.cancel-pending { background: #ffe2bb; border-left-color: #dd801c; color: #8b4b0c; }
+.lesson-block.one-to-one.completed { background: #daf4e5; border-left-color: #249477; color: #146b4b; }
+.lesson-block.one-to-one.unavailable { background: #eef0f3; border-left-color: #8c939e; color: #616977; border-style: dashed; }
+.lesson-block.class-course { background: #eee4fc; border-left-color: #8251bd; color: #54327e; }

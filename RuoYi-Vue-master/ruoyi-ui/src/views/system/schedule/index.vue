@@ -184,6 +184,7 @@
       <el-table-column label="排课ID" align="center" prop="scheduleId" />
       <el-table-column label="排课编码" align="center" prop="scheduleCode" />
       <el-table-column label="教室ID" align="center" prop="classroomId" />
+      <el-table-column label="自定义上课地点" align="center" prop="lessonLocation" min-width="160" />
       <el-table-column label="课程年份" align="center" prop="courseYear" />
       <el-table-column label="学期" align="center" prop="termName" />
       <el-table-column label="期次或上课日" align="center" prop="periodName" />
@@ -258,9 +259,12 @@
             </el-form-item>
           </el-col>
           <el-col :span="24">
-            <el-form-item label="教室" prop="classroomId">
+            <el-form-item v-if="form.classMode !== '2'" label="教室" prop="classroomId">
               <el-select v-model="form.classroomId" filterable placeholder="请选择教室"><el-option v-for="room in dims.classroomList" :key="room.classroomId" :value="room.classroomId" :label="`${room.campusName} · ${room.classroomName}`" /></el-select>
             </el-form-item>
+          </el-col>
+          <el-col :span="24" v-if="form.classMode === '2'">
+            <el-form-item label="上课地点" prop="lessonLocation"><el-input v-model="form.lessonLocation" maxlength="255" placeholder="填写实际上课地点" /></el-form-item>
           </el-col>
           <el-col :span="24">
             <el-form-item label="课程年份" prop="courseYear">
@@ -430,9 +434,10 @@ export default {
       form: {},
       // 表单校验
       rules: {
+        lessonLocation: [{ validator: (rule, value, callback) => this.form.classMode !== '2' || (value && value.trim()) ? callback() : callback(new Error("请填写上课地点")), trigger: "blur" }],
         teacherId: [{ required: true, message: "请选择教师账号", trigger: "change" }],
         classroomId: [
-          { required: true, message: "教室ID不能为空", trigger: "blur" }
+          { validator: (rule, value, callback) => this.form.classMode === '2' || value ? callback() : callback(new Error("请选择教室")), trigger: "change" }
         ],
         termName: [
           { required: true, message: "学期不能为空", trigger: "blur" }
@@ -478,7 +483,7 @@ export default {
       this.form = {
         scheduleId: null,
         scheduleCode: null,
-        classroomId: null,
+        classroomId: null, lessonLocation: null,
         courseYear: new Date().getFullYear(),
         termName: null,
         periodName: null,
@@ -549,6 +554,7 @@ export default {
         this.submitting = true
         try {
           const payload = { ...this.form }
+          if (payload.classMode === '2') payload.classroomId = null
           delete payload.enrolledCount
           delete payload.delFlag
           if (payload.scheduleId) await updateSchedule(payload)

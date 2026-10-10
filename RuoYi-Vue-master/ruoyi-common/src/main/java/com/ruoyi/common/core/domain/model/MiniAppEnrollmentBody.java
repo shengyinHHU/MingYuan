@@ -6,6 +6,9 @@ package com.ruoyi.common.core.domain.model;
 public class MiniAppEnrollmentBody
 {
     private Long scheduleId;
+    private String classDate;
+    public String getClassDate() { return classDate; }
+    public void setClassDate(String value) { classDate = value; }
 
     private String studentName;
 

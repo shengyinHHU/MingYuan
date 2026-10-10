@@ -1,3 +1,5 @@
+@import "../../styles/number-badge.wxss";
+
 page {
   min-height: 100vh;
   background: #f4f7fb;
@@ -191,6 +193,7 @@ page {
 }
 
 .action-icon {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -209,6 +212,9 @@ page {
   line-height: 1.2;
   font-weight: 700;
 }
+
+.course-pending-message { margin-top:16rpx; color:#657184; font-size:22rpx; line-height:1.6; }
+.pending-retry { margin-left:14rpx; color:#0f58a8; }
 
 .blue .action-icon { background: #0f58a8; }
 .green .action-icon { background: #20a06b; }

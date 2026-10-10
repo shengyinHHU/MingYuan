@@ -18,7 +18,7 @@
       <view wx:for="{{history}}" wx:key="key" class="history"><view>{{item.date}} · {{item.signText}} · {{item.reviewText}}</view><view wx:if="{{item.remark}}" class="muted">{{item.remark}}</view></view>
       <view wx:if="{{!history.length}}" class="muted">暂无课次签到记录</view>
     </view>
-    <button type="warn" disabled="{{enrollment.cancelled || cancelling || loading}}" loading="{{cancelling}}" bindtap="cancel">{{enrollment.cancelled ? '报名已取消' : '取消报名'}}</button>
+    <button type="warn" disabled="{{enrollment.classDate || enrollment.cancelled || cancelling || loading}}" loading="{{cancelling}}" bindtap="cancel">{{enrollment.classDate ? '单次报名由老师处理' : enrollment.cancelled ? '报名已取消' : '取消报名'}}</button>
     <view class="empty">取消后保留历史，退款需另行处理</view>
   </block>
 </view>

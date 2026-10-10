@@ -41,6 +41,7 @@ public class MiniAppTeacherSignController extends BaseController
 
     @Autowired
     private EduHomeworkMapper homeworkMapper;
+    @Autowired private com.ruoyi.system.shop.ShopRepository singleDb;
 
     /**
      * 我的排课列表（含最近一次签到汇总）
@@ -58,9 +59,13 @@ public class MiniAppTeacherSignController extends BaseController
      */
     @PreAuthorize("@ss.hasAnyRoles('teacher,admin')")
     @GetMapping("/students")
-    public AjaxResult students(@RequestParam("scheduleId") Long scheduleId)
+    public AjaxResult students(@RequestParam("scheduleId") Long scheduleId,@RequestParam(value="classDate",required=false) String classDate)
     {
         assertScheduleAccess(scheduleId);
+        if ("2".equals(scheduleMapper.selectEduCourseScheduleByScheduleId(scheduleId).getClassMode())) {
+            if (classDate == null) throw new ServiceException("请选择具体课次日期");
+            return success(singleDb.rows("SELECT enrollment_id,student_name,contact_phone FROM edu_enrollment WHERE schedule_id=? AND class_date=? AND enrollment_status='1' AND del_flag='0'",scheduleId,classDate));
+        }
         return success(signInService.selectEnrolledStudents(scheduleId));
     }
 
@@ -96,7 +101,8 @@ public class MiniAppTeacherSignController extends BaseController
                 if (detail != null && detail.getEnrollmentId() != null)
                 {
                     EduEnrollment enrollment = enrollmentMapper.selectEduEnrollmentByEnrollmentId(detail.getEnrollmentId());
-                    if (enrollment == null || !body.getScheduleId().equals(enrollment.getScheduleId()))
+                    if (enrollment == null || !body.getScheduleId().equals(enrollment.getScheduleId())
+                        || (enrollment.getClassDate() != null && (!enrollment.getClassDate().toString().equals(body.getClassDate()) || !"1".equals(enrollment.getEnrollmentStatus()))))
                     {
                         throw new ServiceException("签到报名记录不属于当前班级");
                     }

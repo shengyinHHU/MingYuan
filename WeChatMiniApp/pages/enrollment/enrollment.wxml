@@ -4,6 +4,13 @@
     <view class="header-title">课程报名</view>
   </view>
 
+  <view class="course-type-bar">
+    <view class="course-type-label">课程类型</view>
+    <picker class="course-type-picker" bindchange="onCourseTypeChange" value="{{courseTypeIndex}}" range="{{courseTypeOptions}}" disabled="{{submitting || showSheet}}">
+      <view class="course-type-value">{{courseTypeOptions[courseTypeIndex]}}<text class="course-type-arrow">⌄</text></view>
+    </picker>
+  </view>
+
   <view class="filter-bar">
     <picker class="filter-picker" bindchange="onSubjectChange" value="{{subjectIndex}}" range="{{subjectOptions}}">
       <view class="filter-text">{{subjectOptions[subjectIndex]}}</view>
@@ -28,11 +35,25 @@
   </view>
 
   <view class="section">
-    <view class="section-title">可报名课次</view>
-    <view class="empty" wx:if="{{showScheduleEmpty}}">暂无可报名课程</view>
+    <view class="section-title">{{courseTypeIndex === 1 ? '可报名一对一课程' : '可报名班课'}}</view>
+    <view class="meta" wx:if="{{courseTypeIndex === 1}}">先选择课程，再展开选择日期；每次报名一节2小时课程，由老师确认。</view>
+    <view class="empty" wx:if="{{showScheduleEmpty}}">{{courseTypeIndex === 1 ? '暂无符合条件的一对一课程' : '暂无符合条件的班课'}}</view>
     <view wx:for="{{teacherGroups}}" wx:for-item="group" wx:key="key" class="teacher-group">
-      <view class="teacher-group-title">{{group.label}} · {{group.courses.length}} 个班次</view>
-    <view class="schedule-card" wx:for="{{group.courses}}" wx:key="scheduleId" data-id="{{item.scheduleId}}" bindtap="openEnroll">
+      <view class="teacher-group-title">{{group.label}} · {{group.courses.length}} {{courseTypeIndex === 1 ? '门课程' : '个班次'}}</view>
+      <block wx:for="{{group.courses}}" wx:key="viewKey">
+      <view class="single-course-card" wx:if="{{courseTypeIndex === 1}}">
+        <view class="single-course-heading" data-id="{{item.scheduleId}}" bindtap="toggleCourseDates">
+          <view class="course-name">{{item.courseClassName}}</view>
+          <view class="meta">{{item.gradeText}} · {{item.subjectText}} · {{item.teacherName || '教师待配置'}}</view>
+          <view class="meta">{{item.periodName}} {{item.clockText}} · 共{{item.lessonCount}}个课次</view>
+          <view class="meta">{{item.dateRangeText}}</view><view class="meta">{{item.placeText}}</view>
+          <view class="date-toggle">可报名{{item.availableLessonCount}}个日期 · {{item.expanded ? '收起日期' : '选择日期'}}　{{item.expanded ? '⌃' : '⌄'}}</view>
+        </view>
+        <view class="single-date-list" wx:if="{{item.expanded}}">
+          <view class="single-date-row" wx:for="{{item.lessons}}" wx:for-item="lesson" wx:key="viewKey" data-key="{{lesson.viewKey}}" bindtap="openEnroll"><view>{{lesson.timeText}}</view><view class="status {{lesson.statusClass}}">{{lesson.statusText}}</view></view>
+        </view>
+      </view>
+    <view class="schedule-card" wx:else data-key="{{item.viewKey}}" bindtap="openEnroll">
       <view class="card-main">
         <view class="course-name">{{item.courseClassName}}</view>
         <view class="meta">{{item.gradeText}} · {{item.subjectText}} · {{item.teacherName || '教师待配置'}}</view>
@@ -44,12 +65,13 @@
         <view class="status {{item.statusClass}}">{{item.statusText}}</view>
       </view>
     </view>
+      </block>
     </view>
   </view>
 
   <view class="section">
-    <view class="section-title">我的报名</view>
-    <view class="empty" wx:if="{{showEnrollmentEmpty}}">还没有报名记录</view>
+    <view class="section-title">{{courseTypeIndex === 1 ? '我的一对一报名' : '我的班课报名'}}</view>
+    <view class="empty" wx:if="{{showEnrollmentEmpty}}">{{courseTypeIndex === 1 ? '暂无一对一报名记录' : '暂无班课报名记录'}}</view>
     <view class="enroll-card" wx:for="{{enrollments}}" wx:key="enrollmentId">
       <view>
         <view class="course-name">{{item.courseClassName}}</view>
@@ -57,7 +79,10 @@
         <view class="meta">授课教师：{{item.teacherName || '教师待配置'}}</view>
         <view class="meta">{{item.timeText}}</view>
       </view>
-      <view class="done">{{item.statusText}}</view>
+      <view><view class="done">{{item.statusText}}</view>
+        <view class="meta" wx:if="{{item.cancelRequestStatus === '1'}}">取消申请待处理</view>
+        <button size="mini" wx:if="{{item.canRequestCancel}}" data-id="{{item.enrollmentId}}" bindtap="requestCancel" disabled="{{submitting}}">申请取消</button>
+        <button size="mini" wx:if="{{item.classDate}}" data-id="{{item.enrollmentId}}" bindtap="viewHistory">操作历史</button></view>
     </view>
   </view>
 

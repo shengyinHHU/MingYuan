@@ -19,6 +19,12 @@ public class EduEnrollment extends BaseEntity
 
     /** 报名ID */
     private Long enrollmentId;
+    private java.time.LocalDate classDate;
+    private String cancelRequestStatus;
+    public java.time.LocalDate getClassDate() { return classDate; }
+    public void setClassDate(java.time.LocalDate value) { classDate = value; }
+    public String getCancelRequestStatus() { return cancelRequestStatus; }
+    public void setCancelRequestStatus(String value) { cancelRequestStatus = value; }
 
     /** 报名编码 */
     @Excel(name = "报名编码")

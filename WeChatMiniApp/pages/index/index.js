@@ -1,5 +1,6 @@
 const { request } = require('../../utils/request')
 const devSession = require('../../utils/dev-session')
+const courseState = require('../../utils/teacher-course-state')
 
 // Development only: role tabs request a matching backend token.
 // Set this to false before production release.
@@ -43,7 +44,7 @@ const roleProfiles = {
     ],
     actions: [
       { title: '学生出勤', icon: '签', tone: 'blue', route: '/pages/sign-in/sign-in' },
-      { title: '我的课表', icon: '课', tone: 'orange', route: '/pages/timetable/timetable' },
+      { key: 'teacherCourses', title: '我的课程', icon: '课', tone: 'orange', route: '/pages/teacher-single-transactions/teacher-single-transactions' },
       { title: '请假审核', icon: '假', tone: 'violet' },
       { title: '班级学员', icon: '班', tone: 'green', route: '/pages/teacher-students/teacher-students' },
       { title: 'WiFi打卡', icon: '卡', tone: 'red' },
@@ -232,26 +233,38 @@ Page({
     roleLocked: false,
     roleSwitching: false,
     teacherDataMessage: '',
+    coursePendingCount: null,
+    coursePendingError: '',
     roles: roleOptions,
     ...buildRoleState('parent')
   },
 
   onLoad() {
     this._unloaded = false
-    this.applyLoginRole()
+    this._visible = false
   },
 
   onShow() {
+    this._visible = true
     this.applyLoginRole()
+  },
+
+  onHide() {
+    this._visible = false
+    this.stopCoursePendingRefresh()
   },
 
   onUnload() {
     this._unloaded = true
+    this._visible = false
+    this.stopCoursePendingRefresh()
     this._teacherLoadVersion = (this._teacherLoadVersion || 0) + 1
     this._roleLoadVersion = (this._roleLoadVersion || 0) + 1
   },
 
   async applyLoginRole() {
+    this.stopCoursePendingRefresh()
+    this.setCoursePending(null)
     const loadVersion = this._roleLoadVersion = (this._roleLoadVersion || 0) + 1
     const token = wx.getStorageSync('token')
     if (!token) {
@@ -296,7 +309,43 @@ Page({
       const user = wx.getStorageSync('userInfo') || {}
       this.setData({ tag: user.nickName || user.userName || '教师工作台' })
       this.loadTeacherData()
+      this._coursePendingOwnerToken = token
+      this.loadCoursePending()
+      this.startCoursePendingRefresh()
     }
+  },
+
+  setCoursePending(count, error = '') {
+    if (this._unloaded) return
+    this.setData({coursePendingCount:count,coursePendingError:error,
+      quickActions:this.data.quickActions.map(action=>action.key==='teacherCourses' ? {...action,badgeText:courseState.badgeText(count)} : action)})
+  },
+  startCoursePendingRefresh() {
+    if (!this._visible || this._unloaded || this.data.currentRole !== 'teacher') return
+    clearInterval(this._coursePendingTimer)
+    this._coursePendingTimer = setInterval(()=>this.loadCoursePending(),30000)
+  },
+  stopCoursePendingRefresh() {
+    clearInterval(this._coursePendingTimer)
+    this._coursePendingTimer = null
+    this._coursePendingVersion = (this._coursePendingVersion || 0) + 1
+    this._coursePendingLoading = false
+    this._coursePendingOwnerToken = null
+  },
+  async loadCoursePending() {
+    const token = wx.getStorageSync('token')
+    if (this._coursePendingLoading || !this._visible || this._unloaded || this.data.currentRole !== 'teacher' ||
+      getRoleFromStorage() !== 'teacher' || !token || token !== this._coursePendingOwnerToken) return
+    const version = this._coursePendingVersion = (this._coursePendingVersion || 0) + 1
+    const current = () => !this._unloaded && this._visible && version===this._coursePendingVersion &&
+      this.data.currentRole==='teacher' && getRoleFromStorage()==='teacher' && wx.getStorageSync('token')===token
+    this._coursePendingLoading = true
+    try {
+      const result = await request({url:'/miniapp/teacher/course/single/transactions',timeout:15000})
+      if (current()) this.setCoursePending(courseState.pendingCount(result.data || []))
+    } catch (error) {
+      if (current()) this.setCoursePending(null,'课程待处理数量暂时无法加载，请重试。')
+    } finally { if (version===this._coursePendingVersion) this._coursePendingLoading=false }
   },
 
   async loadTeacherData() {
@@ -404,6 +453,8 @@ Page({
 
   async loginAsDevRole(role) {
     const previousToken = wx.getStorageSync('token')
+    this.stopCoursePendingRefresh()
+    this.setCoursePending(null)
     this.setData({ roleSwitching: true })
     try {
       const cached = await devSession.restore(role, undefined, () =>
@@ -443,7 +494,10 @@ Page({
       this.applyLoginRole()
       wx.showToast({ title: `${roleProfiles[role].name}已登录`, icon: 'none' })
     } catch (error) {
-      if (!this._unloaded) wx.showToast({ title: error.message || '切换失败', icon: 'none' })
+      if (!this._unloaded) {
+        wx.showToast({ title: error.message || '切换失败', icon: 'none' })
+        this.applyLoginRole()
+      }
     } finally {
       if (!this._unloaded) this.setData({ roleSwitching: false })
     }
