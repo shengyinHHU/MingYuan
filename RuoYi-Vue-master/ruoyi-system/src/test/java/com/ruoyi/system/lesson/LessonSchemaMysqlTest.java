@@ -93,7 +93,9 @@ class LessonSchemaMysqlTest {
     assertEquals("1234.56", db.queryForObject("SELECT tuition_price FROM edu_course_schedule WHERE schedule_id=1", java.math.BigDecimal.class).toPlainString());
     assertEquals(7, db.queryForObject("SELECT enrolled_count FROM edu_course_schedule WHERE schedule_id=1", Integer.class));
     assertEquals("3000.00", db.queryForObject("SELECT base_salary FROM edu_teacher_salary_config WHERE teacher_id=4", java.math.BigDecimal.class).toPlainString());
-    assertEquals("NORMAL", db.queryForObject("SELECT one_to_one_level FROM edu_teacher_salary_config WHERE teacher_id=4", String.class));
+    assertEquals(0, db.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='edu_teacher_salary_config' AND column_name IN('one_to_one_level','active_teacher_guard')", Integer.class));
+    assertEquals(2, db.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='sys_user' AND column_name IN('teacher_level','teacher_subject') AND column_type='varchar(20)' AND is_nullable='YES' AND column_default IS NULL", Integer.class));
+    assertNull(db.queryForObject("SELECT teacher_level FROM sys_user WHERE user_id=4",String.class));
     assertEquals("system/oneToOne/index", db.queryForObject("SELECT component FROM sys_menu WHERE perms='system:oneToOne:list'", String.class));
     assertEquals(9, db.queryForObject("SELECT COUNT(*) FROM sys_menu WHERE perms LIKE 'system:oneToOne:%'", Integer.class));
     assertEquals(9, db.queryForObject("SELECT COUNT(*) FROM sys_role_menu rm JOIN sys_menu m ON m.menu_id=rm.menu_id WHERE rm.role_id=1 AND m.perms LIKE 'system:oneToOne:%'", Integer.class));
@@ -111,7 +113,7 @@ class LessonSchemaMysqlTest {
   }
 
   void booking(String code, String state) {
-    db.update("INSERT INTO edu_one_to_one_booking(booking_code,slot_id,student_id,parent_id,student_package_id,teacher_id,teacher_level_snapshot,subject_code,classroom_id,start_time_snapshot,end_time_snapshot,deducted_units,returned_units,status,request_key,request_hash) VALUES(?,1,1,2,1,4,'NORMAL','math',1,'2099-10-11 10:00:00','2099-10-11 12:00:00',1,0,?,?,REPEAT('b',64))", code,state,code);
+    db.update("INSERT INTO edu_one_to_one_booking(booking_code,slot_id,student_id,parent_id,student_package_id,teacher_id,teacher_level_snapshot,subject_code,classroom_id,start_time_snapshot,end_time_snapshot,deducted_units,returned_units,status,request_key,request_hash) VALUES(?,1,1,2,1,4,'elite','math',1,'2099-10-11 10:00:00','2099-10-11 12:00:00',1,0,?,?,REPEAT('b',64))", code,state,code);
   }
 
   @Test @Order(2)
@@ -148,7 +150,11 @@ class LessonSchemaMysqlTest {
     assertThrows(DataIntegrityViolationException.class, () -> db.execute("UPDATE edu_one_to_one_booking SET student_id=2 WHERE booking_code='BOOK4'"));
     checkRejected("UPDATE edu_one_to_one_slot SET end_time='2099-10-11 11:00:00' WHERE slot_id=1");
     checkRejected("UPDATE edu_lesson_package SET total_units=0 WHERE package_id=1");
-    checkRejected("UPDATE edu_teacher_salary_config SET one_to_one_level='BAD' WHERE teacher_id=4");
+    checkRejected("UPDATE edu_one_to_one_booking SET teacher_level_snapshot='senior' WHERE booking_code='BOOK4'");
+    db.execute("UPDATE edu_one_to_one_booking SET teacher_level_snapshot='senior',deducted_units=2 WHERE booking_code='BOOK4'");
+    checkRejected("UPDATE edu_one_to_one_booking SET teacher_level_snapshot='elite' WHERE booking_code='BOOK4'");
+    checkRejected("UPDATE edu_one_to_one_booking SET teacher_level_snapshot='SENIOR' WHERE booking_code='BOOK4'");
+    checkRejected("UPDATE edu_one_to_one_booking SET teacher_level_snapshot='NORMAL' WHERE booking_code='BOOK4'");
   }
 
   @Test @Order(4)
@@ -210,24 +216,49 @@ class LessonSchemaMysqlTest {
   }
 
   @Test @Order(7)
-  void duplicateEffectiveTeacherConfigurationStopsMigrationWithoutDeletingRows() throws Exception {
+  void salaryDuplicatesDoNotBlockCanonicalGradeMigrationOrGetModified() throws Exception {
     resetFixture();
     db.execute("ALTER TABLE edu_teacher_salary_config DROP INDEX uk_teacher");
     db.execute("INSERT INTO edu_teacher_salary_config(teacher_id,teacher_name) VALUES(4,'重复配置')");
-    Result result = migrate(MIGRATION);
-    assertNotEquals(0, result.exit);
-    assertTrue(result.output.contains("duplicate") && result.output.contains("teacher"), result.output);
+    migrateSuccessfully();
+    migrateSuccessfully();
     assertEquals(2, db.queryForObject("SELECT COUNT(*) FROM edu_teacher_salary_config WHERE teacher_id=4", Integer.class));
+    assertEquals(0, db.queryForObject("SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='edu_teacher_salary_config' AND index_name='uk_lteacher_active'",Integer.class));
   }
 
   @Test @Order(8)
-  void databaseEnforcesUniqueEffectiveTeacherConfigurationEvenWithoutLegacyIndex() throws Exception {
+  void collaboratorFieldsAreReusedWithoutGuessingOrRewritingAndIncompatibleStructureFails() throws Exception {
     resetFixture();
-    db.execute("ALTER TABLE edu_teacher_salary_config DROP INDEX uk_teacher");
+    db.execute("ALTER TABLE sys_user ADD teacher_level varchar(20) NULL, ADD teacher_subject varchar(20) NULL");
+    db.execute("UPDATE sys_user SET teacher_level='senior',teacher_subject='数学' WHERE user_id=4");
     migrateSuccessfully();
-    assertThrows(DataIntegrityViolationException.class, () -> db.execute("INSERT INTO edu_teacher_salary_config(teacher_id,teacher_name) VALUES(4,'重复配置')"));
-    db.execute("INSERT INTO edu_teacher_salary_config(teacher_id,teacher_name,status) VALUES(4,'停用配置','1')");
-    assertThrows(DataIntegrityViolationException.class, () -> db.execute("UPDATE edu_teacher_salary_config SET status='0' WHERE teacher_name='停用配置'"));
+    migrateSuccessfully();
+    assertEquals("senior",db.queryForObject("SELECT teacher_level FROM sys_user WHERE user_id=4",String.class));
+    assertEquals("数学",db.queryForObject("SELECT teacher_subject FROM sys_user WHERE user_id=4",String.class));
+    assertNull(db.queryForObject("SELECT teacher_level FROM sys_user WHERE user_id=5",String.class));
+    for(String column:List.of("teacher_level","teacher_subject")) {
+      db.execute("ALTER TABLE sys_user MODIFY "+column+" varchar(30) NULL");
+      assertConflict("collaborator field type",column);
+      db.execute("ALTER TABLE sys_user MODIFY "+column+" varchar(20) NULL");
+      db.execute("ALTER TABLE sys_user ALTER COLUMN "+column+" SET DEFAULT 'elite'");
+      assertConflict("collaborator field default",column);
+      db.execute("ALTER TABLE sys_user ALTER COLUMN "+column+" DROP DEFAULT");
+    }
+  }
+
+  @Test @Order(11)
+  void invalidExistingCanonicalGradeStopsBeforeBusinessDdlAndReportsTeacher() throws Exception {
+    for(String invalid:List.of("", "NORMAL", "Senior", "senior ")) {
+      resetFixture();
+      db.execute("ALTER TABLE sys_user ADD teacher_level varchar(20) NULL");
+      db.update("UPDATE sys_user SET teacher_level=? WHERE user_id=4",invalid);
+      Result result=migrate(MIGRATION);
+      assertNotEquals(0,result.exit);
+      assertTrue(result.output.contains("teacher_level")&&result.output.contains("4"),result.output);
+      assertEquals(invalid,db.queryForObject("SELECT teacher_level FROM sys_user WHERE user_id=4",String.class));
+      assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='edu_student'",Integer.class));
+      assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='sys_user' AND column_name='teacher_subject'",Integer.class));
+    }
   }
 
   @Test @Order(9)

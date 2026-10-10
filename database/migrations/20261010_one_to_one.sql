@@ -2,6 +2,11 @@
 -- Stop services and back up before deployment. Apply 20261007 tuition finance first;
 -- do not replay the old migration after this supersedes its enrollment unique index.
 -- No historical student merging, balance grants, amount rewrites, users or roles.
+-- Sole booking source: edu_one_to_one_slot + edu_one_to_one_booking.
+-- Do NOT execute collaborator 20261009 one-to-one date/enrollment migration: its
+-- date-seat/teacher-approval workflow is incompatible with this slot/booking model.
+-- Revised before deployment. Never convert an existing old lesson snapshot schema;
+-- structural conflicts must stop for explicit review without rewriting history.
 SET NAMES utf8mb4;
 DELIMITER $$
 DROP FUNCTION IF EXISTS lesson_normalize$$
@@ -72,9 +77,17 @@ END$$
 DROP PROCEDURE IF EXISTS lesson_preflight$$
 CREATE PROCEDURE lesson_preflight()
 BEGIN
- IF EXISTS(SELECT teacher_id FROM edu_teacher_salary_config WHERE status='0' AND del_flag='0' GROUP BY teacher_id HAVING COUNT(*)>1) THEN
-  SELECT teacher_id,COUNT(*) AS effective_configs FROM edu_teacher_salary_config WHERE status='0' AND del_flag='0' GROUP BY teacher_id HAVING COUNT(*)>1;
-  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Lesson duplicate effective teacher configuration; resolve explicitly';
+ DECLARE conflict varchar(64); DECLARE msg varchar(128);
+ SELECT column_name INTO conflict FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='sys_user' AND column_name IN('teacher_level','teacher_subject') AND (column_type<>'varchar(20)' OR is_nullable<>'YES' OR column_default IS NOT NULL OR generation_expression<>'' OR extra<>'') LIMIT 1;
+ IF conflict IS NOT NULL THEN SET msg=CONCAT('Lesson collaborator column conflict: sys_user.',conflict); SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT=msg; END IF;
+ IF EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='sys_user' AND column_name='teacher_level') THEN
+  SET @ddl='SELECT COUNT(*) INTO @lesson_invalid_grades FROM sys_user WHERE teacher_level IS NOT NULL AND BINARY teacher_level NOT IN (''elite'',''senior'')';
+  PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+  IF @lesson_invalid_grades>0 THEN
+   SET @ddl='SELECT user_id,teacher_level FROM sys_user WHERE teacher_level IS NOT NULL AND BINARY teacher_level NOT IN (''elite'',''senior'')';
+   PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Lesson invalid sys_user.teacher_level; administrator must resolve listed users';
+  END IF;
  END IF;
  IF EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='edu_enrollment' AND column_name='schedule_id' AND (column_type<>'bigint' OR column_default IS NOT NULL OR generation_expression<>'')) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Lesson column conflict: edu_enrollment.schedule_id'; END IF;
  IF EXISTS(SELECT 1 FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='__lesson_verify_probe') THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Lesson schema probe already exists; inspect interrupted migration'; END IF;
@@ -82,6 +95,9 @@ END$$
 DELIMITER ;
 CALL lesson_preflight();
 DROP PROCEDURE lesson_preflight;
+
+CALL lesson_column('sys_user','teacher_level','varchar(20)','NULL','YES',NULL,NULL);
+CALL lesson_column('sys_user','teacher_subject','varchar(20)','NULL','YES',NULL,NULL);
 
 CREATE TABLE IF NOT EXISTS edu_student (student_id bigint NOT NULL AUTO_INCREMENT PRIMARY KEY) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CALL lesson_column('edu_student','student_id','bigint','NOT NULL AUTO_INCREMENT','NO',NULL,NULL);
@@ -208,9 +224,6 @@ CALL lesson_column('edu_enrollment','student_id','bigint','NULL','YES',NULL,NULL
 CALL lesson_column('edu_enrollment','bill_type','varchar(14)','NOT NULL DEFAULT ''COURSE''','NO','COURSE',NULL);
 CALL lesson_column('edu_enrollment','lesson_package_id','bigint','NULL','YES',NULL,NULL);
 ALTER TABLE edu_enrollment MODIFY schedule_id bigint NULL COMMENT '排课ID；课包账单为NULL';
-CALL lesson_column('edu_teacher_salary_config','one_to_one_level','varchar(6)','NOT NULL DEFAULT ''NORMAL''','NO','NORMAL',NULL);
-CALL lesson_column('edu_teacher_salary_config','active_teacher_guard','bigint','GENERATED ALWAYS AS (CASE WHEN status=''0'' AND del_flag=''0'' THEN teacher_id END) STORED','YES',NULL,'CASE WHEN status=''0'' AND del_flag=''0'' THEN teacher_id END');
-CALL lesson_index('edu_teacher_salary_config','uk_lteacher_active','active_teacher_guard',TRUE);
 -- Stable child identity: distinct same-name siblings are distinct; legacy rows remain name-based.
 CALL lesson_column('edu_enrollment','student_identity_guard','varchar(64)','GENERATED ALWAYS AS (CASE WHEN student_id IS NULL THEN CONCAT(''LEGACY:'',student_name) ELSE CONCAT(''STUDENT:'',student_id) END) STORED','YES',NULL,'CASE WHEN student_id IS NULL THEN CONCAT(''LEGACY:'',student_name) ELSE CONCAT(''STUDENT:'',student_id) END');
 DELIMITER $$
@@ -273,10 +286,9 @@ CALL lesson_check('edu_student','ck_lstudent_state','status IN (''0'',''1'') AND
 CALL lesson_check('edu_lesson_package','ck_lpackage_rules','total_units>0 AND price>=0 AND status IN (''0'',''1'') AND del_flag IN (''0'',''2'')');
 CALL lesson_check('edu_student_package','ck_lsp_rules','total_units>0 AND available_units>=0 AND available_units<=total_units AND purchased_price>=0 AND status IN (''PENDING_PAYMENT'',''ACTIVE'',''REFUND_FROZEN'',''CLOSED'') AND (status NOT IN (''PENDING_PAYMENT'',''CLOSED'') OR available_units=0)');
 CALL lesson_check('edu_one_to_one_slot','ck_lslot_rules','end_time=start_time+INTERVAL 2 HOUR AND status IN (''OPEN'',''CLOSED'') AND version>=0');
-CALL lesson_check('edu_one_to_one_booking','ck_lbooking_rules','status IN (''BOOKED'',''COMPLETED'',''CANCELLED'') AND teacher_level_snapshot IN (''NORMAL'',''LEAD'') AND deducted_units IN (1,2) AND returned_units>=0 AND returned_units<=deducted_units AND ((teacher_level_snapshot=''NORMAL'' AND deducted_units=1) OR (teacher_level_snapshot=''LEAD'' AND deducted_units=2)) AND end_time_snapshot=start_time_snapshot+INTERVAL 2 HOUR');
+CALL lesson_check('edu_one_to_one_booking','ck_lbooking_rules','status IN (''BOOKED'',''COMPLETED'',''CANCELLED'') AND BINARY teacher_level_snapshot IN (''elite'',''senior'') AND deducted_units IN (1,2) AND returned_units>=0 AND returned_units<=deducted_units AND ((BINARY teacher_level_snapshot=''elite'' AND deducted_units=1) OR (BINARY teacher_level_snapshot=''senior'' AND deducted_units=2)) AND end_time_snapshot=start_time_snapshot+INTERVAL 2 HOUR');
 CALL lesson_check('edu_lesson_unit_log','ck_llog_rules','before_units>=0 AND after_units>=0 AND after_units=before_units+delta_units AND event_type IN (''ACTIVATE'',''BOOK'',''CANCEL_RETURN'',''ADMIN_RETURN'',''REFUND_CLOSE'') AND ((event_type=''ACTIVATE'' AND delta_units>0 AND booking_id IS NULL AND refund_id IS NULL) OR (event_type=''BOOK'' AND delta_units IN (-1,-2) AND booking_id IS NOT NULL AND refund_id IS NULL) OR (event_type IN (''CANCEL_RETURN'',''ADMIN_RETURN'') AND delta_units IN (1,2) AND booking_id IS NOT NULL AND refund_id IS NULL) OR (event_type=''REFUND_CLOSE'' AND delta_units<=0 AND after_units=0 AND refund_id IS NOT NULL AND booking_id IS NULL))');
 CALL lesson_check('edu_enrollment','ck_lenrollment_type','(bill_type=''COURSE'' AND schedule_id IS NOT NULL AND lesson_package_id IS NULL) OR (bill_type=''LESSON_PACKAGE'' AND schedule_id IS NULL AND student_id IS NOT NULL AND lesson_package_id IS NOT NULL AND user_coupon_id IS NULL)');
-CALL lesson_check('edu_teacher_salary_config','ck_lteacher_level','one_to_one_level IN (''NORMAL'',''LEAD'')');
 
 DELIMITER $$
 DROP TRIGGER IF EXISTS lesson_bill_identity$$
