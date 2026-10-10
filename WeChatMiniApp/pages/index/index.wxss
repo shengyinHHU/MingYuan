@@ -146,6 +146,36 @@ page {
   font-size: 22rpx;
 }
 
+.stats-teacher {
+  flex-wrap: wrap;
+}
+
+.stats-teacher .stat {
+  flex: 0 0 calc(50% - 7rpx);
+}
+
+.stat-clickable {
+  border: 1rpx solid rgba(16, 63, 134, 0.06);
+}
+
+.stat-pressed {
+  background: #e3edfc;
+}
+
+.stat-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14rpx;
+  color: #2865b2;
+  font-size: 22rpx;
+}
+
+.stat-link text {
+  font-size: 28rpx;
+  line-height: 1;
+}
+
 .section {
   margin: 24rpx;
 }

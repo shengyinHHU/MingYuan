@@ -1,7 +1,7 @@
 <view class="page">
   <view class="header">
-    <image class="logo" src="/images/logo.png" mode="widthFix"></image>
     <view class="title">{{teacherMode ? '我的课程' : '我的课表'}}</view>
+    <view class="ui-caption">上课安排与学员报名记录</view>
   </view>
 
   <view class="summary" wx:if="{{!teacherMode}}">

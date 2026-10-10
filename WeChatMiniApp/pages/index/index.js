@@ -38,9 +38,10 @@ const roleProfiles = {
     eyebrow: '教师端',
     title: '上课、点名与班级管理',
     stats: [
-      { label: '负责班级', value: '—', suffix: '班' },
-      { label: '待批提交', value: '—', suffix: '份' },
-      { label: '我的作业', value: '—', suffix: '项' }
+      { key: 'teacherClasses', label: '负责班级', value: '—', suffix: '班', linkText: '查看学员', route: '/pages/teacher-students/teacher-students' },
+      { key: 'teacherHomeworkPending', label: '待批提交', value: '—', suffix: '份', linkText: '去批阅', route: '/pages/teacher-homework/teacher-homework?filter=pending' },
+      { key: 'teacherHomework', label: '我的作业', value: '—', suffix: '项', linkText: '查看作业', route: '/pages/teacher-homework/teacher-homework' },
+      { key: 'teacherSinglePending', label: '一对一事务', value: '—', suffix: '项', linkText: '去处理', route: '/pages/teacher-single-transactions/teacher-single-transactions?tab=bookings' }
     ],
     actions: [
       { title: '学生出勤', icon: '签', tone: 'blue', route: '/pages/sign-in/sign-in' },
@@ -318,6 +319,7 @@ Page({
   setCoursePending(count, error = '') {
     if (this._unloaded) return
     this.setData({coursePendingCount:count,coursePendingError:error,
+      stats:this.data.stats.map(stat=>stat.key==='teacherSinglePending' ? {...stat,value:count == null ? '—' : String(count)} : stat),
       quickActions:this.data.quickActions.map(action=>action.key==='teacherCourses' ? {...action,badgeText:courseState.badgeText(count)} : action)})
   },
   startCoursePendingRefresh() {
@@ -359,12 +361,14 @@ Page({
     const classes = results[0].status === 'fulfilled' ? (results[0].value.data || []) : null
     const homework = results[1].status === 'fulfilled' ? (results[1].value.data || []) : null
     const pending = homework && homework.reduce((sum, item) => sum + Math.max(0, Number(item.submissionCount || 0) - Number(item.reviewedCount || 0)), 0)
+    const statValues = {
+      teacherClasses: classes ? String(classes.length) : '—',
+      teacherHomeworkPending: homework ? String(pending) : '—',
+      teacherHomework: homework ? String(homework.length) : '—',
+      teacherSinglePending: this.data.coursePendingCount == null ? '—' : String(this.data.coursePendingCount)
+    }
     this.setData({
-      stats: [
-        { label: '负责班级', value: classes ? String(classes.length) : '—', suffix: '班' },
-        { label: '待批提交', value: homework ? String(pending) : '—', suffix: '份' },
-        { label: '我的作业', value: homework ? String(homework.length) : '—', suffix: '项' }
-      ],
+      stats: roleProfiles.teacher.stats.map(stat => ({ ...stat, value: statValues[stat.key] })),
       schedule: (classes || []).slice(0, 3).map((item) => ({
         time: item.timeSlot || '—',
         name: item.courseClassName || '未命名班级',
@@ -518,6 +522,12 @@ Page({
         }
       })
     })
+  },
+
+  handleStat(e) {
+    if (this._unloaded || this.data.roleSwitching || this.data.currentRole !== 'teacher' || getRoleFromStorage() !== 'teacher') return
+    const stat = this.data.stats.find(item => item.key === e.currentTarget.dataset.key)
+    if (stat && stat.route) wx.navigateTo({ url: stat.route })
   },
 
   handleAction(e) {

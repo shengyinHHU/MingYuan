@@ -1,15 +1,15 @@
 <view class="teacher-calendar">
   <view class="week-toolbar">
-    <button size="mini" bindtap="previousWeek">上一周</button>
-    <button size="mini" bindtap="currentWeek">本周</button>
-    <button size="mini" bindtap="nextWeek">下一周</button>
-    <picker mode="date" value="{{weekStart}}" bindchange="chooseDate"><view class="date-picker">选择日期</view></picker>
+    <button class="week-arrow" size="mini" bindtap="previousWeek" aria-label="上一周">‹</button>
+    <picker class="week-date" mode="date" value="{{weekStart}}" bindchange="chooseDate"><view class="week-label">{{weekLabel}}<text>⌄</text></view></picker>
+    <button class="week-arrow" size="mini" bindtap="nextWeek" aria-label="下一周">›</button>
+    <button class="week-today" size="mini" bindtap="currentWeek">本周</button>
   </view>
-  <view class="week-label">{{weekLabel}}</view>
-  <view class="calendar-note" wx:if="{{loadSucceeded && !loading && !loadError}}">本周 {{weekLessonCount}} 次课 · 全天 00:00–24:00 · 左右滑动查看整周，点击课程查看详情</view>
-  <view class="calendar-warning" wx:if="{{pendingCourses.length}}">有 {{pendingCourses.length}} 门课程尚未完成排课，空白区域不代表已确认可预约。待排课程见下方。</view>
+  <view class="calendar-note" wx:if="{{loadSucceeded && !loading && !loadError}}">本周 {{weekLessonCount}} 次课 · 00:00–24:00 · 点击课程查看详情</view>
+  <view class="calendar-warning" wx:if="{{pendingCourses.length}}">{{pendingCourses.length}} 门课程待排 · 空白时段尚不能确认可预约</view>
   <view class="calendar-warning" wx:if="{{overlapCount}}">有 {{overlapCount}} 次课程时间重叠，已分列显示，请核对。</view>
   <view class="calendar-note" wx:if="{{loadSucceeded && !loading && !loadError && !weekLessonCount}}">本周暂无已确定的课次</view>
+  <scroll-view class="legend-scroll" scroll-x show-scrollbar="{{false}}"><view class="calendar-legend"><view><text class="legend-dot purple"></text>班课</view><view><text class="legend-dot gray"></text>无人报名</view><view><text class="legend-dot yellow"></text>待确认</view><view><text class="legend-dot blue"></text>已确认</view><view><text class="legend-dot orange"></text>取消待处理</view><view><text class="legend-dot green"></text>已完成</view></view></scroll-view>
   <view class="week-horizontal" wx:if="{{loadSucceeded && !loading && !loadError}}">
     <view class="fixed-time-column">
       <view class="time-head">时间</view>
@@ -25,9 +25,8 @@
               <view class="lesson-block {{course.lessonState}} {{course.overlap ? 'overlap' : ''}} {{course.classMode === '2' ? 'one-to-one' : ''}}" wx:for="{{day.blocks}}" wx:for-item="course" wx:key="key" style="{{course.style}}" bindtap="showCourse" data-id="{{course.scheduleId}}" data-date="{{course.date}}">
                 <view class="block-time">{{course.timeText}}</view>
                 <view class="block-name">{{course.courseClassName || '未命名课程'}}</view>
-                <view>{{course.modeText}} · {{course.lessonLocation || course.classroomName || '地点待配置'}}</view>
-                <view>{{course.campusName}}</view>
-                <view wx:if="{{course.statusText}}">{{course.statusText}} {{course.studentName}}</view>
+                <view class="block-place">{{course.lessonLocation || ((course.campusName ? course.campusName + ' · ' : '') + (course.classroomName || '地点待配置'))}}</view>
+                <view class="block-status" wx:if="{{course.statusText}}">{{course.statusText}}<text wx:if="{{course.studentName}}"> · {{course.studentName}}</text></view>
                 <view wx:if="{{course.overlap}}">时间重叠</view>
               </view>
             </view>

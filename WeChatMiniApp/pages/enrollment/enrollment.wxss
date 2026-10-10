@@ -1,3 +1,4 @@
+@import "../../styles/education-ui.wxss";
 page {
   min-height: 100vh;
   background: #f4f7fb;
@@ -302,3 +303,38 @@ page {
 .single-date-list { padding:0 22rpx 12rpx; }
 .single-date-row { display:flex; align-items:center; justify-content:space-between; gap:16rpx; padding:18rpx 0; border-top:1rpx solid #e5ebf3; font-size:24rpx; color:#334257; }
 .single-date-row .status { margin:0; flex-shrink:0; }
+
+/* 教育业务页面：紧凑布局与信息层级 */
+
+.header { margin:0; padding:28rpx 28rpx 22rpx; border-radius:0; background:transparent; box-shadow:none; }
+.header-title { margin-top:0; color:#202b3d; font-size:38rpx; font-weight:700; }
+.header-subtitle { color:#68778c; font-size:24rpx; margin-top:6rpx; }
+.course-type-bar { gap:6rpx; padding:6rpx; margin:0 24rpx 20rpx; border:1rpx solid #e8edf4; background:#edf0f6; border-radius:14rpx; }
+.course-type-tab { flex:1; text-align:center; padding:20rpx 0; font-size:28rpx; color:#68778c; border-radius:10rpx; }
+.course-type-tab.selected { background:#fff; color:#2459d9; font-weight:700; box-shadow:0 2rpx 6rpx #2030500a; }
+.filter-bar { margin-bottom:14rpx; }
+.filter-picker,.icon-btn { border-color:#e8edf4; border-radius:12rpx; }
+.teacher-filter { padding:20rpx; margin-bottom:20rpx; border:1rpx solid #e8edf4; border-radius:14rpx; }
+.teacher-filter-title { color:#52627a; font-size:25rpx; font-weight:500; }
+.teacher-tag { background:#edf2ff; color:#2459d9; border-radius:8rpx; }
+.teacher-group-title { display:flex; align-items:center; margin:24rpx 0 14rpx; font-size:26rpx; color:#52627a; }
+.section-title { font-size:30rpx; font-weight:700; }
+.schedule-card,.enroll-card,.single-course-card { border-color:#e8edf4; box-shadow:none; border-radius:18rpx; }
+.schedule-card,.enroll-card { padding:24rpx; }
+.single-course-heading { padding:24rpx; }
+.course-name { font-size:30rpx; font-weight:700; line-height:1.5; word-break:break-word; }
+.meta { font-size:24rpx; color:#68778c; line-height:1.6; }
+.card-side { min-width:110rpx; gap:16rpx; }
+.count { font-size:28rpx; color:#2459d9; }
+.status,.done { border-radius:8rpx; font-weight:500; padding:6rpx 12rpx; margin-top:10rpx; white-space:nowrap; }
+.enroll-card > view:first-child { flex:1; min-width:0; }
+.enroll-card > view:last-child { flex-shrink:0; text-align:right; max-width:190rpx; }
+.enroll-card button { margin:14rpx 0 0 auto; padding:0 14rpx; color:#2459d9; background:#edf2ff; font-size:23rpx; }
+.date-toggle { margin-top:18rpx; padding-top:16rpx; border-top:1rpx solid #edf1f6; color:#2459d9; font-size:25rpx; }
+.single-date-row { font-size:26rpx; }
+.sheet { max-height:86vh; overflow-y:auto; box-sizing:border-box; padding-bottom:calc(28rpx + env(safe-area-inset-bottom)); }
+.sheet-course { color:#202b3d; line-height:1.5; }
+.sheet-meta { color:#68778c; line-height:1.5; }
+.input { background:#f7f9fc; border-color:#e8edf4; border-radius:12rpx; }
+.submit-btn { background:#2459d9; }
+.empty { border:1rpx dashed #e0e6ef; font-size:25rpx; background:transparent; }

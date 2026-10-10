@@ -1,14 +1,11 @@
 <view class="page">
   <view class="header">
-    <image class="logo" src="/images/logo.png" mode="widthFix"></image>
     <view class="header-title">课程报名</view>
+    <view class="header-subtitle">选老师、选课程，安排孩子的下一节课</view>
   </view>
 
   <view class="course-type-bar">
-    <view class="course-type-label">课程类型</view>
-    <picker class="course-type-picker" bindchange="onCourseTypeChange" value="{{courseTypeIndex}}" range="{{courseTypeOptions}}" disabled="{{submitting || showSheet}}">
-      <view class="course-type-value">{{courseTypeOptions[courseTypeIndex]}}<text class="course-type-arrow">⌄</text></view>
-    </picker>
+    <view class="course-type-tab {{courseTypeIndex === index ? 'selected' : ''}}" wx:for="{{courseTypeOptions}}" wx:key="*this" data-index="{{index}}" bindtap="chooseCourseType">{{item === '班课' ? '班课报名' : '一对一预约'}}</view>
   </view>
 
   <view class="filter-bar">
@@ -45,7 +42,7 @@
         <view class="single-course-heading" data-id="{{item.scheduleId}}" bindtap="toggleCourseDates">
           <view class="course-name">{{item.courseClassName}}</view>
           <view class="meta">{{item.gradeText}} · {{item.subjectText}} · {{item.teacherName || '教师待配置'}}</view>
-          <view class="meta">{{item.periodName}} {{item.clockText}} · 共{{item.lessonCount}}个课次</view>
+          <view class="ui-time">{{item.periodName}} {{item.clockText}}</view>
           <view class="meta">{{item.dateRangeText}}</view><view class="meta">{{item.placeText}}</view>
           <view class="date-toggle">可报名{{item.availableLessonCount}}个日期 · {{item.expanded ? '收起日期' : '选择日期'}}　{{item.expanded ? '⌃' : '⌄'}}</view>
         </view>
@@ -57,7 +54,7 @@
       <view class="card-main">
         <view class="course-name">{{item.courseClassName}}</view>
         <view class="meta">{{item.gradeText}} · {{item.subjectText}} · {{item.teacherName || '教师待配置'}}</view>
-        <view class="meta">{{item.timeText}}</view>
+        <view class="ui-time">{{item.timeText}}</view>
         <view class="meta">{{item.placeText}}</view>
       </view>
       <view class="card-side">

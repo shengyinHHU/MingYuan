@@ -1,6 +1,7 @@
 <template>
-  <div class="app-container">
-    <el-form :model="queryParams" ref="queryForm" size="small" :inline="true" v-show="showSearch" label-width="68px">
+  <div class="app-container edu-workspace">
+    <div class="edu-page-heading"><div><h2>教室管理</h2><p>按校区查找教室，查看规格与建议容量</p></div><div class="edu-result-count">共 <strong>{{ total }}</strong> 间教室</div></div>
+    <el-form :model="queryParams" ref="queryForm" size="small" :inline="true" v-show="showSearch" label-width="100px">
       <el-form-item label="教室编码" prop="classroomCode">
         <el-input
           v-model="queryParams.classroomCode"
@@ -90,20 +91,21 @@
           v-hasPermi="['system:classroom:export']"
         >导出</el-button>
       </el-col>
+      <el-checkbox v-model="showDetailedColumns" class="edu-column-toggle">详细字段</el-checkbox>
       <right-toolbar :showSearch.sync="showSearch" @queryTable="getList"></right-toolbar>
     </el-row>
 
     <el-table v-loading="loading" :data="classroomList" @selection-change="handleSelectionChange">
       <el-table-column type="selection" width="55" align="center" />
-      <el-table-column label="教室ID" align="center" prop="classroomId" />
-      <el-table-column label="教室编码" align="center" prop="classroomCode" />
-      <el-table-column label="校区名称" align="center" prop="campusName" />
-      <el-table-column label="教室名称" align="center" prop="classroomName" />
-      <el-table-column label="教室规格" align="center" prop="classroomSize" />
-      <el-table-column label="建议容量" align="center" prop="capacity" />
-      <el-table-column label="状态" align="center" prop="status" />
-      <el-table-column label="备注" align="center" prop="remark" />
-      <el-table-column label="操作" align="center" class-name="small-padding fixed-width">
+      <el-table-column v-if="showDetailedColumns" key="detail-classroomId" label="教室ID" align="center" prop="classroomId" />
+      <el-table-column v-if="showDetailedColumns" key="detail-classroomCode" label="教室编码" align="center" prop="classroomCode" />
+      <el-table-column v-if="showDetailedColumns" key="detail-campusName" label="校区名称" align="center" prop="campusName" />
+      <el-table-column label="教室" prop="classroomName" min-width="180" fixed="left"><template slot-scope="scope"><div class="edu-table-name">{{ scope.row.classroomName }}</div><div class="edu-table-secondary">{{ scope.row.campusName || '校区待配置' }}</div></template></el-table-column>
+      <el-table-column v-if="showDetailedColumns" key="detail-classroomSize" label="教室规格" align="center" prop="classroomSize" />
+      <el-table-column label="建议容量" align="center" prop="capacity"><template slot-scope="scope"><strong class="edu-table-time">{{ scope.row.capacity != null ? scope.row.capacity + ' 人' : '未配置' }}</strong></template></el-table-column>
+      <el-table-column label="状态" align="center" prop="status"><template slot-scope="scope"><el-tag size="mini" :type="scope.row.status === '0' ? 'success' : 'info'">{{ { '0': '正常', '1': '停用' }[scope.row.status] || scope.row.status || '未知' }}</el-tag></template></el-table-column>
+      <el-table-column v-if="showDetailedColumns" key="detail-remark" label="备注" align="center" prop="remark" />
+      <el-table-column label="操作" align="center" class-name="small-padding fixed-width" fixed="right" width="150">
         <template slot-scope="scope">
           <el-button
             size="mini"
@@ -192,6 +194,7 @@ export default {
       multiple: true,
       // 显示搜索条件
       showSearch: true,
+      showDetailedColumns: false,
       // 总条数
       total: 0,
       // 教室信息表格数据
@@ -334,3 +337,5 @@ export default {
   }
 }
 </script>
+
+<style scoped src="@/assets/styles/education-workspace.css"></style>

@@ -229,6 +229,9 @@ Page({
   onGradeChange(e) {
     this.setData({ gradeIndex: Number(e.detail.value) }); this.applyFilters()
   },
+  chooseCourseType(e) {
+    this.onCourseTypeChange({ detail: { value: e.currentTarget.dataset.index } })
+  },
   onCourseTypeChange(e) {
     if (!this.current() || this.data.submitting || this.data.showSheet) return
     const index = Number(e.detail.value)
