@@ -422,6 +422,11 @@ class TuitionMysqlTest {
   @Test
   void educationCollectsAndReviewsButOnlyAdminCompletesOrRejectsReviewedRefund() throws Exception {
     var s = service("TuitionService");
+    // This account exists only in the isolated fixture, above JavaScript's exact integer range.
+    long rejectingAdmin = 9007199254740993L;
+    db.jdbc()
+        .update("INSERT INTO sys_user VALUES(?,'large-admin','大ID管理员','0','0')", rejectingAdmin);
+    db.jdbc().update("INSERT INTO sys_user_role VALUES(?,1)", rejectingAdmin);
     long id = fresh(), other = fresh();
     call(s, "price", id, 5L, priceBody("REAL"));
     var p =
@@ -499,7 +504,7 @@ class TuitionMysqlTest {
             s,
             "reviewRefund",
             refund,
-            1L,
+            rejectingAdmin,
             Map.of("approved", false, "reviewRemark", "需重新核实", "version", 1));
     assertEquals("REJECTED", rejected.get("refundStatus"));
     assertEquals(reviewed.get("reviewerId"), rejected.get("reviewerId"));
@@ -508,6 +513,17 @@ class TuitionMysqlTest {
     assertEquals("300.00", rejected.get("approvedAmount"));
     assertEquals("需重新核实", call(s, "refund", refund, 2L, false).get("reviewRemark"));
     assertTrue(rejected.get("calculationSnapshot").toString().contains("adminRejectReason"));
+    assertEquals(
+        "9007199254740993",
+        com.alibaba.fastjson2.JSON.parseObject(rejected.get("calculationSnapshot").toString())
+            .get("adminRejectBy"));
+    assertEquals(
+        "STRING",
+        db.one(
+                "SELECT JSON_TYPE(JSON_EXTRACT(calculation_snapshot,'$.adminRejectBy')) id_type"
+                    + " FROM edu_tuition_refund WHERE refund_id=?",
+                refund)
+            .get("idType"));
     assertNull(rejected.get("executorId"));
     body.put("idempotencyKey", "EDUR2" + id);
     r = call(s, "applyRefund", 2L, false, body);

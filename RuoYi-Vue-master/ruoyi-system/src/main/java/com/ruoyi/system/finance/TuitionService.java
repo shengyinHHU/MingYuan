@@ -1193,7 +1193,7 @@ public class TuitionService {
             refundVersion(r, b);
             String rejectReason = reason(b, "reviewRemark", 500);
             Map<String, Object> audit = JSON.parseObject(str(r, "calculationSnapshot"));
-            audit.put("adminRejectBy", actor);
+            audit.put("adminRejectBy", Long.toString(actor));
             audit.put("adminRejectTime", now().toString());
             audit.put("adminRejectReason", rejectReason);
             update(
