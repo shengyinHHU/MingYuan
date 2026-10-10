@@ -474,6 +474,52 @@ test('coupon failed grant stays frozen until explicit history-check cancellation
   assert.equal(instance.grantBatch, null)
   assert.equal(instance.grantForm.parentIds.length, 0)
 })
+test('coupon failed batch can reopen from its rendered page entry and retry with the original key', async () => {
+  const sent = []
+  const instance = component('coupon', {
+    grantCoupon: async (id, body) => {
+      sent.push({ id, body: JSON.parse(JSON.stringify(body)) })
+      if (sent.length === 1) throw new Error('结果未知')
+      return { total: 1 }
+    },
+  })
+  instance.getList = async () => {}
+  instance.grantTemplate = { templateId: '1', templateStatus: 'ACTIVE' }
+  instance.grantForm = { parentIds: ['2'], reason: '活动', idempotencyKey: 'original' }
+  instance.grantOpen = true
+  await instance.submitGrant()
+  instance.grantOpen = false
+  // Recovery must remain available even if the original template is now paused or exhausted.
+  instance.grantTemplate.templateStatus = 'PAUSED'
+  instance.grantTemplate.issuedQuantity = instance.grantTemplate.totalQuantity = 1
+  const source = fs.readFileSync(path.join(root, 'src/views/system/coupon/index.vue'), 'utf8')
+  const compiled = require('vue-template-compiler').compile(source.match(/<template>([\s\S]*?)<\/template>\s*<script>/)[1])
+  const view = new (require('vue'))({
+    data: () => instance,
+    render: new Function(compiled.render),
+    staticRenderFns: compiled.staticRenderFns.map((code) => new Function(code)),
+  })
+  function recoveryButton(node) {
+    if (node.tag === 'el-button' && (node.children || []).some((child) => /继续原批次/.test(child.text || ''))) return node
+    for (const child of node.children || []) {
+      const button = recoveryButton(child)
+      if (button) return button
+    }
+  }
+  const button = recoveryButton(view._render())
+  assert.ok(button, 'closed failed batch must have a visible recovery entry')
+  assert.equal(button.data.attrs.disabled, false)
+  instance.saving = true
+  assert.equal(recoveryButton(view._render()).data.attrs.disabled, true)
+  instance.saving = false
+  await button.data.on.click()
+  assert.equal(instance.grantOpen, true)
+  assert.equal(instance.grantTemplate.templateId, '1')
+  assert.deepEqual(Array.from(instance.grantForm.parentIds), ['2'])
+  await instance.submitGrant()
+  assert.deepEqual(sent[1], sent[0])
+  view.$destroy()
+})
 test('old enrollment editor strips finance fields while financial link preserves long ID', async () => {
   let body, route
   const instance = component('enrollment', {

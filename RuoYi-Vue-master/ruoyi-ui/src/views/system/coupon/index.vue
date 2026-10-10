@@ -6,6 +6,17 @@
       :closable="false"
       class="mb8"
     />
+    <el-row v-if="grantBatch && !grantOpen" class="mb8">
+      <el-button
+        v-hasPermi="['system:coupon:grant']"
+        type="warning"
+        size="small"
+        :disabled="saving || selectingAll"
+        @click="openGrant(grantTemplate)"
+      >
+        继续原批次
+      </el-button>
+    </el-row>
     <el-tabs v-model="activeTab" @tab-click="loadTab">
       <el-tab-pane label="券模板" name="templates">
         <el-form :inline="true" :model="queryParams" size="small">
