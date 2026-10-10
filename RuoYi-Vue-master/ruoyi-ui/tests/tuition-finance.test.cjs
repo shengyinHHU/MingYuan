@@ -29,53 +29,71 @@ test('unknown or pending payment reserves the bill and blocks new collection and
   const bill = { billingStatus: 'OPEN', financeMode: 'REAL', payments: [] }
   assert.equal(finance.canCollect(bill), true)
   for (const status of ['UNKNOWN', 'PENDING', 'SUCCESS', 'UNRECOGNIZED']) {
-    assert.equal(finance.canCollect({ ...bill, payments: [{ paymentStatus: status }] }), false)
-    assert.equal(finance.canPrice({ ...bill, payments: [{ paymentStatus: status }] }), false)
+    assert.equal(
+      finance.canCollect({ ...bill, payments: [{ paymentStatus: status }] }),
+      false
+    )
+    assert.equal(
+      finance.canPrice({ ...bill, payments: [{ paymentStatus: status }] }),
+      false
+    )
   }
-  assert.equal(finance.canCollect({ ...bill, billingStatus: 'HISTORY_PENDING' }), false)
-  assert.equal(finance.canPrice({ ...bill, billingStatus: 'PENDING_PRICE' }), true)
+  assert.equal(
+    finance.canCollect({ ...bill, billingStatus: 'HISTORY_PENDING' }),
+    false
+  )
+  assert.equal(
+    finance.canPrice({ ...bill, billingStatus: 'PENDING_PRICE' }),
+    true
+  )
   assert.equal(finance.canClosePayment({ paymentStatus: 'UNKNOWN' }), false)
 })
-test('authorized review UI permits self-review but still requires a pending request', () => {
-  assert.equal(typeof finance.canReview, 'function')
-  const refund = {
-    refundStatus: 'PENDING_REVIEW',
-    applicantId: '9007199254740993',
-    financeMode: 'REAL',
-  }
-  assert.equal(finance.canReview(refund, '9007199254740993'), true)
-  assert.equal(finance.canReview(refund, '9007199254740994'), true)
-  assert.equal(
-    finance.canReview({ ...refund, financeMode: 'MOCK', mockAllowed: true }, refund.applicantId),
-    true
-  )
-  assert.equal(
-    finance.canReview({ ...refund, financeMode: 'MOCK', mockAllowed: false }, refund.applicantId),
-    true
-  )
-  assert.equal(finance.canReview({ ...refund, applicantId: null }, '2'), false)
-  for (const refundStatus of ['APPROVED', 'PROCESSING', 'UNKNOWN', 'SUCCESS', 'CANCELLED']) {
-    assert.equal(finance.canReview({ ...refund, refundStatus }, refund.applicantId), false)
-  }
+test('new two-stage review helper excludes historical states', () => {
+  assert.equal(finance.canReview({ refundStatus: 'WAIT_EDU' }, '2'), true)
+  for (const refundStatus of [
+    'PENDING_REVIEW',
+    'APPROVED',
+    'PROCESSING',
+    'UNKNOWN',
+    'SUCCESS',
+  ])
+    assert.equal(finance.canReview({ refundStatus }, '2'), false)
 })
 test('evidence upload accepts only small PDF/image files and validated private keys', () => {
   assert.equal(typeof finance.validateEvidenceFile, 'function')
-  assert.equal(finance.validateEvidenceFile({ name: '凭证.pdf', size: 1024 }), true)
-  assert.throws(() => finance.validateEvidenceFile({ name: 'x.html', size: 100 }), /PDF/)
+  assert.equal(
+    finance.validateEvidenceFile({ name: '凭证.pdf', size: 1024 }),
+    true
+  )
   assert.throws(
-    () => finance.validateEvidenceFile({ name: 'x.png', size: 10 * 1024 * 1024 + 1 }),
+    () => finance.validateEvidenceFile({ name: 'x.html', size: 100 }),
+    /PDF/
+  )
+  assert.throws(
+    () =>
+      finance.validateEvidenceFile({
+        name: 'x.png',
+        size: 10 * 1024 * 1024 + 1,
+      }),
     /10/
   )
   assert.equal(
     finance.evidenceKey({ code: 200, data: { evidenceKey: 'private-token' } }),
     'private-token'
   )
-  assert.throws(() => finance.evidenceKey({ code: 500, msg: '上传失败' }), /上传失败/)
+  assert.throws(
+    () => finance.evidenceKey({ code: 500, msg: '上传失败' }),
+    /上传失败/
+  )
 })
 test('refund evidence is mandatory for success and unknown outcome cannot mean success', () => {
   assert.equal(typeof finance.refundConfirmation, 'function')
   assert.throws(
-    () => finance.refundConfirmation({ outcome: 'SUCCESS', completedTime: '2026-10-07 10:00:00' }),
+    () =>
+      finance.refundConfirmation({
+        outcome: 'SUCCESS',
+        completedTime: '2026-10-07 10:00:00',
+      }),
     /凭证/
   )
   assert.deepEqual(
@@ -86,7 +104,10 @@ test('refund evidence is mandatory for success and unknown outcome cannot mean s
     }),
     { outcome: 'UNKNOWN', reason: '银行结果待核对' }
   )
-  assert.throws(() => finance.refundConfirmation({ outcome: 'FAILED', reason: '' }), /原因/)
+  assert.throws(
+    () => finance.refundConfirmation({ outcome: 'FAILED', reason: '' }),
+    /原因/
+  )
   assert.deepEqual(
     finance.refundConfirmation({
       outcome: 'SUCCESS',
@@ -103,7 +124,11 @@ test('refund evidence is mandatory for success and unknown outcome cannot mean s
   )
   assert.deepEqual(
     finance.refundConfirmation(
-      { outcome: 'SUCCESS', evidenceKey: 'cash-proof', completedTime: '2026-10-07 10:00:00' },
+      {
+        outcome: 'SUCCESS',
+        evidenceKey: 'cash-proof',
+        completedTime: '2026-10-07 10:00:00',
+      },
       'CASH'
     ),
     {
@@ -129,7 +154,12 @@ test('batch grant deduplicates exact long IDs, limits 100 and preserves a retry 
     }
   )
   assert.throws(
-    () => finance.grantBody({ parentIds: [], reason: '活动', idempotencyKey: 'same-key' }),
+    () =>
+      finance.grantBody({
+        parentIds: [],
+        reason: '活动',
+        idempotencyKey: 'same-key',
+      }),
     /家长/
   )
   assert.throws(
@@ -148,7 +178,9 @@ test('authenticated PDF download rejects JSON failures instead of saving an erro
   assert.equal(await finance.checkedBlob(pdf), pdf)
   await assert.rejects(
     finance.checkedBlob(
-      new Blob(['{"code":403,"msg":"没有下载权限"}'], { type: 'application/json' })
+      new Blob(['{"code":403,"msg":"没有下载权限"}'], {
+        type: 'application/json',
+      })
     ),
     /没有下载权限/
   )
@@ -159,12 +191,20 @@ function component(name, dependencies = {}) {
   const script = stripImports(
     fs.readFileSync(filename, 'utf8').match(/<script>([\s\S]*?)<\/script>/)[1]
   ).replace('export default', 'component =')
-  const context = vm.createContext({ component: null, ...finance, ...dependencies })
+  const context = vm.createContext({
+    component: null,
+    ...finance,
+    ...dependencies,
+  })
   vm.runInContext(script, context)
   const definition = context.component
   const instance = {
     ...definition.data(),
-    $modal: { msgSuccess() {}, msgError() {}, confirm: () => Promise.resolve() },
+    $modal: {
+      msgSuccess() {},
+      msgError() {},
+      confirm: () => Promise.resolve(),
+    },
     $store: { state: { user: { id: '2' } } },
     $route: { query: {} },
     ...dependencies,
@@ -175,7 +215,9 @@ function component(name, dependencies = {}) {
 }
 function stripImports(source) {
   const tree = require('@babel/parser').parse(source, { sourceType: 'module' })
-  for (const node of tree.program.body.filter((n) => n.type === 'ImportDeclaration').reverse()) {
+  for (const node of tree.program.body
+    .filter((n) => n.type === 'ImportDeclaration')
+    .reverse()) {
     source = source.slice(0, node.start) + source.slice(node.end)
   }
   return source
@@ -188,7 +230,11 @@ test('collection submits backend quote unchanged and reuses idempotency after ne
       throw new Error('网络中断')
     },
   })
-  instance.detail = { enrollmentId: '9007199254740993', billingStatus: 'OPEN', payments: [] }
+  instance.detail = {
+    enrollmentId: '9007199254740993',
+    billingStatus: 'OPEN',
+    payments: [],
+  }
   instance.quote = {
     payableAmount: '900.00',
     financialVersion: 3,
@@ -281,52 +327,6 @@ test('receipt replacement requires a reason and keeps failed operation visible',
   await instance.submitReplace()
   assert.equal(writes, 1)
   assert.equal(instance.replaceOpen, true)
-  assert.equal(instance.saving, false)
-})
-test('real self-review submits but approval reduction still requires explanation', async () => {
-  let writes = 0
-  const instance = component('tuitionRefund', {
-    reviewRefund: async () => {
-      writes++
-    },
-  })
-  instance.detail = {
-    refundId: '9007199254740993',
-    applicantId: '2',
-    financeMode: 'REAL',
-    refundStatus: 'PENDING_REVIEW',
-    requestedAmount: '100.00',
-  }
-  instance.operation = 'review'
-  instance.getList = async () => {}
-  instance.handleDetail = async () => {}
-  instance.form = { approved: true, approvedAmount: '100.00', reviewRemark: '' }
-  await instance.submitOperation()
-  assert.equal(writes, 1)
-  instance.detail.applicantId = '3'
-  instance.form.approvedAmount = '90.00'
-  await instance.submitOperation()
-  assert.equal(writes, 1)
-  assert.match(instance.formError, /说明/)
-})
-test('admin withdrawal posts exact refund ID and refreshes only after confirmation', async () => {
-  const sent = []
-  const instance = component('tuitionRefund', {
-    cancelRefund: async (id) => sent.push(id),
-  })
-  instance.detail = { refundId: '9007199254740993', applicantId: '2', refundStatus: 'PENDING_REVIEW' }
-  instance.actorId = '2'
-  instance.getList = async () => {}
-  instance.handleDetail = async () => {}
-  await instance.cancel()
-  assert.deepEqual(sent, ['9007199254740993'])
-  instance.detail.refundStatus = 'PROCESSING'
-  await instance.cancel()
-  assert.equal(sent.length, 1)
-  instance.detail.refundStatus = 'PENDING_REVIEW'
-  instance.$modal.confirm = () => Promise.reject()
-  await instance.cancel()
-  assert.equal(sent.length, 1)
   assert.equal(instance.saving, false)
 })
 test('coupon grants preserve selected parents and same batch key after failed request', async () => {
@@ -485,22 +485,36 @@ test('coupon failed batch can reopen from its rendered page entry and retry with
   })
   instance.getList = async () => {}
   instance.grantTemplate = { templateId: '1', templateStatus: 'ACTIVE' }
-  instance.grantForm = { parentIds: ['2'], reason: '活动', idempotencyKey: 'original' }
+  instance.grantForm = {
+    parentIds: ['2'],
+    reason: '活动',
+    idempotencyKey: 'original',
+  }
   instance.grantOpen = true
   await instance.submitGrant()
   instance.grantOpen = false
   // Recovery must remain available even if the original template is now paused or exhausted.
   instance.grantTemplate.templateStatus = 'PAUSED'
-  instance.grantTemplate.issuedQuantity = instance.grantTemplate.totalQuantity = 1
-  const source = fs.readFileSync(path.join(root, 'src/views/system/coupon/index.vue'), 'utf8')
-  const compiled = require('vue-template-compiler').compile(source.match(/<template>([\s\S]*?)<\/template>\s*<script>/)[1])
+  instance.grantTemplate.issuedQuantity =
+    instance.grantTemplate.totalQuantity = 1
+  const source = fs.readFileSync(
+    path.join(root, 'src/views/system/coupon/index.vue'),
+    'utf8'
+  )
+  const compiled = require('vue-template-compiler').compile(
+    source.match(/<template>([\s\S]*?)<\/template>\s*<script>/)[1]
+  )
   const view = new (require('vue'))({
     data: () => instance,
     render: new Function(compiled.render),
     staticRenderFns: compiled.staticRenderFns.map((code) => new Function(code)),
   })
   function recoveryButton(node) {
-    if (node.tag === 'el-button' && (node.children || []).some((child) => /继续原批次/.test(child.text || ''))) return node
+    if (
+      node.tag === 'el-button' &&
+      (node.children || []).some((child) => /继续原批次/.test(child.text || ''))
+    )
+      return node
     for (const child of node.children || []) {
       const button = recoveryButton(child)
       if (button) return button
@@ -565,7 +579,11 @@ test('zero backend quote submits FREE without inventing cash collection', async 
     userCouponId: '2',
   }
   instance.operation = 'collect'
-  instance.form = { payerName: '家长', channel: 'CASH', idempotencyKey: 'free-key' }
+  instance.form = {
+    payerName: '家长',
+    channel: 'CASH',
+    idempotencyKey: 'free-key',
+  }
   instance.getList = instance.handleDetail = async () => {}
   await instance.submitOperation()
   assert.equal(saved.channel, 'FREE')
@@ -603,7 +621,11 @@ test('local allowed MOCK bill sends only MOCK channel without real evidence', as
   }
   instance.quote = { payableAmount: '900.00', financialVersion: 3 }
   instance.operation = 'collect'
-  instance.form = { payerName: '演示家长', channel: 'CASH', idempotencyKey: 'mock-key' }
+  instance.form = {
+    payerName: '演示家长',
+    channel: 'CASH',
+    idempotencyKey: 'mock-key',
+  }
   instance.getList = instance.handleDetail = async () => {}
   await instance.submitOperation()
   assert.ok(saved, 'mock collection should not require real evidence')
@@ -649,7 +671,11 @@ test('pending real confirmation uses already bound evidence without requiring an
     paidTime: '2026-10-07 10:00:00',
   }
   instance.operation = 'confirm'
-  instance.form = { paidTime: '2026-10-07 10:00:00', evidenceKey: '', providerTradeNo: '' }
+  instance.form = {
+    paidTime: '2026-10-07 10:00:00',
+    evidenceKey: '',
+    providerTradeNo: '',
+  }
   instance.getList = instance.handleDetail = async () => {}
   await instance.submitOperation()
   assert.ok(saved, 'bound evidence should remain usable')
@@ -661,7 +687,13 @@ test('coupon parent query normalizes authorized parent names and search fields',
     listParents: async (params) => {
       query = params
       return {
-        rows: [{ parentId: '9007199254740993', parentName: '家长', userName: 'parent' }],
+        rows: [
+          {
+            parentId: '9007199254740993',
+            parentName: '家长',
+            userName: 'parent',
+          },
+        ],
         total: 1,
       }
     },
@@ -689,7 +721,9 @@ test('issued coupon template ignores rule edits and sends only allowed status', 
   instance.getList = async () => {}
   await instance.submitTemplate()
   assert.equal(saved.id, '9007199254740993')
-  assert.deepEqual(JSON.parse(JSON.stringify(saved.body)), { templateStatus: 'PAUSED' })
+  assert.deepEqual(JSON.parse(JSON.stringify(saved.body)), {
+    templateStatus: 'PAUSED',
+  })
 })
 function api(name, request) {
   const calls = []
@@ -723,7 +757,10 @@ test('finance API binds evidence to exact business long ID using multipart and a
   assert.equal(config.headers.isToken, undefined)
   assert.equal(config.headers['Content-Type'], 'multipart/form-data')
   await context.paymentEvidence('9007199254740993')
-  assert.equal(calls[1].url, '/system/tuition/payments/9007199254740993/evidence')
+  assert.equal(
+    calls[1].url,
+    '/system/tuition/payments/9007199254740993/evidence'
+  )
   assert.equal(calls[1].responseType, 'blob')
 })
 test('receipt and refund use dedicated routes and blob download retains authentication', async () => {
@@ -731,12 +768,26 @@ test('receipt and refund use dedicated routes and blob download retains authenti
   await receipt.context.receiptFile('9007199254740993')
   await receipt.context.replaceReceipt('9007199254740993', '抬头更正')
   assert.equal(receipt.calls[0].responseType, 'blob')
-  assert.equal(receipt.calls[0].url, '/system/tuition/receipts/9007199254740993/file')
-  assert.equal(receipt.calls[0].headers && receipt.calls[0].headers.isToken, undefined)
-  assert.deepEqual(JSON.parse(JSON.stringify(receipt.calls[1].data)), { reason: '抬头更正' })
+  assert.equal(
+    receipt.calls[0].url,
+    '/system/tuition/receipts/9007199254740993/file'
+  )
+  assert.equal(
+    receipt.calls[0].headers && receipt.calls[0].headers.isToken,
+    undefined
+  )
+  assert.deepEqual(JSON.parse(JSON.stringify(receipt.calls[1].data)), {
+    reason: '抬头更正',
+  })
   const refund = api('tuitionRefund')
-  await refund.context.confirmRefund('9007199254740993', { outcome: 'UNKNOWN', reason: '待核对' })
-  assert.equal(refund.calls[0].url, '/system/tuition/refunds/9007199254740993/confirm')
+  await refund.context.confirmRefund('9007199254740993', {
+    outcome: 'UNKNOWN',
+    reason: '待核对',
+  })
+  assert.equal(
+    refund.calls[0].url,
+    '/system/tuition/refunds/9007199254740993/confirm'
+  )
   assert.deepEqual(JSON.parse(JSON.stringify(refund.calls[0].data)), {
     outcome: 'UNKNOWN',
     reason: '待核对',
@@ -744,7 +795,9 @@ test('receipt and refund use dedicated routes and blob download retains authenti
 })
 test('receipt download actually passes Bearer through the existing Axios interceptor', async () => {
   const axios = require('axios')
-  const source = stripImports(fs.readFileSync(path.join(root, 'src/utils/request.js'), 'utf8'))
+  const source = stripImports(
+    fs.readFileSync(path.join(root, 'src/utils/request.js'), 'utf8')
+  )
     .replace('export let isRelogin', 'let isRelogin')
     .replace('export function download', 'function download')
     .replace('export default service', 'serviceResult = service')
@@ -785,12 +838,355 @@ test('receipt download actually passes Bearer through the existing Axios interce
 test('every financial template and JavaScript compiles using the installed Vue2 toolchain', () => {
   const compiler = require('vue-template-compiler')
   const parser = require('@babel/parser')
-  for (const name of ['tuition', 'tuitionReceipt', 'tuitionRefund', 'coupon', 'enrollment']) {
+  for (const name of [
+    'tuition',
+    'tuitionReceipt',
+    'tuitionRefund',
+    'coupon',
+    'enrollment',
+  ]) {
     const sfc = compiler.parseComponent(
-      fs.readFileSync(path.join(root, 'src/views/system', name, 'index.vue'), 'utf8')
+      fs.readFileSync(
+        path.join(root, 'src/views/system', name, 'index.vue'),
+        'utf8'
+      )
     )
     const result = compiler.compile(sfc.template.content)
     assert.deepEqual(result.errors, [], name + ' template errors')
-    parser.parse(sfc.script.content, { sourceType: 'module', plugins: ['objectRestSpread'] })
+    parser.parse(sfc.script.content, {
+      sourceType: 'module',
+      plugins: ['objectRestSpread'],
+    })
   }
+})
+
+function renderedRefund(instance) {
+  const source = fs.readFileSync(
+    path.join(root, 'src/views/system/tuitionRefund/index.vue'),
+    'utf8'
+  )
+  const compiled = require('vue-template-compiler').compile(
+    source.match(/<template>([\s\S]*?)<\/template>\s*<script>/)[1]
+  )
+  const view = new (require('vue'))({
+    data: () => instance,
+    render: new Function(compiled.render),
+    staticRenderFns: compiled.staticRenderFns.map((code) => new Function(code)),
+  })
+  const nodes = []
+  function walk(node) {
+    if (!node) return
+    nodes.push(node)
+    ;(node.children || []).forEach(walk)
+  }
+  walk(view._render())
+  const text = nodes
+    .map((n) => n.text || (n.data && n.data.attrs && n.data.attrs.title) || '')
+    .join('')
+  const buttonsText = nodes
+    .filter((n) => n.tag === 'el-button')
+    .map((n) => (n.children || []).map((c) => c.text || '').join(''))
+    .join('')
+  view.$destroy()
+  return { text, nodes, buttonsText }
+}
+function staffRefund(
+  dependencies = {},
+  roles = ['admin'],
+  permissions = ['*:*:*']
+) {
+  return component('tuitionRefund', {
+    $store: { state: { user: { id: '2', roles, permissions } } },
+    ...dependencies,
+  })
+}
+test('rendered two-stage actions show education then administrator completion and preserve legacy history', async () => {
+  const instance = staffRefund()
+  instance.detail = {
+    refundId: '9',
+    refundStatus: 'WAIT_EDU',
+    version: 0,
+    calculationSnapshot: '{"private":true}',
+  }
+  let view = renderedRefund(instance)
+  assert.match(view.text, /教务确认金额/)
+  assert.doesNotMatch(
+    view.text,
+    /已退款登记|计算快照|private|撤回申请|退款凭证/
+  )
+  instance.detail.refundStatus = 'WAIT_ADMIN'
+  view = renderedRefund(instance)
+  assert.match(view.text, /已退款登记/)
+  assert.match(view.text, /驳回/)
+  instance.detail.refundStatus = 'PROCESSING'
+  view = renderedRefund(instance)
+  assert.match(view.text, /历史流程.*管理员/)
+  assert.doesNotMatch(view.text, /执行退费|核对到账结果|已退款登记/)
+})
+test('education amount review and same administrator completion use exact ID and version in separate steps', async () => {
+  const sent = []
+  const instance = staffRefund({
+    reviewRefund: async (id, data) => sent.push({ id, data }),
+    markRefunded: async (id, data) => sent.push({ id, data }),
+  })
+  instance.detail = {
+    refundId: '9007199254740993',
+    refundStatus: 'WAIT_EDU',
+    refundableAmount: '900.00',
+    version: 0,
+  }
+  instance.getList = instance.handleDetail = async () => {}
+  const reviewButton = renderedRefund(instance).nodes.find(
+    (node) =>
+      node.tag === 'el-button' &&
+      (node.children || []).some((child) =>
+        /教务确认金额/.test(child.text || '')
+      )
+  )
+  assert.ok(reviewButton)
+  assert.equal(reviewButton.data.attrs.disabled, false)
+  await reviewButton.data.on.click()
+  assert.equal(instance.operation, 'review')
+  assert.equal(instance.form.version, 0)
+  instance.form = {
+    approved: true,
+    approvedAmount: '300.00',
+    reviewRemark: '实际授课后核定',
+    version: 0,
+  }
+  await instance.submitOperation()
+  assert.equal(sent.length, 1)
+  assert.deepEqual(JSON.parse(JSON.stringify(sent[0])), {
+    id: '9007199254740993',
+    data: {
+      approved: true,
+      approvedAmount: '300.00',
+      reviewRemark: '实际授课后核定',
+      version: 0,
+    },
+  })
+  instance.openOperation('markRefunded')
+  await instance.submitOperation()
+  assert.equal(sent.length, 1, 'WAIT_EDU must not complete')
+  instance.detail = {
+    ...instance.detail,
+    refundStatus: 'WAIT_ADMIN',
+    approvedAmount: '300.00',
+    version: 1,
+  }
+  instance.openOperation('markRefunded')
+  instance.form.completedTime = '2026-10-11 10:00:00'
+  let confirmation
+  instance.$modal.confirm = async (message) => {
+    confirmation = message
+  }
+  await instance.submitOperation()
+  assert.match(confirmation, /已在线下实际退还/)
+  assert.deepEqual(JSON.parse(JSON.stringify(sent[1])), {
+    id: '9007199254740993',
+    data: { version: 1, completedTime: '2026-10-11 10:00:00' },
+  })
+})
+test('WAIT_ADMIN rejection preserves education facts and stale version refreshes the record', async () => {
+  let body,
+    refreshed = 0
+  const instance = staffRefund({
+    reviewRefund: async (_, data) => {
+      body = data
+      throw Error('版本已变化，请刷新')
+    },
+  })
+  instance.detail = {
+    refundId: '9',
+    refundStatus: 'WAIT_ADMIN',
+    approvedAmount: '100.00',
+    reviewRemark: '教务核定',
+    version: 1,
+  }
+  instance.handleDetail = async () => {
+    refreshed++
+  }
+  instance.openOperation('reject')
+  instance.form.reviewRemark = '尚未退还，需核对'
+  await instance.submitOperation()
+  assert.deepEqual(JSON.parse(JSON.stringify(body)), {
+    approved: false,
+    approvedAmount: null,
+    reviewRemark: '尚未退还，需核对',
+    version: 1,
+  })
+  assert.equal(refreshed, 1)
+  assert.match(instance.formError, /版本/)
+})
+test('staff application has no amount and freezes SESSION target and key after uncertain outcome', async () => {
+  const sent = []
+  const instance = staffRefund({
+    applyRefund: async (data) => {
+      sent.push(JSON.parse(JSON.stringify(data)))
+      throw Error('网络中断')
+    },
+  })
+  instance.bill = { enrollmentId: '1', refundableAmount: '900.00' }
+  instance.successfulPayments = [{ paymentId: '2' }]
+  instance.targets = [
+    {
+      targetType: 'CLASS_SIGN_IN',
+      targetId: '9007199254740993',
+      label: '2026-10-10',
+    },
+  ]
+  instance.operation = 'apply'
+  instance.form = {
+    enrollmentId: '1',
+    paymentId: '2',
+    refundKind: 'SESSION',
+    targetId: '9007199254740993',
+    reason: '请假',
+    idempotencyKey: 'original',
+  }
+  await instance.submitOperation()
+  instance.form.reason = 'changed'
+  instance.form.targetId = 'changed'
+  await instance.submitOperation()
+  assert.equal(sent.length, 2)
+  assert.deepEqual(sent[1], sent[0])
+  assert.equal(sent[0].classSignInId, '9007199254740993')
+  assert.equal(Object.hasOwn(sent[0], 'requestedAmount'), false)
+  await instance.openApply()
+  assert.equal(instance.form.idempotencyKey, 'original')
+})
+test('role and menu permission both guard staff writes and rendered actions', async () => {
+  let writes = 0
+  for (const [roles, permissions] of [
+    [['teacher'], ['*:*:*']],
+    [['education'], []],
+  ]) {
+    const instance = staffRefund(
+      {
+        reviewRefund: async () => {
+          writes++
+        },
+      },
+      roles,
+      permissions
+    )
+    instance.detail = { refundId: '9', refundStatus: 'WAIT_EDU', version: 0 }
+    assert.doesNotMatch(renderedRefund(instance).buttonsText, /教务确认金额/)
+    instance.openOperation('review')
+    instance.form = {
+      approved: true,
+      approvedAmount: '1.00',
+      reviewRemark: '核定',
+      version: 0,
+    }
+    await instance.submitOperation()
+    assert.doesNotMatch(renderedRefund(instance).buttonsText, /教务确认金额/)
+  }
+  assert.equal(writes, 0)
+})
+test('new refund API forwards version and target lookup with exact string IDs', async () => {
+  const tuition = api('tuition')
+  await tuition.context.refundTargets('9007199254740993')
+  assert.equal(
+    tuition.calls[0].url,
+    '/system/tuition/9007199254740993/refund-targets'
+  )
+  const refund = api('tuitionRefund')
+  await refund.context.markRefunded('9007199254740993', { version: 1 })
+  assert.equal(
+    refund.calls[0].url,
+    '/system/tuition/refunds/9007199254740993/mark-refunded'
+  )
+  assert.equal(refund.calls[0].data.version, 1)
+})
+
+test('a superseded SESSION query cannot leave staff form busy or restore old targets', async () => {
+  let release
+  const instance = staffRefund({
+    refundTargets: () =>
+      new Promise((resolve) => {
+        release = resolve
+      }),
+  })
+  instance.bill = { enrollmentId: '1' }
+  instance.form = { enrollmentId: '1', refundKind: 'SESSION', targetId: '' }
+  const pending = instance.loadTargets()
+  instance.form.refundKind = 'PARTIAL'
+  instance.changeKind()
+  assert.equal(instance.targetsLoading, false)
+  release({
+    data: {
+      rows: [{ targetType: 'CLASS_SIGN_IN', targetId: '9', label: 'old' }],
+    },
+  })
+  await pending
+  assert.equal(instance.targets.length, 0)
+})
+test('failed SESSION lookup prevents staff submission and duplicate clicks issue only one request', async () => {
+  let writes = 0,
+    release
+  const instance = staffRefund({
+    refundTargets: async () => {
+      throw Error('断网')
+    },
+    applyRefund: () => {
+      writes++
+      return new Promise((resolve) => {
+        release = resolve
+      })
+    },
+  })
+  instance.bill = { enrollmentId: '1' }
+  instance.successfulPayments = [{ paymentId: '2' }]
+  instance.form = {
+    enrollmentId: '1',
+    paymentId: '2',
+    refundKind: 'SESSION',
+    targetId: '9',
+    reason: '请假',
+    idempotencyKey: 'key',
+  }
+  instance.operation = 'apply'
+  await instance.loadTargets()
+  await instance.submitOperation()
+  assert.equal(writes, 0)
+  instance.form.refundKind = 'PARTIAL'
+  instance.getList = async () => {}
+  const first = instance.submitOperation()
+  await instance.submitOperation()
+  assert.equal(writes, 1)
+  release({ data: { refundId: '9' } })
+  await first
+  assert.equal(instance.applyIntent, null)
+})
+
+test('legacy SUCCESS preserves historical reviewer and amount semantics with or without workflow tag', () => {
+  const instance = staffRefund()
+  for (const refundWorkflow of ['LEGACY', undefined]) {
+    instance.detail = {
+      refundId: '9',
+      refundStatus: 'SUCCESS',
+      refundWorkflow,
+      approvedAmount: '100.00',
+      reviewerId: '2',
+      executorId: '2',
+      completedTime: '2026-10-10 10:00:00',
+    }
+    const view = renderedRefund(instance)
+    const labels = view.nodes
+      .filter((node) => node.tag === 'el-descriptions-item')
+      .map((node) => node.data.attrs.label)
+    assert.ok(labels.includes('旧流程审核人'))
+    assert.ok(labels.includes('旧流程批准金额'))
+    assert.ok(labels.includes('旧流程执行人'))
+    assert.equal(labels.includes('教务已阅'), false)
+    assert.match(view.text, /历史流程.*管理员/)
+    assert.doesNotMatch(view.buttonsText, /确认金额|已退款登记|驳回/)
+  }
+  instance.detail.refundWorkflow = 'OFFLINE_TWO_STAGE'
+  const labels = renderedRefund(instance)
+    .nodes.filter((node) => node.tag === 'el-descriptions-item')
+    .map((node) => node.data.attrs.label)
+  assert.ok(labels.includes('教务已阅'))
+  assert.ok(labels.includes('教务核定金额'))
 })

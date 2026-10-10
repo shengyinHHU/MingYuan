@@ -95,6 +95,12 @@ const roleOptions = Object.keys(roleProfiles).map((key) => ({
   className: ''
 }))
 
+// Education is a real authenticated role, never a development login option.
+roleProfiles.education = {
+  name: '教务', tag: '教务工作台', eyebrow: '教务端', title: '线下收费与退费金额核定',
+  stats: [], actions: [], agendaTitle: '教务工作说明', schedule: []
+}
+
 function normalizeRole(roleKey) {
   return roleProfiles[roleKey] ? roleKey : 'parent'
 }
@@ -223,9 +229,9 @@ function buildRoleState(roleKey, visibleRoles) {
   }
 }
 
-function getRoleFromStorage() {
-  const roles = wx.getStorageSync('roles') || []
+function getRoleFromStorage(roles = wx.getStorageSync('roles') || []) {
   if (roles.includes('admin')) return 'admin'
+  if (roles.includes('education')) return 'education'
   if (roles.includes('teacher')) return 'teacher'
   return 'parent'
 }
@@ -278,10 +284,23 @@ Page({
         return
       }
     }
-    const role = getRoleFromStorage()
+    // Only getInfo grants the finance entry; cached roles and role tabs cannot do so.
+    this.setData({ quickActions: this.data.quickActions.filter(a => a.route !== '/pages/admin-tuition/admin-tuition') })
+    let info
+    try {
+      info = await request({ url: '/getInfo' })
+      if (this._unloaded || loadVersion !== this._roleLoadVersion || wx.getStorageSync('token') !== token) return
+      getApp().globalData.roles = info.roles || []
+      getApp().globalData.permissions = info.permissions || []
+      if (info.user) getApp().globalData.userInfo = info.user
+    } catch (error) {
+      if (!this._unloaded && loadVersion === this._roleLoadVersion) wx.showToast({ title: error.message || '身份核对失败，请重新登录', icon: 'none' })
+      return
+    }
+    const role = getRoleFromStorage(info.roles || [])
     this._teacherLoadVersion = (this._teacherLoadVersion || 0) + 1
     this.setData({ teacherDataMessage: '' })
-    if (DEV_ROLE_SWITCH_ENABLED) {
+    if (DEV_ROLE_SWITCH_ENABLED && role !== 'education') {
       this.setData({
         roleLocked: false,
         ...buildRoleState(role, roleOptions)
@@ -292,6 +311,12 @@ Page({
         ...buildRoleState(role, [{ key: role, name: roleProfiles[role].name, className: 'active' }])
       })
     }
+
+    const staff = (info.roles || []).some(r => ['admin', 'education'].includes(r))
+    const financeAllowed = staff && (info.permissions || []).some(p => p === '*:*:*' || p === 'system:tuition:list')
+    const actions = this.data.quickActions.filter(a => a.route !== '/pages/admin-tuition/admin-tuition')
+    if (financeAllowed) actions.push({ title: '收费财务', icon: '财', tone: 'gold', route: '/pages/admin-tuition/admin-tuition' })
+    this.setData({ quickActions: actions })
 
     if (role === 'parent') {
       this.loadParentTag()
@@ -407,6 +432,7 @@ Page({
   },
 
   async loginAsDevRole(role) {
+    if (!roleOptions.some(option => option.key === role)) return
     const previousToken = wx.getStorageSync('token')
     this.setData({ roleSwitching: true })
     try {

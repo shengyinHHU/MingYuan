@@ -32,3 +32,7 @@ export function refundEvidence(id) {
     responseType: 'blob',
   })
 }
+
+export function markRefunded(id, data) {
+  return request({ url: '/system/tuition/refunds/' + id + '/mark-refunded', method: 'post', data })
+}

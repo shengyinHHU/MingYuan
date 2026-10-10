@@ -161,6 +161,9 @@ class LessonMysqlTest {
     call("setTeacherLevel",1L,values("teacherId",4L,"level","senior"));
     var b=book(2,s,p,slot(4,1,"2099-10-11 10:00:00"),"SESSION-BOOK");
     long booking=id(b.get("bookingId"));call("cancel",2L,false,booking,values("reason","请假"));ledger(p,10);
+    var targets=(List<Map<String,Object>>)tuition.refundTargets(e,2,false).get("rows");
+    assertEquals("2099-10-11 10:00:00 · 课包（数学） · 普通教师 · 已返2次",targets.get(0).get("label"));
+    assertEquals(2,((Number)targets.get(0).get("returnedUnits")).intValue());
     var request=values("paymentId",payment.get("paymentId"),"refundKind","SESSION","lessonBookingId",booking,"reason","单次退款","idempotencyKey","SESSION-REFUND");
     var r=tuition.applyRefund(2,false,request);long refund=id(r.get("refundId"));
     assertEquals(2,repo.one("SELECT reserved_refund_units FROM edu_student_package WHERE student_package_id=?",p).get("reservedRefundUnits"));

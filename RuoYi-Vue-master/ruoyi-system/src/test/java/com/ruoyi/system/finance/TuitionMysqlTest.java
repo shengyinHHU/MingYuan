@@ -318,7 +318,9 @@ class TuitionMysqlTest {
             "UPDATE edu_class_sign_in SET sign_in_id=9007199254740993 WHERE sign_in_id=?", target);
     target = 9007199254740993L;
     assertThrows(Exception.class, () -> s.refundTargets(bill, 3, false));
+    db.jdbc().update("UPDATE edu_course_schedule SET teacher_name='授课教师' WHERE schedule_id=1");
     var targets = (List<Map<String, Object>>) s.refundTargets(bill, 2, false).get("rows");
+    assertEquals("2026-09-01 · 测试课程 · 授课教师 · 已返0次", targets.get(0).get("label"));
     assertEquals("9007199254740993", targets.get(0).get("targetId"));
     assertEquals("CLASS_SIGN_IN", targets.get(0).get("targetType"));
     for (var body :
