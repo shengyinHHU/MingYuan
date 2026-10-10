@@ -352,6 +352,128 @@ test('coupon grants preserve selected parents and same batch key after failed re
   assert.equal(instance.grantOpen, true)
   assert.equal(instance.saving, false)
 })
+test('coupon all-results selection freezes 101 recipients and resumes only the unconfirmed batch', async () => {
+  const sent = [],
+    queries = [],
+    confirmations = []
+  let fail = true
+  const instance = component('coupon', {
+    listParents: async (query) => {
+      queries.push({ ...query })
+      return {
+        rows: Array.from({ length: query.pageNum === 1 ? 100 : 1 }, (_, i) => ({
+          parentId: String((query.pageNum - 1) * 100 + i + 1),
+        })),
+        total: 101,
+      }
+    },
+    grantCoupon: async (id, body) => {
+      sent.push({ id, body: JSON.parse(JSON.stringify(body)) })
+      if (body.parentIds.length === 1 && fail) {
+        fail = false
+        throw new Error('第二批断网')
+      }
+      return { rows: body.parentIds, total: body.parentIds.length }
+    },
+    $modal: {
+      confirm: async (message) => confirmations.push(message),
+      msgSuccess() {},
+    },
+  })
+  instance.getList = async () => {}
+  instance.grantTemplate = { templateId: '9007199254740993' }
+  instance.parentQuery.gradeName = '五年级'
+  instance.parentQuery.subjectName = '英语'
+  instance.grantForm.reason = '筛选活动'
+  await instance.selectAllParents()
+  assert.equal(instance.grantForm.parentIds.length, 101)
+  assert.equal(queries.length, 2)
+  assert.equal(queries[1].gradeName, '五年级')
+  await instance.submitGrant()
+  assert.equal(sent[0].body.parentIds.length, 100)
+  assert.equal(sent[1].body.parentIds.length, 1)
+  assert.equal(sent[0].body.subjectName, '英语')
+  assert.match(instance.grantFormError, /100.*1/)
+  assert.match(confirmations[0], /101/)
+  instance.grantForm.parentIds = ['999']
+  instance.grantForm.reason = '新说明'
+  instance.parentQuery.gradeName = '六年级'
+  instance.grantTemplate = { templateId: '999' }
+  await instance.submitGrant()
+  assert.equal(sent.length, 3)
+  assert.deepEqual(sent[2], sent[1])
+})
+test('coupon filter changes and denied candidate queries clear reserved selections and stale all-results lists', async () => {
+  let clears = 0
+  const instance = component('coupon', {
+    listParents: async () => {
+      throw new Error('没有查询权限')
+    },
+    $refs: {
+      parentsTable: {
+        clearSelection() {
+          clears++
+        },
+      },
+    },
+  })
+  instance.grantForm.parentIds = ['old']
+  instance.parents = [{ userId: 'old' }]
+  instance.parentQuery.gradeName = '五年级'
+  await instance.searchParents()
+  assert.equal(instance.grantForm.parentIds.length, 0)
+  assert.equal(instance.parents.length, 0)
+  assert.ok(clears > 0)
+  instance.grantForm.parentIds = ['old-again']
+  await instance.selectAllParents()
+  assert.equal(instance.grantForm.parentIds.length, 0)
+  assert.match(instance.grantFormError, /权限/)
+})
+test('coupon all-results fetch blocks edits and discards a stale response after filter changes', async () => {
+  let release
+  const instance = component('coupon', {
+    listParents: () =>
+      new Promise((resolve) => {
+        release = resolve
+      }),
+  })
+  instance.grantTemplate = { templateId: '1' }
+  const pending = instance.selectAllParents()
+  instance.selectParents([{ parentId: '2' }])
+  await instance.openGrant({ templateId: '3' })
+  assert.equal(instance.grantTemplate.templateId, '1')
+  assert.equal(instance.grantForm.parentIds.length, 0)
+  instance.parentQuery.subjectName = '英语'
+  release({ rows: [{ parentId: '4' }], total: 1 })
+  await pending
+  assert.equal(instance.grantForm.parentIds.length, 0)
+})
+test('coupon failed grant stays frozen until explicit history-check cancellation', async () => {
+  const instance = component('coupon', {
+    grantCoupon: async () => {
+      throw new Error('结果未知')
+    },
+  })
+  instance.grantTemplate = { templateId: '1' }
+  instance.grantForm = {
+    parentIds: ['2'],
+    reason: '活动',
+    idempotencyKey: 'original',
+  }
+  await instance.submitGrant()
+  instance.selectParents([{ parentId: '3' }])
+  await instance.openGrant({ templateId: '4' })
+  assert.equal(instance.grantTemplate.templateId, '1')
+  assert.deepEqual(Array.from(instance.grantForm.parentIds), ['2'])
+  let warning
+  instance.$modal.confirm = async (message) => {
+    warning = message
+  }
+  await instance.cancelGrantBatch()
+  assert.match(warning, /历史发放/)
+  assert.equal(instance.grantBatch, null)
+  assert.equal(instance.grantForm.parentIds.length, 0)
+})
 test('old enrollment editor strips finance fields while financial link preserves long ID', async () => {
   let body, route
   const instance = component('enrollment', {

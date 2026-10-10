@@ -224,6 +224,134 @@ class TuitionMysqlTest {
   }
 
   @Test
+  @SuppressWarnings("unchecked")
+  void couponRecipientsMatchOneActiveEnrollmentAndGrantRechecksFrozenFilters() {
+    db.jdbc()
+        .update(
+            "INSERT INTO sys_user"
+                + " VALUES(51,'coupon-a','家长A','0','0'),(52,'coupon-b','家长B','0','0'),(53,'coupon-c','取消家长','0','0'),(54,'coupon-d','非家长','0','0')");
+    db.jdbc().update("INSERT INTO sys_user_role VALUES(51,2),(52,2),(53,2)");
+    for (int i = 51; i <= 54; i++)
+      db.insert(
+          "edu_course_schedule",
+          Map.of(
+              "schedule_id",
+              i,
+              "schedule_code",
+              "CF" + i,
+              "classroom_id",
+              1,
+              "term_name",
+              "优惠券测试",
+              "period_name",
+              "周日",
+              "time_slot",
+              "时段" + i,
+              "grade_name",
+              i == 52 ? "六年级" : "五年级",
+              "subject_name",
+              i == 51 ? "数学" : "英语",
+              "course_class_name",
+              "筛选测试"));
+    for (Object[] row :
+        List.of(
+            new Object[] {51, 51, "孩子甲", "报名成功"}, new Object[] {51, 52, "孩子乙", "报名成功"},
+            new Object[] {52, 53, "孩子丙", "报名成功"}, new Object[] {52, 54, "孩子丙", "报名成功"},
+            new Object[] {53, 53, "孩子丁", "已取消"}, new Object[] {54, 53, "孩子戊", "报名成功"}))
+      db.insert(
+          "edu_enrollment",
+          Map.of(
+              "enrollment_code",
+              UUID.randomUUID().toString().substring(0, 30),
+              "parent_id",
+              row[0],
+              "schedule_id",
+              row[1],
+              "student_name",
+              row[2],
+              "enrollment_status",
+              row[3]));
+    var c = new CouponService(db);
+    var filters = Map.of("gradeName", "五年级", "subjectName", "英语");
+    var page = c.parents(1L, filters);
+    assertEquals(1L, ((Number) page.get("total")).longValue());
+    var rows = (List<Map<String, Object>>) page.get("rows");
+    assertEquals("家长B", rows.get(0).get("parentName"));
+    assertEquals(
+        Set.of("parentId", "parentName", "userName", "matchedChildren"), rows.get(0).keySet());
+    var children = (List<Map<String, Object>>) rows.get(0).get("matchedChildren");
+    assertEquals(2, children.size());
+    assertEquals("孩子丙", children.get(0).get("studentName"));
+    assertEquals("五年级", children.get(0).get("gradeName"));
+    assertEquals("英语", children.get(0).get("subjectName"));
+    assertInstanceOf(String.class, children.get(0).get("enrollmentId"));
+    assertEquals(
+        0L,
+        ((Number)
+                c.parents(1L, Map.of("gradeName", "五年级", "subjectName", "英语", "search", "coupon-a"))
+                    .get("total"))
+            .longValue());
+    assertThrows(Exception.class, () -> c.parents(1L, Map.of("gradeName", "长".repeat(21))));
+    assertThrows(Exception.class, () -> c.parents(1L, Map.of("subjectName", "长".repeat(21))));
+    assertThrows(Exception.class, () -> c.parents(1L, Map.of("search", "长".repeat(65))));
+    long template = lid(c.saveTemplate(1L, null, templateBody(10)), "templateId");
+    var body =
+        new HashMap<String, Object>(
+            Map.of(
+                "parentIds",
+                List.of("51", "52"),
+                "reason",
+                "筛选活动",
+                "idempotencyKey",
+                "filtered-grant"));
+    body.putAll(filters);
+    assertThrows(Exception.class, () -> c.issue(template, 1L, body));
+    assertEquals(
+        0,
+        db.jdbc()
+            .queryForObject(
+                "SELECT COUNT(*) FROM edu_user_coupon WHERE template_id=?",
+                Integer.class,
+                template));
+    assertEquals(
+        0,
+        db.jdbc()
+            .queryForObject(
+                "SELECT issued_quantity FROM edu_coupon_template WHERE template_id=?",
+                Integer.class,
+                template));
+    body.put("parentIds", List.of("52"));
+    db.jdbc().update("UPDATE edu_enrollment SET enrollment_status='已取消' WHERE parent_id=52");
+    assertThrows(Exception.class, () -> c.issue(template, 1L, body));
+    db.jdbc().update("UPDATE edu_enrollment SET enrollment_status='报名成功' WHERE parent_id=52");
+    assertEquals(1, c.issue(template, 1L, body).get("total"));
+    db.jdbc().update("UPDATE edu_enrollment SET enrollment_status='已取消' WHERE parent_id=52");
+    assertEquals(1, c.issue(template, 1L, body).get("total"));
+    body.put("gradeName", "六年级");
+    assertThrows(Exception.class, () -> c.issue(template, 1L, body));
+    assertEquals(
+        1,
+        c.issue(
+                template,
+                1L,
+                Map.of(
+                    "parentIds",
+                    List.of("51"),
+                    "reason",
+                    "无筛选兼容",
+                    "idempotencyKey",
+                    "legacy-grant"))
+            .get("total"));
+    assertEquals(
+        2,
+        db.jdbc()
+            .queryForObject(
+                "SELECT COUNT(*) FROM edu_user_coupon WHERE template_id=?",
+                Integer.class,
+                template));
+  }
+
+  @Test
   void historyIsUnknownAndCannotBeCollectedWithoutDedicatedVerification() throws Exception {
     var history = db.one("SELECT * FROM edu_enrollment WHERE enrollment_code='HISTORY'");
     assertEquals("HISTORY_PENDING", history.get("billingStatus"));
