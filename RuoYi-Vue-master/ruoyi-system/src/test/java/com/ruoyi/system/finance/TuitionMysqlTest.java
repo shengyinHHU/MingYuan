@@ -109,6 +109,7 @@ class TuitionMysqlTest {
     try (var out = p.getOutputStream()) {
       out.write(
           Files.readAllBytes(Path.of("../../database/migrations/20261007_tuition_finance.sql")));
+      out.write(Files.readAllBytes(Path.of("../../database/migrations/20261010_tuition_refund_single_admin.sql")));
     }
     String output = new String(p.getInputStream().readAllBytes());
     assertEquals(0, p.waitFor(), output);
@@ -502,13 +503,14 @@ class TuitionMysqlTest {
                 "idempotencyKey",
                 "OFFR" + id));
     long refund = lid(r, "refundId");
-    assertThrows(
-        Exception.class,
-        () ->
-            call(s, "reviewRefund", refund, 1L, Map.of("approved", true, "approvedAmount", "300")));
-    call(s, "reviewRefund", refund, 4L, Map.of("approved", true, "approvedAmount", "300"));
+    var reviewed = call(s, "reviewRefund", refund, 1L, Map.of("approved", true, "approvedAmount", "300"));
+    assertEquals("APPROVED", reviewed.get("refundStatus"));
+    assertEquals(1L, lid(reviewed, "reviewerId"));
+    assertThrows(Exception.class, () -> call(s, "cancelRefund", refund, 2L));
     call(s, "executeRefund", refund, 1L);
+    assertThrows(Exception.class, () -> call(s, "cancelRefund", refund, 1L, true));
     call(s, "confirmRefund", refund, 1L, Map.of("outcome", "UNKNOWN", "reason", "转账结果待查"));
+    assertThrows(Exception.class, () -> call(s, "cancelRefund", refund, 2L));
     assertEquals("700.00", call(s, "bill", id, 2L, false).get("refundableAmount"));
     assertEquals("1000.00", call(s, "bill", id, 2L, false).get("netAmount"));
     String rp = proof(1, "REFUND", refund);
@@ -525,6 +527,35 @@ class TuitionMysqlTest {
             "completedTime",
             "2025-10-07 13:00:00"));
     assertEquals("700.00", call(s, "bill", id, 2L, false).get("netAmount"));
+    assertThrows(Exception.class, () -> call(s, "cancelRefund", refund, 1L, true));
+    assertThrows(Exception.class, () -> db.jdbc().update(
+        "UPDATE edu_tuition_refund SET approved_amount=1 WHERE refund_id=?", refund));
+  }
+
+  @Test
+  void parentCanWithdrawAdminApplicationAndAdminCanWithdrawOwnPendingApplication() throws Exception {
+    var s = service("TuitionService");
+    long id = fresh();
+    call(s, "price", id, 1L, priceBody("MOCK"));
+    var payment = call(s, "createPayment", id, 2L, false, payBody(1, "CANCEL" + id));
+    long paymentId = lid(payment, "paymentId");
+    call(s, "confirmPayment", paymentId, 2L, false, Map.of());
+    for (boolean adminCancel : List.of(false, true)) {
+      var refund = call(s, "applyRefund", 1L, true, Map.of(
+          "paymentId", paymentId, "refundKind", "PARTIAL", "requestedAmount", "300",
+          "reason", "撤回测试", "idempotencyKey", "WITHDRAW" + id + adminCancel));
+      long refundId = lid(refund, "refundId");
+      assertThrows(Exception.class, () -> call(s, "cancelRefund", refundId, 3L));
+      assertThrows(Exception.class, () -> call(s, "cancelRefund", refundId, 4L, true));
+      var cancelled = adminCancel
+          ? call(s, "cancelRefund", refundId, 1L, true)
+          : call(s, "cancelRefund", refundId, 2L);
+      assertEquals("CANCELLED", cancelled.get("refundStatus"));
+      assertEquals(1L, lid(cancelled, "applicantId"));
+      assertEquals("1000.00", call(s, "bill", id, 2L, false).get("refundableAmount"));
+      assertThrows(Exception.class, () -> call(s, "reviewRefund", refundId, 1L,
+          Map.of("approved", true, "approvedAmount", "300")));
+    }
   }
 
   @Test

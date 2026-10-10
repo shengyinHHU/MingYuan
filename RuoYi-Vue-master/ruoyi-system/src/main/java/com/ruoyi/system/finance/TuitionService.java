@@ -1157,10 +1157,7 @@ public class TuitionService {
           require("PENDING_REVIEW".equals(r.get("refundStatus")), "仅待审核退费允许审核");
           var p =
               db.one("SELECT * FROM edu_tuition_payment WHERE payment_id=?", r.get("paymentId"));
-          require(
-              "MOCK".equals(p.get("financeMode")) && mockEnabled
-                  || id(r.get("applicantId")) != actor,
-              "申请人与审核人必须不同");
+          // 单管理员开发阶段允许本人审核；实际收款上线前恢复双人复核。
           boolean approved = (Boolean) b.get("approved");
           String remark = str(b, "reviewRemark");
           require(remark.length() <= 500, "审核说明过长");
@@ -1211,13 +1208,19 @@ public class TuitionService {
   }
 
   public Map<String, Object> cancelRefund(long refund, long actor) {
-    actor(actor, false);
+    return cancelRefund(refund, actor, false);
+  }
+
+  public Map<String, Object> cancelRefund(long refund, long actor, boolean admin) {
+    actor(actor, admin);
     return tx(
         () -> {
-          var r = lockRefund(refund, actor, false);
+          var r = lockRefund(refund, actor, admin);
+          // 家长按报名归属撤回（含管理员代办）；管理员仅撤回自己创建的申请。
+          require(!admin || id(r.get("applicantId")) == actor, "只能撤回本人创建的申请");
           require(
-              id(r.get("applicantId")) == actor && "PENDING_REVIEW".equals(r.get("refundStatus")),
-              "只能撤回本人尚未审核申请");
+              "PENDING_REVIEW".equals(r.get("refundStatus")),
+              "只能撤回尚未审核申请");
           update(
               "edu_tuition_refund",
               "refund_id",
@@ -1225,7 +1228,7 @@ public class TuitionService {
               r,
               values("refund_status", "CANCELLED"),
               actor);
-          return refund(refund, actor, false);
+          return refund(refund, actor, admin);
         });
   }
 

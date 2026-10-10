@@ -194,6 +194,17 @@ public class EduTuitionController {
     return EduTuitionController.ok(tuition.reviewRefund(id, SecurityUtils.getUserId(), b));
   }
 
+  @PreAuthorize("@ss.hasPermi('system:tuitionRefund:apply')")
+  @Log(
+      title = "学费退款申请撤回",
+      businessType = BusinessType.UPDATE,
+      isSaveRequestData = false,
+      isSaveResponseData = false)
+  @PostMapping("/refunds/{id}/cancel")
+  public AjaxResult cancelRefund(@PathVariable long id) {
+    return EduTuitionController.ok(tuition.cancelRefund(id, SecurityUtils.getUserId(), true));
+  }
+
   @PreAuthorize("@ss.hasPermi('system:tuitionRefund:execute')")
   @Log(
       title = "学费退款执行",

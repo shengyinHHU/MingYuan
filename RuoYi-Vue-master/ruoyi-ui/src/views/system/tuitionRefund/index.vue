@@ -1,7 +1,7 @@
 <template>
   <div class="app-container">
     <el-alert
-      title="真实资金申请人与审核人必须不同。审核通过后仍需执行并核对实际到账；未知结果保留退费额度，先核对再处理。"
+      title="开发阶段允许管理员审核本人申请，上线真实收款前须恢复双人复核。审核通过后仍需执行并核对实际到账；未知结果保留退费额度，先核对再处理。"
       type="warning"
       :closable="false"
       class="mb8"
@@ -160,9 +160,13 @@
             >
               审核通过／驳回
             </el-button>
-            <span v-if="detail.refundStatus === 'PENDING_REVIEW' && !canReview(detail, actorId)">
-              需由其他审核人办理
-            </span>
+            <el-button
+              v-hasPermi="['system:tuitionRefund:apply']"
+              v-if="detail.refundStatus === 'PENDING_REVIEW' && String(detail.applicantId) === actorId"
+              size="small"
+              :disabled="saving"
+              @click="cancel"
+            >撤回申请</el-button>
             <el-button
               v-hasPermi="['system:tuitionRefund:execute']"
               v-if="detail.refundStatus === 'APPROVED'"
@@ -321,6 +325,7 @@ import {
   getRefund,
   applyRefund,
   reviewRefund,
+  cancelRefund,
   executeRefund,
   confirmRefund,
   refundEvidence,
@@ -544,7 +549,7 @@ export default {
         }
         if (this.operation === 'review') {
           if (!canReview(this.detail, String(this.$store.state.user.id)))
-            throw new Error('真实资金需由其他审核人复核')
+            throw new Error('仅待审核申请允许审核，请刷新状态')
           const approvedAmount = this.form.approved ? amount(this.form.approvedAmount, true) : null
           if (this.form.approved && compareAmount(approvedAmount, this.detail.requestedAmount) > 0)
             throw new Error('批准金额不能超过申请金额')
@@ -567,6 +572,21 @@ export default {
         if (this.detail) await this.handleDetail(this.detail)
       } catch (e) {
         this.formError = e.message || '提交失败，请核对后重试'
+      } finally {
+        this.saving = false
+      }
+    },
+    async cancel() {
+      if (this.saving || !this.detail || this.detail.refundStatus !== 'PENDING_REVIEW' ||
+          String(this.detail.applicantId) !== this.actorId) return
+      this.saving = true
+      try {
+        await this.$modal.confirm('确认撤回本人创建的待审核退费申请？撤回不会退款。')
+        await cancelRefund(this.detail.refundId)
+        this.$modal.msgSuccess('申请已撤回')
+        await Promise.all([this.getList(), this.handleDetail(this.detail)])
+      } catch (e) {
+        if (e && e.message) this.$modal.msgError(e.message)
       } finally {
         this.saving = false
       }

@@ -56,9 +56,7 @@ export function canReview(refund, actorId) {
     !!refund &&
     refund.applicantId != null &&
     actorId != null &&
-    refund.refundStatus === 'PENDING_REVIEW' &&
-    (String(refund.applicantId) !== String(actorId) ||
-      (refund.financeMode === 'MOCK' && refund.mockAllowed === true))
+    refund.refundStatus === 'PENDING_REVIEW'
   )
 }
 export function validateEvidenceFile(file) {

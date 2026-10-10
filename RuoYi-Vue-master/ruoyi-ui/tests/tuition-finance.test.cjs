@@ -36,14 +36,14 @@ test('unknown or pending payment reserves the bill and blocks new collection and
   assert.equal(finance.canPrice({ ...bill, billingStatus: 'PENDING_PRICE' }), true)
   assert.equal(finance.canClosePayment({ paymentStatus: 'UNKNOWN' }), false)
 })
-test('maker checker blocks real self-review while local allowed mock can be reviewed', () => {
+test('authorized review UI permits self-review but still requires a pending request', () => {
   assert.equal(typeof finance.canReview, 'function')
   const refund = {
     refundStatus: 'PENDING_REVIEW',
     applicantId: '9007199254740993',
     financeMode: 'REAL',
   }
-  assert.equal(finance.canReview(refund, '9007199254740993'), false)
+  assert.equal(finance.canReview(refund, '9007199254740993'), true)
   assert.equal(finance.canReview(refund, '9007199254740994'), true)
   assert.equal(
     finance.canReview({ ...refund, financeMode: 'MOCK', mockAllowed: true }, refund.applicantId),
@@ -51,9 +51,12 @@ test('maker checker blocks real self-review while local allowed mock can be revi
   )
   assert.equal(
     finance.canReview({ ...refund, financeMode: 'MOCK', mockAllowed: false }, refund.applicantId),
-    false
+    true
   )
   assert.equal(finance.canReview({ ...refund, applicantId: null }, '2'), false)
+  for (const refundStatus of ['APPROVED', 'PROCESSING', 'UNKNOWN', 'SUCCESS', 'CANCELLED']) {
+    assert.equal(finance.canReview({ ...refund, refundStatus }, refund.applicantId), false)
+  }
 })
 test('evidence upload accepts only small PDF/image files and validated private keys', () => {
   assert.equal(typeof finance.validateEvidenceFile, 'function')
@@ -280,7 +283,7 @@ test('receipt replacement requires a reason and keeps failed operation visible',
   assert.equal(instance.replaceOpen, true)
   assert.equal(instance.saving, false)
 })
-test('real refund self-review never writes and approval reduction requires explanation', async () => {
+test('real self-review submits but approval reduction still requires explanation', async () => {
   let writes = 0
   const instance = component('tuitionRefund', {
     reviewRefund: async () => {
@@ -295,14 +298,36 @@ test('real refund self-review never writes and approval reduction requires expla
     requestedAmount: '100.00',
   }
   instance.operation = 'review'
+  instance.getList = async () => {}
+  instance.handleDetail = async () => {}
   instance.form = { approved: true, approvedAmount: '100.00', reviewRemark: '' }
   await instance.submitOperation()
-  assert.equal(writes, 0)
+  assert.equal(writes, 1)
   instance.detail.applicantId = '3'
   instance.form.approvedAmount = '90.00'
   await instance.submitOperation()
-  assert.equal(writes, 0)
+  assert.equal(writes, 1)
   assert.match(instance.formError, /说明/)
+})
+test('admin withdrawal posts exact refund ID and refreshes only after confirmation', async () => {
+  const sent = []
+  const instance = component('tuitionRefund', {
+    cancelRefund: async (id) => sent.push(id),
+  })
+  instance.detail = { refundId: '9007199254740993', applicantId: '2', refundStatus: 'PENDING_REVIEW' }
+  instance.actorId = '2'
+  instance.getList = async () => {}
+  instance.handleDetail = async () => {}
+  await instance.cancel()
+  assert.deepEqual(sent, ['9007199254740993'])
+  instance.detail.refundStatus = 'PROCESSING'
+  await instance.cancel()
+  assert.equal(sent.length, 1)
+  instance.detail.refundStatus = 'PENDING_REVIEW'
+  instance.$modal.confirm = () => Promise.reject()
+  await instance.cancel()
+  assert.equal(sent.length, 1)
+  assert.equal(instance.saving, false)
 })
 test('coupon grants preserve selected parents and same batch key after failed request', async () => {
   const sent = []
