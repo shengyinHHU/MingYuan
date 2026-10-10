@@ -35,7 +35,7 @@ spring:
   messages:
     basename: i18n/messages
   profiles:
-    active: druid
+    active: druid, local
   servlet:
     multipart:
       max-file-size: 50MB
