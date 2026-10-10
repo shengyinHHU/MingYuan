@@ -46,4 +46,5 @@ public interface MiniAppParentMapper
     /** 查询报名记录的所属家长ID与排课ID（用于取消前校验归属） */
     public Map<String, Object> selectEnrollmentOwnerInfo(@Param("enrollmentId") Long enrollmentId);
 
+    // All cancellation and capacity changes now go through TuitionService.
 }

@@ -44,12 +44,5 @@ public interface EduEnrollmentMapper
      */
     public int updateEduEnrollment(EduEnrollment eduEnrollment);
 
-    /** 原子取消；返回 0 表示未变更，不能再释放名额。 */
-    public int cancelEnrollment(@Param("enrollmentId") Long enrollmentId, @Param("updateBy") String updateBy);
-
-    /** 首次取消后释放一个名额，人数不低于零，满班有空位时恢复招生。 */
-    public int releaseScheduleSeat(@Param("scheduleId") Long scheduleId, @Param("updateBy") String updateBy);
-
-    /** 仅作废未使用的自动考勤，保留已出勤及课次签到历史。 */
-    public int invalidateUnusedAttendance(@Param("enrollmentId") Long enrollmentId, @Param("updateBy") String updateBy);
+    // Cancellation is handled transactionally by TuitionService; no physical DELETE mapper.
 }

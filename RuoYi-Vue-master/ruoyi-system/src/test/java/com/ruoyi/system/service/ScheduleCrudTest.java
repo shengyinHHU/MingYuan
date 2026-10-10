@@ -34,6 +34,7 @@ public class ScheduleCrudTest {
         inject(service, "eduCourseScheduleMapper", proxy(EduCourseScheduleMapper.class, (p,m,a) -> {
             switch(m.getName()) {
                 case "selectEduCourseScheduleByScheduleId": case "lockSchedule":
+                    if (m.getName().equals("lockSchedule") && db.enrollmentArrivesOnLock) db.activeEnrollments = 1;
                     if (Long.valueOf(10).equals(a[0])) return current;
                     EduCourseSchedule foreign = course(); foreign.setScheduleId(20L); foreign.setTeacherId(22L); return foreign;
                 case "insertEduCourseSchedule": case "updateEduCourseSchedule": captured = (EduCourseSchedule)a[0]; return 1;
@@ -108,6 +109,22 @@ public class ScheduleCrudTest {
         EduCourseSchedule stop = new EduCourseSchedule(); stop.setScheduleId(10L); stop.setStatus("1");
         assertEquals(1, service.updateEduCourseSchedule(stop));
     }
+    @Test void activeEnrollmentBlocksAdminUpdateEvenWithForgedEmptyCounter() {
+        principal(1, "admin"); db.activeEnrollments = 1; current.setEnrolledCount(0L);
+        EduCourseSchedule input = new EduCourseSchedule(); input.setScheduleId(10L); input.setRemark("changed"); input.setEnrolledCount(0L);
+        ServiceException error = assertThrows(ServiceException.class, () -> service.updateEduCourseSchedule(input));
+        assertTrue(error.getMessage().contains("报名")); assertNull(captured);
+    }
+    @Test void activeEnrollmentBlocksAdminDeletionBeforeOtherHistoryChecks() {
+        principal(1, "admin"); db.activeEnrollments = 1;
+        ServiceException error = assertThrows(ServiceException.class, () -> service.deleteEduCourseScheduleByScheduleIds(new Long[]{10L}));
+        assertTrue(error.getMessage().contains("报名")); assertNull(deleted);
+    }
+    @Test void enrollmentArrivingBeforeScheduleLockAlsoBlocksUpdate() {
+        principal(1, "admin"); db.enrollmentArrivesOnLock = true;
+        EduCourseSchedule input = new EduCourseSchedule(); input.setScheduleId(10L); input.setStatus("1");
+        assertThrows(ServiceException.class, () -> service.updateEduCourseSchedule(input)); assertNull(captured);
+    }
     @Test void deletionChecksAllReferencesAndDeduplicatesIds() {
         db.references = 1;
         assertThrows(ServiceException.class, () -> service.deleteEduCourseScheduleByScheduleIds(new Long[]{10L})); assertNull(deleted);
@@ -157,13 +174,14 @@ public class ScheduleCrudTest {
     static void inject(Object target, String field, Object value) throws Exception { var f = target.getClass().getDeclaredField(field); f.setAccessible(true); f.set(target,value); }
     @SuppressWarnings("unchecked") static <T> T proxy(Class<T> type, InvocationHandler handler) { return (T) Proxy.newProxyInstance(type.getClassLoader(),new Class<?>[]{type},handler); }
     static class FakeDb extends ShopRepository {
-        long attendance, references; List<Map<String,Object>> conflicts = List.of(); List<String> locks = new ArrayList<>();
+        long attendance, references, activeEnrollments; boolean enrollmentArrivesOnLock;
+        List<Map<String,Object>> conflicts = List.of(); List<String> locks = new ArrayList<>();
         FakeDb() { super(new DriverManagerDataSource()); }
         @Override public List<Map<String,Object>> rows(String sql,Object... args) {
             if (sql.contains("SELECT u.nick_name")) return List.of(Map.of("nickName","Teacher A","userName","teacher21"));
             if (sql.contains("information_schema")) return List.of(Map.of("tableName","edu_homework"));
             if (sql.contains("SELECT schedule_id,start_time")) return conflicts;
-            if (sql.contains("SELECT enrollment_id")) return List.of();
+            if (sql.contains("SELECT enrollment_id")) return activeEnrollments > 0 ? List.of(Map.of("enrollmentId",1L)) : List.of();
             if (sql.contains("SELECT sign_in_id")) return attendance > 0 ? List.of(Map.of("signInId",1)) : List.of();
             if (sql.contains("SELECT attendance_id")) return List.of();
             if (sql.contains("`edu_homework`")) return references > 0 ? List.of(Map.of("scheduleId",10)) : List.of();

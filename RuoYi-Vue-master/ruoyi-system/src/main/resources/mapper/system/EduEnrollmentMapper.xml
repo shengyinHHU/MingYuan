@@ -3,7 +3,7 @@
 PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.ruoyi.system.mapper.EduEnrollmentMapper">
-    
+
     <resultMap type="EduEnrollment" id="EduEnrollmentResult">
         <result property="enrollmentId"    column="enrollment_id"    />
         <result property="enrollmentCode"    column="enrollment_code"    />
@@ -68,11 +68,11 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     <select id="selectEduEnrollmentList" parameterType="EduEnrollment" resultMap="EduEnrollmentResult">
         <include refid="selectEduEnrollmentVo"/>
         <where>
+            e.del_flag = '0'
             <if test="params.teacherUserId != null">
                 and s.teacher_id = #{params.teacherUserId} and s.del_flag = '0'
             </if>
             <if test="params.teacherEnrollmentId != null">and e.enrollment_id = #{params.teacherEnrollmentId}</if>
-            <if test="delFlag != null and delFlag != ''">and e.del_flag = #{delFlag}</if>
             <if test="params.adminKeyword != null and params.adminKeyword != ''">
                 and (e.student_name like concat('%', #{params.adminKeyword}, '%')
                      or e.contact_phone like concat('%', #{params.adminKeyword}, '%')
@@ -92,7 +92,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         </where>
         order by e.create_time desc, e.enrollment_id desc
     </select>
-    
+
     <select id="selectEduEnrollmentByEnrollmentId" parameterType="Long" resultMap="EduEnrollmentResult">
         <include refid="selectEduEnrollmentVo"/>
         where e.enrollment_id = #{enrollmentId}
@@ -161,33 +161,4 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         where enrollment_id = #{enrollmentId}
     </update>
 
-    <update id="cancelEnrollment">
-        update edu_enrollment
-        set enrollment_status = '2', cancel_time = now(),
-            update_by = #{updateBy}, update_time = now()
-        where enrollment_id = #{enrollmentId} and del_flag = '0'
-          and ifnull(enrollment_status, '1') not in ('2', '已取消')
-    </update>
-
-    <update id="releaseScheduleSeat">
-        update edu_course_schedule s
-        set recruit_status = case
-                when recruit_status = '2'
-                     and greatest(ifnull(enrolled_count, 0) - 1, 0) &lt;
-                         (select ifnull(c.capacity, 999999) from edu_classroom c where c.classroom_id = s.classroom_id)
-                then '0' else recruit_status end,
-            enrolled_count = greatest(ifnull(enrolled_count, 0) - 1, 0),
-            update_by = #{updateBy}, update_time = now()
-        where schedule_id = #{scheduleId}
-    </update>
-
-    <update id="invalidateUnusedAttendance">
-        update edu_attendance
-        set attendance_status = '2', status = '1',
-            update_by = #{updateBy}, update_time = now()
-        where enrollment_id = #{enrollmentId} and del_flag = '0'
-          and attendance_status in ('0', '未上课')
-          and attended_time is null and confirm_by is null
-          and ifnull(confirm_name, '') = ''
-    </update>
 </mapper>

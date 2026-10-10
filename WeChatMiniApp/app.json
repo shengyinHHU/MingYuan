@@ -2,6 +2,12 @@
   "pages": [
     "pages/register/register",
     "pages/index/index",
+    "pages/tuition-list/tuition-list",
+    "pages/tuition-detail/tuition-detail",
+    "pages/tuition-receipt/tuition-receipt",
+    "pages/tuition-refund/tuition-refund",
+    "pages/my-coupons/my-coupons",
+    "pages/admin-tuition/admin-tuition",
     "pages/admin-teachers/admin-teachers",
     "pages/admin-students/admin-students",
     "pages/admin-classrooms/admin-classrooms",

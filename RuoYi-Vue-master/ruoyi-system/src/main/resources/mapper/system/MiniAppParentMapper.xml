@@ -33,7 +33,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
           on e.schedule_id = s.schedule_id
          and e.parent_id = #{parentId}
          and e.del_flag = '0'
-         and e.enrollment_status != '2'
+         and e.enrollment_status not in ('2', '已取消')
         <where>
             s.del_flag = '0'
             and s.status = '0'
@@ -61,6 +61,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             e.contact_phone as contactPhone,
             e.enrollment_status as enrollmentStatus,
             e.pay_status as payStatus,
+            e.billing_status as billingStatus,
+            e.payable_amount as payableAmount,
             e.create_time as createTime,
             s.course_class_name as courseClassName,
             s.term_name as termName,
@@ -207,7 +209,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
           and parent_id = #{parentId}
           and student_name = #{studentName}
           and del_flag = '0'
-          and enrollment_status != '2'
+          and enrollment_status not in ('2', '已取消')
     </select>
 
     <update id="increaseScheduleEnrollment">
@@ -249,8 +251,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             #{studentName},
             #{studentPhone},
             #{contactPhone},
-            '1',
-            '0',
+            '报名成功',
+            '未支付',
             '0',
             '0',
             #{createBy},

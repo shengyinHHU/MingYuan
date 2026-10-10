@@ -249,6 +249,7 @@ page {
   background: #0f58a8;
   color: #ffffff;
 }
+.tuition-btn { margin-top: 14rpx; background: #edf4ff; color: #0b326a; font-size: 24rpx; border-radius: 14rpx; }
 
 .teacher-filter { margin: 0 24rpx 22rpx; padding: 20rpx; border-radius: 14rpx; background: white; }
 .teacher-filter-title { color: #0b326a; font-size: 26rpx; font-weight: 700; }

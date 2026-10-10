@@ -159,13 +159,17 @@ Page({
       gradeText: this.labelOf(this.data.grades, item.gradeName) || item.gradeName,
       timeText: this.buildTimeText(item),
       placeText: this.buildPlaceText(item),
-      statusText: item.enrollmentStatus === '2' ? '已取消' : '报名成功'
+      statusText: ['2', '已取消'].includes(String(item.enrollmentStatus)) ? '已取消' : (['0', '待确认'].includes(String(item.enrollmentStatus)) ? '待确认' : (['1', '报名成功'].includes(String(item.enrollmentStatus)) ? '报名成功' : '状态待核实'))
     }))
   },
 
   labelOf(list, value) {
     const hit = list.find((i) => i.dictValue === value)
     return hit ? hit.dictLabel : ''
+  },
+
+  openTuition(e) {
+    wx.navigateTo({ url: `/pages/tuition-detail/tuition-detail?id=${encodeURIComponent(String(e.currentTarget.dataset.id))}` })
   },
 
   buildPlaceText(item) {

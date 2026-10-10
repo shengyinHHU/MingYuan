@@ -35,7 +35,7 @@ spring:
   messages:
     basename: i18n/messages
   profiles:
-    active: druid, local
+    active: druid
   servlet:
     multipart:
       max-file-size: 50MB
@@ -62,18 +62,18 @@ spring:
 
 token:
   header: Authorization
-  secret: ${TOKEN_SECRET:abcdefghijklmnopqrstuvwxyz}
+  secret: ${TOKEN_SECRET}
   expireTime: 30
 
 wechat:
   miniapp:
     appid: ${WECHAT_APPID:}
     secret: ${WECHAT_SECRET:}
-    mock-enabled: ${WECHAT_MOCK_ENABLED:true}
+    mock-enabled: ${WECHAT_MOCK_ENABLED:false}
     mock-phone: 13800000000
     mock-admin-username: admin
-    mock-teacher-username: ${WECHAT_MOCK_TEACHER_USERNAME:teacher_demo}
-    mock-teacher-phone: ${WECHAT_MOCK_TEACHER_PHONE:13910009999}
+    mock-teacher-username: ${WECHAT_MOCK_TEACHER_USERNAME:}
+    mock-teacher-phone: ${WECHAT_MOCK_TEACHER_PHONE:}
 
 mybatis:
   typeAliasesPackage: com.ruoyi.**.domain
