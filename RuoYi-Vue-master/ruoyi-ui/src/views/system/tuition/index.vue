@@ -1,7 +1,7 @@
 <template>
   <div class="app-container">
     <el-alert
-      title="真实与模拟账单分别查询。历史金额待核验时不计作欠费或实收；正式微信在线支付尚未开通。"
+      title="真实与模拟账单分别查询。历史金额待核验时不计作欠费或实收；课程收费仅登记线下实际收款，不提供课程在线支付。"
       type="info"
       :closable="false"
       class="mb8"
