@@ -44,5 +44,8 @@ public interface EduEnrollmentMapper
      */
     public int updateEduEnrollment(EduEnrollment eduEnrollment);
 
+    /** Compatibility for existing single-lesson attendance invalidation. */
+    public int invalidateUnusedAttendance(@org.apache.ibatis.annotations.Param("enrollmentId") Long enrollmentId, @org.apache.ibatis.annotations.Param("updateBy") String updateBy);
+
     // Cancellation is handled transactionally by TuitionService; no physical DELETE mapper.
 }

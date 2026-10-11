@@ -5,10 +5,12 @@ const statusTabs = [
   { key: 'all', name: '全部' },
   { key: '0', name: '草稿' },
   { key: '1', name: '已发布' },
-  { key: '2', name: '已关闭' }
+  { key: '2', name: '已关闭' },
+  { key: 'pending', name: '待批阅' }
 ]
 Page({
   data: { list: [], shown: [], classTabs: [], activeClass: '', statusTabs, activeStatus: 'all', loading: false, schedules: [], scheduleNames: {}, publish: false, publishItem: null, publishClasses: [] },
+  onLoad(options = {}) { if (options.filter === 'pending') this.setData({ activeStatus: 'pending' }) },
   onShow() { this.loadList() },
   async loadSchedules() {
     if (this.data.schedules.length) return
@@ -43,6 +45,7 @@ Page({
           homeworkId: valueOf(item, ['homeworkId', 'id']),
           status,
           statusText: statuses[status] || valueOf(item, ['statusText'], '未知状态'),
+          pendingCount: Math.max(0, submissionCount - reviewedCount),
           progress,
           classIds,
           classNames,
@@ -65,8 +68,9 @@ Page({
   applyFilter() {
     const { list, activeClass, activeStatus } = this.data
     let shown = activeClass === 'all' ? list : list.filter(item => item.classIds.indexOf(activeClass) >= 0)
-    // 全部/班级默认视图不显示已关闭作业，已关闭仅在"已关闭"分类中查看
+    // 默认视图仍隐藏已关闭作业；待批阅包含关闭后尚未批完的提交。
     if (activeStatus === 'all') shown = shown.filter(item => item.status !== '2')
+    else if (activeStatus === 'pending') shown = shown.filter(item => item.pendingCount > 0)
     else shown = shown.filter(item => item.status === activeStatus)
     this.setData({ shown })
   },
