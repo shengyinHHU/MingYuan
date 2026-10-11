@@ -57,7 +57,7 @@
         <view class="meta">授课教师：{{item.teacherName || '教师待配置'}}</view>
         <view class="meta">{{item.timeText}}</view>
       </view>
-      <view class="done">{{item.statusText}}</view>
+      <view><view class="done">{{item.statusText}}</view><button class="tuition-btn" size="mini" data-id="{{item.enrollmentId}}" bindtap="openTuition">缴费 / 退费</button></view>
     </view>
   </view>
 
@@ -68,6 +68,7 @@
     <view class="sheet-meta">授课教师：{{selectedSchedule.teacherName || '教师待配置'}}</view>
     <view class="sheet-meta">{{selectedSchedule.timeText}}</view>
     <view class="sheet-meta">{{selectedSchedule.placeText}}</view>
+    <view class="sheet-meta">报名后请在“我的缴费”核对课程费用；未核价不代表免费。</view>
     <view class="field">
       <view class="label">学生姓名</view>
       <input class="input" value="{{form.studentName}}" data-field="studentName" bindinput="handleFormInput" placeholder="请输入孩子姓名" />

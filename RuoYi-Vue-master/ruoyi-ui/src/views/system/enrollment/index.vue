@@ -1,7 +1,8 @@
 <template>
-  <div class="app-container">
-    <el-form :model="queryParams" ref="queryForm" size="small" :inline="true" v-show="showSearch" label-width="68px">
-      <el-form-item label="报名编码" prop="enrollmentCode">
+  <div class="app-container edu-workspace">
+    <div class="edu-page-heading"><div><h2>课程报名</h2><p>查看学员报名、课程安排和上课记录</p></div><div class="edu-result-count">共 <strong>{{ total }}</strong> 条报名</div></div>
+    <el-form :model="queryParams" ref="queryForm" size="small" :inline="true" v-show="showSearch" label-width="100px">
+      <el-form-item label="报名编码" prop="enrollmentCode" v-show="showAdvancedFilters">
         <el-input
           v-model="queryParams.enrollmentCode"
           placeholder="请输入报名编码"
@@ -9,7 +10,7 @@
           @keyup.enter.native="handleQuery"
         />
       </el-form-item>
-      <el-form-item label="排课ID" prop="scheduleId">
+      <el-form-item label="排课ID" prop="scheduleId" v-show="showAdvancedFilters">
         <el-input
           v-model="queryParams.scheduleId"
           placeholder="请输入排课ID"
@@ -17,7 +18,7 @@
           @keyup.enter.native="handleQuery"
         />
       </el-form-item>
-      <el-form-item label="家长用户ID" prop="parentId">
+      <el-form-item label="家长用户ID" prop="parentId" v-show="showAdvancedFilters">
         <el-input
           v-model="queryParams.parentId"
           placeholder="请输入家长用户ID"
@@ -49,7 +50,7 @@
           @keyup.enter.native="handleQuery"
         />
       </el-form-item>
-      <el-form-item label="取消时间" prop="cancelTime">
+      <el-form-item label="取消时间" prop="cancelTime" v-show="showAdvancedFilters">
         <el-date-picker clearable
           v-model="queryParams.cancelTime"
           type="date"
@@ -57,7 +58,7 @@
           placeholder="请选择取消时间">
         </el-date-picker>
       </el-form-item>
-      <el-form-item label="取消原因" prop="cancelReason">
+      <el-form-item label="取消原因" prop="cancelReason" v-show="showAdvancedFilters">
         <el-input
           v-model="queryParams.cancelReason"
           placeholder="请输入取消原因"
@@ -68,6 +69,7 @@
       <el-form-item>
         <el-button type="primary" icon="el-icon-search" size="mini" @click="handleQuery">搜索</el-button>
         <el-button icon="el-icon-refresh" size="mini" @click="resetQuery">重置</el-button>
+        <el-button type="text" @click="showAdvancedFilters = !showAdvancedFilters">{{ showAdvancedFilters ? "收起更多筛选" : "更多筛选" }}</el-button>
       </el-form-item>
     </el-form>
 
@@ -114,32 +116,28 @@
           v-hasPermi="['system:enrollment:export']"
         >导出</el-button>
       </el-col>
+      <el-checkbox v-model="showDetailedColumns" class="edu-column-toggle">详细字段</el-checkbox>
       <right-toolbar :showSearch.sync="showSearch" @queryTable="getList"></right-toolbar>
     </el-row>
 
     <el-table v-loading="loading" :data="enrollmentList" @selection-change="handleSelectionChange">
       <el-table-column type="selection" width="55" align="center" />
-      <el-table-column label="报名ID" align="center" prop="enrollmentId" />
-      <el-table-column label="报名编码" align="center" prop="enrollmentCode" />
-      <el-table-column label="报名信息" align="center" width="130">
+      <el-table-column label="学生" prop="studentName" min-width="140" fixed="left"><template slot-scope="scope"><div class="edu-table-name">{{ scope.row.studentName || '未提供姓名' }}</div><div class="edu-table-secondary">{{ scope.row.contactPhone || scope.row.studentPhone || '电话未提供' }}</div></template></el-table-column>
+      <el-table-column v-if="showDetailedColumns" key="detail-enrollmentId" label="报名ID" align="center" prop="enrollmentId" />
+      <el-table-column v-if="showDetailedColumns" key="detail-enrollmentCode" label="报名编码" align="center" prop="enrollmentCode" min-width="160" show-overflow-tooltip />
+      <el-table-column label="课程信息" align="left" min-width="190">
         <template slot-scope="scope">
-          <div v-if="scope.row.subjectName" class="schedule-info">
-            <div class="info-grade">{{ scope.row.gradeName || '-' }}</div>
-            <div class="info-subject">
-              {{ scope.row.subjectName || '-' }}
-              <span v-if="scope.row.classType" class="info-type">{{ scope.row.classType }}</span>
-            </div>
-            <div class="info-teacher">{{ scope.row.teacherName || '-' }}</div>
-            <div class="info-status" :class="'rs-' + scope.row.recruitStatus">
-              {{ getRecruitLabel(scope.row.recruitStatus) }}
-            </div>
+          <div v-if="scope.row.courseClassName || scope.row.subjectName" class="schedule-info">
+            <div class="edu-table-name">{{ scope.row.courseClassName || '未命名课程' }}</div>
+            <div class="info-grade">{{ scope.row.gradeName || '-' }} · {{ scope.row.subjectName || '-' }} <span v-if="scope.row.classType" class="info-type">{{ scope.row.classType }}</span></div>
+            <div class="info-teacher">{{ scope.row.teacherName || '-' }} · <span class="info-status" :class="'rs-' + scope.row.recruitStatus">{{ getRecruitLabel(scope.row.recruitStatus) }}</span></div>
           </div>
           <span v-else class="text-muted">暂无排课信息</span>
         </template>
       </el-table-column>
-      <el-table-column label="学生姓名" align="center" prop="studentName" />
-      <el-table-column label="学生手机号" align="center" prop="studentPhone" />
-      <el-table-column label="联系电话" align="center" prop="contactPhone" />
+
+      <el-table-column v-if="showDetailedColumns" key="detail-studentPhone" label="学生手机号" align="center" prop="studentPhone" />
+      <el-table-column v-if="showDetailedColumns" key="detail-contactPhone" label="联系电话" align="center" prop="contactPhone" />
       <el-table-column label="上课记录" align="center" width="180">
         <template slot-scope="scope">
           <div>已复核到课：{{ scope.row.attendedLessonCount || 0 }} 次</div>
@@ -156,39 +154,32 @@
       <el-table-column label="支付状态" align="center" width="120">
         <template slot-scope="scope">
           <el-tag :type="getPayStatusType(scope.row.payStatus)" size="small">
-            {{ scope.row.payStatus || '未支付' }}
+            {{ scope.row.payStatus || '待核对' }}
           </el-tag>
-          <div class="pay-actions" v-if="scope.row.payStatus !== '已退款'">
+          <div class="pay-actions">
             <el-button
-              v-if="scope.row.payStatus !== '已支付'"
               size="mini"
               type="text"
               style="color: #67C23A;"
-              @click="handleConfirmPay(scope.row)"
-            >确认支付</el-button>
-            <el-button
-              v-if="scope.row.payStatus !== '未支付'"
-              size="mini"
-              type="text"
-              style="color: #909399;"
-              @click="handleCancelPay(scope.row)"
-            >取消</el-button>
+              @click="handleFinance(scope.row)"
+              v-hasPermi="['system:tuition:query']"
+            >收费详情</el-button>
           </div>
         </template>
       </el-table-column>
-      <el-table-column label="取消时间" align="center" prop="cancelTime" width="180">
+      <el-table-column v-if="showDetailedColumns" key="detail-cancelTime" label="取消时间" align="center" prop="cancelTime" width="180">
         <template slot-scope="scope">
           <span>{{ parseTime(scope.row.cancelTime, '{y}-{m}-{d}') }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="取消原因" align="center" prop="cancelReason" />
-      <el-table-column label="状态" align="center" prop="status">
+      <el-table-column v-if="showDetailedColumns" key="detail-cancelReason" label="取消原因" align="center" prop="cancelReason" />
+      <el-table-column v-if="showDetailedColumns" key="detail-status" label="状态" align="center" prop="status">
         <template slot-scope="scope">
           {{ getStatusLabel(scope.row.status) }}
         </template>
       </el-table-column>
-      <el-table-column label="备注" align="center" prop="remark" />
-      <el-table-column label="操作" align="center" class-name="small-padding fixed-width">
+      <el-table-column v-if="showDetailedColumns" key="detail-remark" label="备注" align="center" prop="remark" />
+      <el-table-column label="操作" align="center" class-name="small-padding fixed-width" fixed="right" width="180">
         <template slot-scope="scope">
           <el-button
             size="mini"
@@ -208,7 +199,7 @@
         </template>
       </el-table-column>
     </el-table>
-    
+
     <pagination
       v-show="total>0"
       :total="total"
@@ -305,6 +296,8 @@ export default {
       multiple: true,
       // 显示搜索条件
       showSearch: true,
+      showDetailedColumns: false,
+      showAdvancedFilters: false,
       // 总条数
       total: 0,
       // 课程报名表格数据
@@ -428,13 +421,13 @@ export default {
       this.$refs["form"].validate(valid => {
         if (valid) {
           if (this.form.enrollmentId != null) {
-            updateEnrollment(this.form).then(response => {
+            updateEnrollment(this.enrollmentBody()).then(response => {
               this.$modal.msgSuccess("修改成功")
               this.open = false
               this.getList()
             })
           } else {
-            addEnrollment(this.form).then(response => {
+            addEnrollment(this.enrollmentBody()).then(response => {
               this.$modal.msgSuccess("新增成功")
               this.open = false
               this.getList()
@@ -444,7 +437,7 @@ export default {
       })
     },
     isEnrollmentCancelled(row) {
-      return ['2', '已取消'].includes(String(row.enrollmentStatus)) || String(row.delFlag) === '2'
+      return !!row.classDate || ['2', '已取消'].includes(String(row.enrollmentStatus)) || String(row.delFlag) === '2'
     },
     /** 取消报名，保留记录及已出勤历史 */
     handleCancelEnrollment(row) {
@@ -472,7 +465,7 @@ export default {
     },
     /** 报名状态显示文字 */
     getEnrollmentStatusLabel(status) {
-      const labels = { '0': '待确认', '1': '报名成功', '2': '已取消' }
+      const labels = { '0': '待确认', '1': '报名成功', '2': '已取消', '3': '老师已拒绝' }
       return labels[String(status)] || status || '-'
     },
     /** 记录状态显示文字 */
@@ -486,37 +479,22 @@ export default {
       if (status === '已退款') return 'warning'
       return 'info'
     },
-    /** 确认支付 */
-    handleConfirmPay(row) {
-      this.$modal.confirm('确认将 "' + row.studentName + '" 的报名订单标记为已支付？').then(() => {
-        const data = {
-          enrollmentId: row.enrollmentId,
-          payStatus: '已支付'
-        }
-        updateEnrollment(data).then(response => {
-          this.$modal.msgSuccess("确认支付成功")
-          this.getList()
-        })
-      }).catch(() => {})
+    /** 通用报名表单只发送允许编辑的字段，财务汇总由专用流程维护。 */
+    enrollmentBody() {
+      const body = {}
+      for (const key of ['enrollmentId', 'enrollmentCode', 'scheduleId', 'parentId', 'studentName', 'studentPhone', 'contactPhone', 'remark']) {
+        if (this.form[key] !== undefined) body[key] = this.form[key]
+      }
+      return body
     },
-    /** 取消支付 */
-    handleCancelPay(row) {
-      this.$modal.confirm('确认取消 "' + row.studentName + '" 的支付状态？').then(() => {
-        const data = {
-          enrollmentId: row.enrollmentId,
-          payStatus: '未支付'
-        }
-        updateEnrollment(data).then(response => {
-          this.$modal.msgSuccess("取消成功")
-          this.getList()
-        })
-      }).catch(() => {})
+    handleFinance(row) {
+      this.$router.push({ path: '/finance/tuition', query: { enrollmentId: String(row.enrollmentId) } })
     }
   }
 }
 </script>
 
-<style scoped>
+<style scoped lang="scss">
 .schedule-info {
   text-align: left;
   padding: 4px 0;
@@ -524,20 +502,14 @@ export default {
     font-size: 12px;
     color: #909399;
   }
-  .info-subject {
-    font-size: 14px;
-    font-weight: 600;
-    color: #303133;
-    margin: 2px 0;
-    .info-type {
-      display: inline-block;
-      margin-left: 4px;
-      padding: 0 6px;
-      font-size: 11px;
-      color: #409EFF;
-      background: #ECF5FF;
-      border-radius: 3px;
-    }
+  .info-type {
+    display: inline-block;
+    margin-left: 4px;
+    padding: 0 6px;
+    font-size: 11px;
+    color: #2459d9;
+    background: #edf2ff;
+    border-radius: 3px;
   }
   .info-teacher {
     font-size: 12px;
@@ -562,3 +534,5 @@ export default {
   justify-content: center;
 }
 </style>
+
+<style scoped src="@/assets/styles/education-workspace.css"></style>

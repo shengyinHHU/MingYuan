@@ -4,7 +4,7 @@
     <view class="muted">{{schedule.courseYear}} {{schedule.termName}} · {{schedule.room}}</view><view>报名 {{schedule.enrolledCount}} / {{schedule.capacityText}}</view></view>
   <view class="card"><view class="title">{{scheduleId ? '班次报名名单' : '全局报名搜索'}}</view><view class="search"><input value="{{keyword}}" placeholder="学生姓名 / 家长手机号" bindinput="input" bindconfirm="search"/><button size="mini" bindtap="search">搜索</button></view><view class="muted">共 {{total}} 条，包含已取消报名</view></view>
   <view wx:for="{{list}}" wx:key="enrollmentId" class="card" bindtap="open" data-id="{{item.enrollmentId}}">
-    <view class="row"><text class="title">{{item.studentName}}</text><text>{{item.enrollmentText}} ›</text></view>
+    <view class="row"><text class="title">{{item.studentName}}</text><text class="ui-pill ui-pill-muted">{{item.enrollmentText}} ›</text></view>
     <view>{{item.payText}} · 已复核到课 {{item.attendedLessonCount}} 次</view>
     <view class="muted" wx:if="{{!scheduleId}}">{{item.gradeName}} {{item.subjectName}} · {{item.teacherName}} · 班次 {{item.scheduleId}}</view>
   </view>

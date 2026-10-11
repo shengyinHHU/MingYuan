@@ -1,7 +1,8 @@
 <template>
-  <div class="app-container">
-    <el-form :model="queryParams" ref="queryForm" size="small" :inline="true" v-show="showSearch" label-width="68px">
-      <el-form-item label="排课编码" prop="scheduleCode">
+  <div class="app-container edu-workspace">
+    <div class="edu-page-heading"><div><h2>排课管理</h2><p>查看课程时间与教师安排，维护班课和一对一课程</p></div><div class="edu-result-count">共 <strong>{{ total }}</strong> 条排课</div></div>
+    <el-form :model="queryParams" ref="queryForm" size="small" :inline="true" v-show="showSearch" label-width="100px">
+      <el-form-item label="排课编码" prop="scheduleCode" v-show="showAdvancedFilters">
         <el-input
           v-model="queryParams.scheduleCode"
           placeholder="请输入排课编码"
@@ -9,7 +10,7 @@
           @keyup.enter.native="handleQuery"
         />
       </el-form-item>
-      <el-form-item label="教室ID" prop="classroomId">
+      <el-form-item label="教室ID" prop="classroomId" v-show="showAdvancedFilters">
         <el-input
           v-model="queryParams.classroomId"
           placeholder="请输入教室ID"
@@ -17,7 +18,7 @@
           @keyup.enter.native="handleQuery"
         />
       </el-form-item>
-      <el-form-item label="课程年份" prop="courseYear">
+      <el-form-item label="课程年份" prop="courseYear" v-show="showAdvancedFilters">
         <el-input
           v-model="queryParams.courseYear"
           placeholder="请输入课程年份"
@@ -25,7 +26,7 @@
           @keyup.enter.native="handleQuery"
         />
       </el-form-item>
-      <el-form-item label="学期" prop="termName">
+      <el-form-item label="学期" prop="termName" v-show="showAdvancedFilters">
         <el-input
           v-model="queryParams.termName"
           placeholder="请输入学期"
@@ -41,7 +42,7 @@
           @keyup.enter.native="handleQuery"
         />
       </el-form-item>
-      <el-form-item label="时段" prop="timeSlot">
+      <el-form-item label="时段" prop="timeSlot" v-show="showAdvancedFilters">
         <el-input
           v-model="queryParams.timeSlot"
           placeholder="请输入时段"
@@ -49,14 +50,14 @@
           @keyup.enter.native="handleQuery"
         />
       </el-form-item>
-      <el-form-item label="开始时间" prop="startTime">
+      <el-form-item label="开始时间" prop="startTime" v-show="showAdvancedFilters">
         <el-time-picker clearable
           v-model="queryParams.startTime"
           value-format="HH:mm:ss"
           placeholder="请选择开始时间">
         </el-time-picker>
       </el-form-item>
-      <el-form-item label="结束时间" prop="endTime">
+      <el-form-item label="结束时间" prop="endTime" v-show="showAdvancedFilters">
         <el-time-picker clearable
           v-model="queryParams.endTime"
           value-format="HH:mm:ss"
@@ -87,7 +88,7 @@
           @keyup.enter.native="handleQuery"
         />
       </el-form-item>
-      <el-form-item label="已报名人数" prop="enrolledCount">
+      <el-form-item label="已报名人数" prop="enrolledCount" v-show="showAdvancedFilters">
         <el-input
           v-model="queryParams.enrolledCount"
           placeholder="请输入已报名人数"
@@ -103,7 +104,7 @@
           @keyup.enter.native="handleQuery"
         />
       </el-form-item>
-      <el-form-item label="来源Sheet" prop="sourceSheet">
+      <el-form-item label="来源Sheet" prop="sourceSheet" v-show="showAdvancedFilters">
         <el-input
           v-model="queryParams.sourceSheet"
           placeholder="请输入来源Sheet"
@@ -111,7 +112,7 @@
           @keyup.enter.native="handleQuery"
         />
       </el-form-item>
-      <el-form-item label="来源行" prop="sourceRow">
+      <el-form-item label="来源行" prop="sourceRow" v-show="showAdvancedFilters">
         <el-input
           v-model="queryParams.sourceRow"
           placeholder="请输入来源行"
@@ -119,7 +120,7 @@
           @keyup.enter.native="handleQuery"
         />
       </el-form-item>
-      <el-form-item label="来源列" prop="sourceCol">
+      <el-form-item label="来源列" prop="sourceCol" v-show="showAdvancedFilters">
         <el-input
           v-model="queryParams.sourceCol"
           placeholder="请输入来源列"
@@ -130,6 +131,7 @@
       <el-form-item>
         <el-button type="primary" icon="el-icon-search" size="mini" @click="handleQuery">搜索</el-button>
         <el-button icon="el-icon-refresh" size="mini" @click="resetQuery">重置</el-button>
+        <el-button type="text" @click="showAdvancedFilters = !showAdvancedFilters">{{ showAdvancedFilters ? "收起更多筛选" : "更多筛选" }}</el-button>
       </el-form-item>
     </el-form>
 
@@ -176,31 +178,35 @@
           v-hasPermi="['system:schedule:export']"
         >导出</el-button>
       </el-col>
+      <el-checkbox v-model="showDetailedColumns" class="edu-column-toggle">详细字段</el-checkbox>
       <right-toolbar :showSearch.sync="showSearch" @queryTable="getList"></right-toolbar>
     </el-row>
 
     <el-table v-loading="loading" :data="scheduleList" @selection-change="handleSelectionChange">
       <el-table-column type="selection" width="55" align="center" />
-      <el-table-column label="排课ID" align="center" prop="scheduleId" />
-      <el-table-column label="排课编码" align="center" prop="scheduleCode" />
-      <el-table-column label="教室ID" align="center" prop="classroomId" />
-      <el-table-column label="课程年份" align="center" prop="courseYear" />
-      <el-table-column label="学期" align="center" prop="termName" />
-      <el-table-column label="期次或上课日" align="center" prop="periodName" />
-      <el-table-column label="时段" align="center" prop="timeSlot" />
-      <el-table-column label="开始时间" align="center" prop="startTime" width="180">
+      <el-table-column label="课程" prop="courseClassName" min-width="220" fixed="left"><template slot-scope="scope"><div class="edu-table-name">{{ scope.row.courseClassName || '未命名课程' }}</div><div class="edu-table-secondary">{{ scope.row.gradeName }} · {{ scope.row.subjectName }} · {{ scope.row.teacherName || '教师待配置' }}</div></template></el-table-column>
+      <el-table-column label="上课时间" min-width="180"><template slot-scope="scope"><div class="edu-table-time">{{ scope.row.startTime || '待配置' }} – {{ scope.row.endTime || '待配置' }}</div><div class="edu-table-secondary">{{ scope.row.periodName || scope.row.timeSlot || '上课日待配置' }}</div></template></el-table-column>
+      <el-table-column v-if="showDetailedColumns" key="detail-scheduleId" label="排课ID" align="center" prop="scheduleId" />
+      <el-table-column v-if="showDetailedColumns" key="detail-scheduleCode" label="排课编码" align="center" prop="scheduleCode" />
+      <el-table-column v-if="showDetailedColumns" key="detail-classroomId" label="教室ID" align="center" prop="classroomId" />
+      <el-table-column label="自定义上课地点" align="center" prop="lessonLocation" min-width="160" />
+      <el-table-column v-if="showDetailedColumns" key="detail-courseYear" label="课程年份" align="center" prop="courseYear" />
+      <el-table-column v-if="showDetailedColumns" key="detail-termName" label="学期" align="center" prop="termName" />
+      <el-table-column v-if="showDetailedColumns" key="detail-periodName" label="期次或上课日" align="center" prop="periodName" />
+      <el-table-column v-if="showDetailedColumns" key="detail-timeSlot" label="时段" align="center" prop="timeSlot" />
+      <el-table-column v-if="showDetailedColumns" key="detail-startTime" label="开始时间" align="center" prop="startTime" width="180">
         <template slot-scope="scope">
           <span>{{ scope.row.startTime || '待配置' }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="结束时间" align="center" prop="endTime" width="180">
+      <el-table-column v-if="showDetailedColumns" key="detail-endTime" label="结束时间" align="center" prop="endTime" width="180">
         <template slot-scope="scope">
           <span>{{ scope.row.endTime || '待配置' }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="年级" align="center" prop="gradeName" />
-      <el-table-column label="科目" align="center" prop="subjectName" />
-      <el-table-column label="教师姓名" align="center" prop="teacherName" />
+      <el-table-column v-if="showDetailedColumns" key="detail-gradeName" label="年级" align="center" prop="gradeName" />
+      <el-table-column v-if="showDetailedColumns" key="detail-subjectName" label="科目" align="center" prop="subjectName" />
+      <el-table-column v-if="showDetailedColumns" key="detail-teacherName" label="教师姓名" align="center" prop="teacherName" />
       <el-table-column label="班型" align="center" prop="classType" />
       <el-table-column label="授课形式" align="center" width="90">
         <template slot-scope="scope">
@@ -214,13 +220,13 @@
       <el-table-column label="招生状态" align="center"><template slot-scope="scope">{{ { '0': '可报名', '1': '停招', '2': '满班' }[scope.row.recruitStatus] || '未知' }}</template></el-table-column>
       <el-table-column label="排课状态" align="center"><template slot-scope="scope">{{ scope.row.status === '1' ? '停用' : '正常' }}</template></el-table-column>
       <el-table-column label="排课日期" min-width="210"><template slot-scope="scope">{{ scope.row.startDate && scope.row.endDate ? `${scope.row.startDate} 至 ${scope.row.endDate}` : '待配置' }}</template></el-table-column>
-      <el-table-column label="课程班名称" align="center" prop="courseClassName" />
-      <el-table-column label="来源Sheet" align="center" prop="sourceSheet" />
-      <el-table-column label="来源行" align="center" prop="sourceRow" />
-      <el-table-column label="来源列" align="center" prop="sourceCol" />
-      <el-table-column label="状态" align="center" prop="status" />
-      <el-table-column label="备注" align="center" prop="remark" />
-      <el-table-column label="操作" align="center" class-name="small-padding fixed-width">
+
+      <el-table-column v-if="showDetailedColumns" key="detail-sourceSheet" label="来源Sheet" align="center" prop="sourceSheet" />
+      <el-table-column v-if="showDetailedColumns" key="detail-sourceRow" label="来源行" align="center" prop="sourceRow" />
+      <el-table-column v-if="showDetailedColumns" key="detail-sourceCol" label="来源列" align="center" prop="sourceCol" />
+      <el-table-column v-if="showDetailedColumns" key="detail-status" label="状态" align="center" prop="status" />
+      <el-table-column v-if="showDetailedColumns" key="detail-remark" label="备注" align="center" prop="remark" />
+      <el-table-column label="操作" align="center" class-name="small-padding fixed-width" fixed="right" width="180">
         <template slot-scope="scope">
           <el-button
             size="mini"
@@ -239,7 +245,7 @@
         </template>
       </el-table-column>
     </el-table>
-    
+
     <pagination
       v-show="total>0"
       :total="total"
@@ -258,9 +264,12 @@
             </el-form-item>
           </el-col>
           <el-col :span="24">
-            <el-form-item label="教室" prop="classroomId">
+            <el-form-item v-if="form.classMode !== '2'" label="教室" prop="classroomId">
               <el-select v-model="form.classroomId" filterable placeholder="请选择教室"><el-option v-for="room in dims.classroomList" :key="room.classroomId" :value="room.classroomId" :label="`${room.campusName} · ${room.classroomName}`" /></el-select>
             </el-form-item>
+          </el-col>
+          <el-col :span="24" v-if="form.classMode === '2'">
+            <el-form-item label="上课地点" prop="lessonLocation"><el-input v-model="form.lessonLocation" maxlength="255" placeholder="填写实际上课地点" /></el-form-item>
           </el-col>
           <el-col :span="24">
             <el-form-item label="课程年份" prop="courseYear">
@@ -393,6 +402,8 @@ export default {
       multiple: true,
       // 显示搜索条件
       showSearch: true,
+      showDetailedColumns: false,
+      showAdvancedFilters: false,
       // 总条数
       total: 0,
       // 课程排课表格数据
@@ -430,9 +441,10 @@ export default {
       form: {},
       // 表单校验
       rules: {
+        lessonLocation: [{ validator: (rule, value, callback) => this.form.classMode !== '2' || (value && value.trim()) ? callback() : callback(new Error("请填写上课地点")), trigger: "blur" }],
         teacherId: [{ required: true, message: "请选择教师账号", trigger: "change" }],
         classroomId: [
-          { required: true, message: "教室ID不能为空", trigger: "blur" }
+          { validator: (rule, value, callback) => this.form.classMode === '2' || value ? callback() : callback(new Error("请选择教室")), trigger: "change" }
         ],
         termName: [
           { required: true, message: "学期不能为空", trigger: "blur" }
@@ -478,7 +490,7 @@ export default {
       this.form = {
         scheduleId: null,
         scheduleCode: null,
-        classroomId: null,
+        classroomId: null, lessonLocation: null,
         courseYear: new Date().getFullYear(),
         termName: null,
         periodName: null,
@@ -549,6 +561,7 @@ export default {
         this.submitting = true
         try {
           const payload = { ...this.form }
+          if (payload.classMode === '2') payload.classroomId = null
           delete payload.enrolledCount
           delete payload.delFlag
           if (payload.scheduleId) await updateSchedule(payload)
@@ -578,3 +591,5 @@ export default {
   }
 }
 </script>
+
+<style scoped src="@/assets/styles/education-workspace.css"></style>

@@ -30,10 +30,12 @@ public class ScheduleCrudTest {
         principal(21, "teacher"); db = new FakeDb(); current = course(); current.setScheduleId(10L);
         service = new EduCourseScheduleServiceImpl();
         inject(service, "db", db);
+        inject(service, "singleService", new OneToOneEnrollmentService() { @Override public String subject(Long id) { return "数学"; } });
         inject(service, "parentMapper", proxy(MiniAppParentMapper.class, (p,m,a) -> List.of()));
         inject(service, "eduCourseScheduleMapper", proxy(EduCourseScheduleMapper.class, (p,m,a) -> {
             switch(m.getName()) {
                 case "selectEduCourseScheduleByScheduleId": case "lockSchedule":
+                    if (m.getName().equals("lockSchedule") && db.enrollmentArrivesOnLock) db.activeEnrollments = 1;
                     if (Long.valueOf(10).equals(a[0])) return current;
                     EduCourseSchedule foreign = course(); foreign.setScheduleId(20L); foreign.setTeacherId(22L); return foreign;
                 case "insertEduCourseSchedule": case "updateEduCourseSchedule": captured = (EduCourseSchedule)a[0]; return 1;
@@ -55,18 +57,19 @@ public class ScheduleCrudTest {
     }
     @Test void simpleDraftUsesExactWeeksWeekdayAndTwoHours() {
         var draft = new com.ruoyi.system.domain.TeacherOneToOneDraft();
-        draft.classroomId = 1L; draft.gradeName = "一年级"; draft.subjectName = "数学"; draft.courseClassName = " 一对一数学 ";
+        draft.lessonLocation = "校外自定义地点"; draft.gradeName = "一年级"; draft.courseClassName = " 一对一数学 ";
         draft.startDate = LocalDate.parse("2026-12-28"); draft.startTime = LocalTime.of(8,30); draft.weeks = 4;
-        EduCourseSchedule schedule = draft.toSchedule();
+        EduCourseSchedule schedule = draft.toSchedule("数学");
+        assertNull(schedule.getClassroomId()); assertEquals("校外自定义地点",schedule.getLessonLocation());
         assertEquals("周一", schedule.getPeriodName()); assertEquals(LocalTime.of(10,30), schedule.getEndTime());
         assertEquals(LocalDate.parse("2027-01-18"), ScheduleCalendar.date(schedule.getEndDate()));
         assertEquals(4, ScheduleCalendar.dates(draft.startDate, ScheduleCalendar.date(schedule.getEndDate()), schedule.getClassPattern(), schedule.getPeriodName(), List.of()).size());
         assertEquals(1, service.insertEduCourseSchedule(schedule));
-        draft.weeks = 1; assertEquals(draft.startDate, ScheduleCalendar.date(draft.toSchedule().getEndDate()));
-        draft.weeks = 0; assertThrows(ServiceException.class, draft::toSchedule);
-        draft.weeks = 53; assertThrows(ServiceException.class, draft::toSchedule);
-        draft.weeks = 2; draft.startTime = LocalTime.of(22,0); assertThrows(ServiceException.class, draft::toSchedule);
-        draft.startTime = LocalTime.of(21,59); assertEquals(LocalTime.of(23,59), draft.toSchedule().getEndTime());
+        draft.weeks = 1; assertEquals(draft.startDate, ScheduleCalendar.date(draft.toSchedule("数学").getEndDate()));
+        draft.weeks = 0; assertThrows(ServiceException.class, () -> draft.toSchedule("数学"));
+        draft.weeks = 53; assertThrows(ServiceException.class, () -> draft.toSchedule("数学"));
+        draft.weeks = 2; draft.startTime = LocalTime.of(22,0); assertThrows(ServiceException.class, () -> draft.toSchedule("数学"));
+        draft.startTime = LocalTime.of(21,59); assertEquals(LocalTime.of(23,59), draft.toSchedule("数学").getEndTime());
     }
     @Test void teacherCanOnlyCreateOneToOneButAdminCanCreateClass() {
         EduCourseSchedule input = course(); input.setClassMode("1");
@@ -107,6 +110,22 @@ public class ScheduleCrudTest {
         assertThrows(ServiceException.class, () -> service.updateEduCourseSchedule(changed));
         EduCourseSchedule stop = new EduCourseSchedule(); stop.setScheduleId(10L); stop.setStatus("1");
         assertEquals(1, service.updateEduCourseSchedule(stop));
+    }
+    @Test void activeEnrollmentBlocksAdminUpdateEvenWithForgedEmptyCounter() {
+        principal(1, "admin"); db.activeEnrollments = 1; current.setEnrolledCount(0L);
+        EduCourseSchedule input = new EduCourseSchedule(); input.setScheduleId(10L); input.setRemark("changed"); input.setEnrolledCount(0L);
+        ServiceException error = assertThrows(ServiceException.class, () -> service.updateEduCourseSchedule(input));
+        assertTrue(error.getMessage().contains("报名")); assertNull(captured);
+    }
+    @Test void activeEnrollmentBlocksAdminDeletionBeforeOtherHistoryChecks() {
+        principal(1, "admin"); db.activeEnrollments = 1;
+        ServiceException error = assertThrows(ServiceException.class, () -> service.deleteEduCourseScheduleByScheduleIds(new Long[]{10L}));
+        assertTrue(error.getMessage().contains("报名")); assertNull(deleted);
+    }
+    @Test void enrollmentArrivingBeforeScheduleLockAlsoBlocksUpdate() {
+        principal(1, "admin"); db.enrollmentArrivesOnLock = true;
+        EduCourseSchedule input = new EduCourseSchedule(); input.setScheduleId(10L); input.setStatus("1");
+        assertThrows(ServiceException.class, () -> service.updateEduCourseSchedule(input)); assertNull(captured);
     }
     @Test void deletionChecksAllReferencesAndDeduplicatesIds() {
         db.references = 1;
@@ -157,13 +176,14 @@ public class ScheduleCrudTest {
     static void inject(Object target, String field, Object value) throws Exception { var f = target.getClass().getDeclaredField(field); f.setAccessible(true); f.set(target,value); }
     @SuppressWarnings("unchecked") static <T> T proxy(Class<T> type, InvocationHandler handler) { return (T) Proxy.newProxyInstance(type.getClassLoader(),new Class<?>[]{type},handler); }
     static class FakeDb extends ShopRepository {
-        long attendance, references; List<Map<String,Object>> conflicts = List.of(); List<String> locks = new ArrayList<>();
+        long attendance, references, activeEnrollments; boolean enrollmentArrivesOnLock;
+        List<Map<String,Object>> conflicts = List.of(); List<String> locks = new ArrayList<>();
         FakeDb() { super(new DriverManagerDataSource()); }
         @Override public List<Map<String,Object>> rows(String sql,Object... args) {
             if (sql.contains("SELECT u.nick_name")) return List.of(Map.of("nickName","Teacher A","userName","teacher21"));
             if (sql.contains("information_schema")) return List.of(Map.of("tableName","edu_homework"));
             if (sql.contains("SELECT schedule_id,start_time")) return conflicts;
-            if (sql.contains("SELECT enrollment_id")) return List.of();
+            if (sql.contains("SELECT enrollment_id")) return activeEnrollments > 0 ? List.of(Map.of("enrollmentId",1L)) : List.of();
             if (sql.contains("SELECT sign_in_id")) return attendance > 0 ? List.of(Map.of("signInId",1)) : List.of();
             if (sql.contains("SELECT attendance_id")) return List.of();
             if (sql.contains("`edu_homework`")) return references > 0 ? List.of(Map.of("scheduleId",10)) : List.of();

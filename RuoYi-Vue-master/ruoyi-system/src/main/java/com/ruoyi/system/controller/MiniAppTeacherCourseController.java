@@ -30,6 +30,7 @@ public class MiniAppTeacherCourseController extends BaseController
     @Autowired private MiniAppParentMapper parentMapper;
     @Autowired private IEduEnrollmentService enrollmentService;
     @Autowired private IEduCourseScheduleService scheduleService;
+    @Autowired private com.ruoyi.system.service.OneToOneEnrollmentService singleService;
 
     @GetMapping("/schedules")
     public AjaxResult schedules()
@@ -37,6 +38,7 @@ public class MiniAppTeacherCourseController extends BaseController
         List<Map<String, Object>> courses = viewMapper.selectTeacherSchedules(SecurityUtils.getUserId(), null);
         for (Map<String, Object> course : courses)
         {
+            singleService.decorateTeacher(course);
             course.put("adjustments", parentMapper.selectScheduleAdjustments(course.get("scheduleId")));
         }
         return success(courses);
@@ -53,7 +55,7 @@ public class MiniAppTeacherCourseController extends BaseController
     @Log(title = "教师新增排课", businessType = BusinessType.INSERT)
     public AjaxResult add(@RequestBody com.ruoyi.system.domain.TeacherOneToOneDraft draft)
     {
-        EduCourseSchedule input = draft.toSchedule();
+        EduCourseSchedule input = draft.toSchedule(singleService.subject(SecurityUtils.getUserId()));
         fixedTeacher(input);
         scheduleService.insertEduCourseSchedule(input);
         return success(input.getScheduleId());
@@ -65,6 +67,8 @@ public class MiniAppTeacherCourseController extends BaseController
     {
         ownSchedule(input.getScheduleId());
         fixedTeacher(input);
+        var current = scheduleService.selectEduCourseScheduleByScheduleId(input.getScheduleId());
+        if ("2".equals(current.getClassMode())) { input.setSubjectName(current.getSubjectName()); input.setClassMode("2"); }
         return toAjax(scheduleService.updateEduCourseSchedule(input));
     }
 
@@ -75,6 +79,20 @@ public class MiniAppTeacherCourseController extends BaseController
         ownSchedule(scheduleId);
         return toAjax(scheduleService.deleteEduCourseScheduleByScheduleId(scheduleId));
     }
+
+    @GetMapping("/profile")
+    public AjaxResult profile() { return success(singleService.profile(SecurityUtils.getUserId())); }
+
+    @GetMapping("/single/transactions")
+    public AjaxResult transactions() { return success(singleService.transactions()); }
+
+    public static class Decision { public String action; public String reason; }
+    @PostMapping("/single/{id}/decision")
+    @Log(title="处理一对一报名", businessType=BusinessType.UPDATE)
+    public AjaxResult decision(@PathVariable Long id,@RequestBody Decision body) { return toAjax(singleService.decide(id,body.action,body.reason)); }
+
+    @GetMapping("/single/{id}/history")
+    public AjaxResult history(@PathVariable Long id) { return success(singleService.history(id,true)); }
 
     @GetMapping("/students")
     public TableDataInfo students(@RequestParam(required = false) Long scheduleId,

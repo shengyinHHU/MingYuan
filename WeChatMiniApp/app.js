@@ -2,7 +2,7 @@ App({
   globalData: {
     // WeChat DevTools can call the local backend directly.
     // Use an HTTPS domain here when testing on a real device or publishing.
-    baseUrl: 'http://192.168.2.6:8080',
+    baseUrl: 'http://127.0.0.1:8080',
     token: '',
     userInfo: null,
     roles: []

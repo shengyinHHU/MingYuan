@@ -26,6 +26,7 @@ public class MiniAppParentController extends BaseController
 {
     @Autowired
     private IMiniAppParentService miniAppParentService;
+    @Autowired private com.ruoyi.system.service.OneToOneEnrollmentService singleService;
 
     @PreAuthorize("@ss.hasAnyRoles('parent')")
     @GetMapping("/schedules")
@@ -71,9 +72,22 @@ public class MiniAppParentController extends BaseController
         return toAjax(miniAppParentService.enroll(body));
     }
 
+    @PreAuthorize("@ss.hasRole('parent')")
+    @GetMapping("/single/lessons")
+    public AjaxResult singleLessons() { return success(singleService.available()); }
+
+    public static class CancelRequest { public String reason; }
+    @PreAuthorize("@ss.hasRole('parent')")
+    @PostMapping("/enrollment/{id}/cancel-request")
+    public AjaxResult cancelRequest(@PathVariable Long id,@RequestBody CancelRequest body) { return toAjax(singleService.requestCancellation(id,body.reason)); }
+
+    @PreAuthorize("@ss.hasRole('parent')")
+    @GetMapping("/enrollment/{id}/history")
+    public AjaxResult history(@PathVariable Long id) { return success(singleService.history(id,false)); }
+
     /**
      * 家长取消本人的课程报名
-     * 校验本人归属后共用取消事务，保留报名与已出勤历史。
+     * 财务安全取消：校验归属与收款状态，关闭账单并释放一次名额，保留历史考勤。
      */
     @PreAuthorize("@ss.hasAnyRoles('parent')")
     @Log(title = "家长取消报名", businessType = BusinessType.UPDATE)
