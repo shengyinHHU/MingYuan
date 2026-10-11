@@ -147,11 +147,21 @@ page {
 }
 
 .stats-teacher {
-  flex-wrap: wrap;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 12rpx;
 }
 
 .stats-teacher .stat {
-  flex: 0 0 calc(50% - 7rpx);
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 18rpx 10rpx;
+}
+
+.stats-teacher .stat-label,
+.stats-teacher .stat-link {
+  font-size: 20rpx;
+  white-space: nowrap;
 }
 
 .stat-clickable {
