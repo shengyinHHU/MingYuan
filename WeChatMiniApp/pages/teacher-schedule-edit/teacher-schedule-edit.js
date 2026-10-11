@@ -43,7 +43,7 @@ Page({
         scheduleId: course.scheduleId || null, scheduleCode: course.scheduleCode || '',
         courseYear: course.courseYear || this._dims.currentYear || new Date().getFullYear(),
         classroomId: course.classroomId || '', termName: course.termName || '', periodName: course.periodName || '',
-        timeSlot: course.timeSlot || '', gradeName: course.gradeName || '', subjectName: course.subjectName || (ownCourses.data || []).find(item => item.subjectName)?.subjectName || (this._dims.subjects || [])[0]?.value || '',
+        timeSlot: course.timeSlot || '', gradeName: course.gradeName || '', subjectName: course.subjectName || ((ownCourses.data || []).filter(function (item) { return item.subjectName })[0] || {}).subjectName || ((this._dims.subjects || [])[0] || {}).value || '',
         classType: course.classType || '', classMode: course.classMode || (this._id ? '1' : '2'),
         startTime: course.startTime || (this._id ? '' : '08:00:00'), endTime: course.endTime || '',
         startDate: course.startDate || (this._id ? '' : calendar.formatDate(new Date())), endDate: course.endDate || '',

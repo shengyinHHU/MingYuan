@@ -24,7 +24,7 @@
     </view>
 
     <view class="stats">
-      <view class="stat" wx:for="{{stats}}" wx:key="label">
+      <view class="stat" wx:for="{{stats}}" wx:key="label" data-route="{{item.route}}" data-label="{{item.label}}" bindtap="handleStat">
         <view class="stat-value">{{item.value}}<text>{{item.suffix}}</text></view>
         <view class="stat-label">{{item.label}}</view>
       </view>
