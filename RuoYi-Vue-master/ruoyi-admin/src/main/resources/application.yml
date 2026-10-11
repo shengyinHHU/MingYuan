@@ -62,7 +62,7 @@ spring:
 
 token:
   header: Authorization
-  secret: ${TOKEN_SECRET}
+  secret: ${TOKEN_SECRET:abcdefghijklmnopqrstuvwxyz}
   expireTime: 30
 
 wechat:
