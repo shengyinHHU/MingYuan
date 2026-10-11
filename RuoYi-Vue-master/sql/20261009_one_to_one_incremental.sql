@@ -2,9 +2,8 @@
 -- 本脚本仅供尚未迁移的数据库执行一次；目标字段或表已存在时，不要重复执行。
 -- 不新增课程或报名平行表，不迁移/猜测历史一对一报名日期。
 -- DDL 在 MySQL 中不能按普通事务回滚，执行前须保留结构及数据备份。
-ALTER TABLE sys_user
- ADD COLUMN teacher_subject varchar(20) DEFAULT NULL COMMENT '后台配置的教师授课学科',
- ADD COLUMN teacher_level varchar(20) DEFAULT NULL COMMENT '后台配置：elite精英/senior资深，不涉及支付';
+-- 教师资料已拆至 edu_teacher_profile；先执行 20261011_teacher_profile_incremental.sql。
+-- 已执行过本脚本的数据库只需执行上述新迁移，不要重跑本脚本。
 ALTER TABLE edu_course_schedule
  MODIFY COLUMN classroom_id bigint NULL COMMENT '班课教室；自由地点一对一可为空',
  ADD COLUMN lesson_location varchar(255) DEFAULT NULL COMMENT '教师自定义上课地点';

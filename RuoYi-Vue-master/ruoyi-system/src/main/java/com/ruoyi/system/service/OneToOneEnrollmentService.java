@@ -18,6 +18,7 @@ import com.ruoyi.system.shop.ShopRepository;
 @Service
 public class OneToOneEnrollmentService {
     @Autowired private ShopRepository db;
+    @Autowired private EduTeacherProfileService teacherProfiles;
     @Autowired private EduCourseScheduleMapper schedules;
     @Autowired private MiniAppParentMapper parent;
     @Autowired private EduEnrollmentMapper enrollments;
@@ -29,8 +30,7 @@ public class OneToOneEnrollmentService {
     private static final String PROCESSABLE = "COALESCE(TIMESTAMP(e.class_date,s.start_time)>? AND e.enrollment_status IN"+ACTIVE+" AND NOT EXISTS(SELECT 1 FROM edu_class_sign_in r WHERE r.enrollment_id=e.enrollment_id) AND NOT EXISTS(SELECT 1 FROM edu_attendance a WHERE a.enrollment_id=e.enrollment_id AND a.attendance_status='1'),0) AS can_process";
 
     public Map<String,Object> profile(Long teacherId) {
-        var rows = db.rows("SELECT u.user_id,u.nick_name,u.teacher_subject,u.teacher_level FROM sys_user u WHERE u.user_id=? AND u.status='0' AND u.del_flag='0' AND EXISTS(SELECT 1 FROM sys_user_role ur JOIN sys_role r ON r.role_id=ur.role_id WHERE ur.user_id=u.user_id AND r.role_key='teacher' AND r.status='0' AND r.del_flag='0')", teacherId);
-        check(!rows.isEmpty(), "教师账号不可用"); return rows.get(0);
+        return teacherProfiles.getAvailableTeacher(teacherId);
     }
     public String subject(Long teacherId) {
         Object value = profile(teacherId).get("teacherSubject");

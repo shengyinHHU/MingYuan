@@ -23,6 +23,9 @@ public class OneToOneFlowTest {
         draft.startDate=LocalDate.now().plusDays(7); draft.startTime=LocalTime.of(8,0); draft.weeks=4;
         schedule=draft.toSchedule("数学"); schedule.setScheduleId(10L); schedule.setTeacherId(21L); schedule.setDelFlag("0");
         ScheduleCrudTest.inject(service,"db",db);
+        var profiles = new EduTeacherProfileService();
+        ScheduleCrudTest.inject(profiles,"db",db);
+        ScheduleCrudTest.inject(service,"teacherProfiles",profiles);
         ScheduleCrudTest.inject(service,"schedules",ScheduleCrudTest.proxy(EduCourseScheduleMapper.class,(p,m,a)->schedule));
         ScheduleCrudTest.inject(service,"parent",ScheduleCrudTest.proxy(MiniAppParentMapper.class,(p,m,a)->m.getName().equals("selectScheduleAdjustments") ? List.of() : 1));
         ScheduleCrudTest.inject(service,"enrollments",ScheduleCrudTest.proxy(EduEnrollmentMapper.class,(p,m,a)->{db.invalidated++; return 1;}));
