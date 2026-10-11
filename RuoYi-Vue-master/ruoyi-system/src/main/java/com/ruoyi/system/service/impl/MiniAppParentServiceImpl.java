@@ -14,7 +14,8 @@ import com.ruoyi.common.utils.StringUtils;
 import com.ruoyi.common.utils.uuid.IdUtils;
 import com.ruoyi.system.mapper.MiniAppParentMapper;
 import com.ruoyi.system.service.IMiniAppParentService;
-import com.ruoyi.system.service.IEduEnrollmentService;
+import com.ruoyi.system.finance.TuitionService;
+import com.ruoyi.system.shop.ShopRepository;
 
 /**
  * MiniApp parent service implementation.
@@ -22,12 +23,10 @@ import com.ruoyi.system.service.IEduEnrollmentService;
 @Service
 public class MiniAppParentServiceImpl implements IMiniAppParentService
 {
-    @Autowired private com.ruoyi.system.service.OneToOneEnrollmentService singleService;
     @Autowired
     private MiniAppParentMapper miniAppParentMapper;
-
-    @Autowired
-    private IEduEnrollmentService enrollmentService;
+    @Autowired private TuitionService tuition;
+    @Autowired private ShopRepository db;
 
     @Override
     public List<Map<String, Object>> selectAvailableSchedules(String gradeName, String subjectName, String termName)
@@ -75,7 +74,6 @@ public class MiniAppParentServiceImpl implements IMiniAppParentService
     @Transactional(rollbackFor = Exception.class)
     public int enroll(MiniAppEnrollmentBody body)
     {
-        if (body != null && body.getScheduleId() != null && singleService.isSingle(body.getScheduleId())) return singleService.enroll(body);
         if (body == null || body.getScheduleId() == null)
         {
             throw new ServiceException("Please select a schedule");
@@ -91,6 +89,8 @@ public class MiniAppParentServiceImpl implements IMiniAppParentService
         }
 
         Long parentId = SecurityUtils.getUserId();
+        // All capacity changes lock schedule before enrollment/finance records.
+        db.one("SELECT schedule_id FROM edu_course_schedule WHERE schedule_id=? FOR UPDATE", body.getScheduleId());
         if (miniAppParentMapper.countScheduleAvailable(body.getScheduleId()) == 0)
         {
             throw new ServiceException("This schedule is not available");
@@ -110,8 +110,10 @@ public class MiniAppParentServiceImpl implements IMiniAppParentService
         int rows = miniAppParentMapper.insertParentEnrollment(enrollmentCode, body.getScheduleId(), parentId, studentName,
                 StringUtils.defaultString(body.getStudentPhone()), contactPhone, SecurityUtils.getUsername());
         Long enrollmentId = miniAppParentMapper.selectEnrollmentIdByCode(enrollmentCode);
+        if (rows != 1 || enrollmentId == null) throw new ServiceException("报名失败，请重试");
         if (enrollmentId != null)
         {
+            tuition.initializeBill(enrollmentId, parentId);
             String attendanceCode = "ATT" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"))
                     + IdUtils.fastSimpleUUID().substring(0, 6).toUpperCase();
             miniAppParentMapper.insertInitialAttendance(attendanceCode, body.getScheduleId(), enrollmentId, parentId,
@@ -124,27 +126,13 @@ public class MiniAppParentServiceImpl implements IMiniAppParentService
     @Transactional(rollbackFor = Exception.class)
     public int cancelEnrollment(Long enrollmentId)
     {
-        if (enrollmentId == null)
-        {
-            throw new ServiceException("请选择要取消的课程");
-        }
-        Long parentId = SecurityUtils.getUserId();
+        if (enrollmentId == null) throw new ServiceException("请选择要取消的课程");
         Map<String, Object> owner = miniAppParentMapper.selectEnrollmentOwnerInfo(enrollmentId);
-        if (owner == null)
-        {
-            throw new ServiceException("报名记录不存在或已取消");
-        }
-        Object recordParentId = owner.get("parentId");
-        Object delFlag = owner.get("delFlag");
-        if (recordParentId == null || !parentId.equals(Long.valueOf(String.valueOf(recordParentId))))
-        {
+        if (owner == null) throw new ServiceException("报名记录不存在");
+        if (!SecurityUtils.getUserId().equals(Long.valueOf(String.valueOf(owner.get("parentId")))))
             throw new ServiceException("无权取消他人的报名");
-        }
-        if (delFlag != null && !"0".equals(String.valueOf(delFlag)))
-        {
-            throw new ServiceException("该报名已取消，请勿重复操作");
-        }
-        if (singleService.isSingle(Long.valueOf(owner.get("scheduleId").toString()))) throw new ServiceException("一对一报名请提交取消申请，由老师处理");
-        return enrollmentService.cancelEduEnrollmentByEnrollmentIds(new Long[] { enrollmentId });
+        boolean alreadyCancelled = java.util.Set.of("2", "已取消").contains(String.valueOf(owner.get("enrollmentStatus")));
+        tuition.cancelEnrollment(enrollmentId, SecurityUtils.getUserId(), false);
+        return alreadyCancelled ? 0 : 1;
     }
 }

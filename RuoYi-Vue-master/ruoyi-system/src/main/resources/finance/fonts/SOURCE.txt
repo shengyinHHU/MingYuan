@@ -1,0 +1,7 @@
+Font source: https://github.com/notofonts/noto-cjk/tree/main/Sans/Variable/TTF/Subset
+Original asset: NotoSansSC-VF.ttf (downloaded 2026-10-07)
+License: SIL Open Font License 1.1; see OFL.txt alongside this file.
+This bundled derivative is the static regular-weight (wght=400) instance,
+generated using fontTools 4.66.1 varLib.instancer. The static font embeds
+portably in receipt PDFs; it does not depend on a macOS/Windows font path.
+Font source copyright: Adobe and Google, as recorded in the font metadata.
