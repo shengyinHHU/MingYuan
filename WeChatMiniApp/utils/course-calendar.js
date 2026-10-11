@@ -1,6 +1,7 @@
 // 教师日历只展示可确定的课次；不从考勤反推未来排课。
 const DAY_NAMES = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
-const MINUTE_HEIGHT = 2 // rpx，00:00 至 24:00 全部保留
+const MINUTE_HEIGHT = 2.2 // rpx；两小时留足课程信息高度，时段间隔仍压缩显示。
+const DEFAULT_SLOTS = ['08:00-10:00','10:15-12:15','13:15-15:15','15:30-17:30','18:30-20:30','20:30-22:30']
 
 function parseDate(value) {
   const match = String(value || '').match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?:$|[ T])/)
@@ -18,7 +19,7 @@ function weekStart(value) {
   return addDays(date, -((date.getDay() + 6) % 7))
 }
 function timeMinutes(value) {
-  const match = String(value || '').match(/^(\d{2}):(\d{2})(?::(\d{2}))?$/)
+  const match = String(value || '').match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/)
   if (!match || +match[2] > 59 || +(match[3] || 0) > 59 || +match[1] > 24 || (+match[1] === 24 && (+match[2] || +(match[3] || 0)))) return null
   return +match[1] * 60 + +match[2] + +(match[3] || 0) / 60
 }
@@ -51,13 +52,13 @@ function expandCourse(course) {
 }
 
 // 同日重叠课程分列展示，避免后一条覆盖前一条。
-function positionBlocks(blocks) {
+function positionBlocks(blocks, timeline) {
   blocks.sort((a, b) => a.startMinute - b.startMinute || a.endMinute - b.endMinute || String(a.scheduleId).localeCompare(String(b.scheduleId)))
   let group = [], ends = [], groupEnd = -1
   function finish() {
     group.forEach(block => {
       block.overlap = ends.length > 1
-      block.style = `top:${block.startMinute * MINUTE_HEIGHT}rpx;height:${(block.endMinute - block.startMinute) * MINUTE_HEIGHT}rpx;left:${block.lane * 100 / ends.length}%;width:${100 / ends.length}%;`
+      block.style = `${rangeStyle(timeline,block.startMinute,block.endMinute)}left:${block.lane * 100 / ends.length}%;width:${100 / ends.length}%;`
     })
   }
   blocks.forEach(block => {
@@ -71,6 +72,55 @@ function positionBlocks(blocks) {
   })
   finish()
   return blocks
+}
+
+function clock(minute) { return `${String(Math.floor(minute/60)).padStart(2,'0')}:${String(Math.floor(minute%60)).padStart(2,'0')}` }
+function buildTimeline(slots, blocks) {
+  const ranges=[]
+  for(const slot of slots === undefined ? DEFAULT_SLOTS : slots) {
+    const parts=String(typeof slot==='string' ? slot : slot.value || slot.timeSlot || '').split(/[-–—]/)
+    const start=timeMinutes(slot.startTime || parts[0]),end=timeMinutes(slot.endTime || parts[1])
+    if(start !== null && end !== null && start<end) ranges.push({start,end})
+  }
+  ranges.sort((a,b)=>a.start-b.start || a.end-b.end)
+  const merged=[]
+  for(const range of ranges) {
+    const last=merged[merged.length-1]
+    if(last && range.start<last.end) last.end=Math.max(last.end,range.end)
+    else merged.push({...range})
+  }
+  // 特殊时间的历史课程仍完整显示，不裁掉机构时段之外的真实上课时间。
+  if(blocks.length) {
+    const start=Math.min(...blocks.map(b=>b.startMinute)),end=Math.max(...blocks.map(b=>b.endMinute))
+    if(!merged.length) merged.push({start,end})
+    else {
+      const first=merged[0].start,last=merged[merged.length-1].end
+      if(start<first) merged.unshift({start,end:first})
+      if(end>last) merged.push({start:last,end})
+    }
+  }
+  let top=0
+  const timeline=[],hours=[],breaks=[]
+  merged.forEach((range,index)=>{
+    const previous=merged[index-1]
+    if(previous && previous.end<range.start) {
+      timeline.push({start:previous.end,end:range.start,top,height:20});breaks.push({top,height:20});top+=20
+    }
+    const height=Math.max(120,(range.end-range.start)*MINUTE_HEIGHT)
+    timeline.push({...range,top,height});hours.push({label:clock(range.start),endLabel:clock(range.end),top,height});top+=height
+  })
+  return {calendarTimeline:timeline,hours,calendarBreaks:breaks,calendarHeight:top+2}
+}
+function minuteTop(timeline,minute) {
+  if(!timeline || !timeline.length) return minute*MINUTE_HEIGHT
+  const range=timeline.find(r=>minute>=r.start && minute<=r.end)
+  if(!range) return minute<timeline[0].start ? 0 : timeline[timeline.length-1].top+timeline[timeline.length-1].height
+  return Math.round((range.top+(minute-range.start)*range.height/(range.end-range.start))*100)/100
+}
+function rangeStyle(timeline,start,end) {
+  const a=typeof start==='number' ? start : timeMinutes(start),b=typeof end==='number' ? end : timeMinutes(end)
+  const top=minuteTop(timeline,a),bottom=minuteTop(timeline,b)
+  return `top:${top}rpx;height:${bottom-top}rpx;`
 }
 
 function singleLessonState(course, booking, date) {
@@ -90,7 +140,7 @@ function singleLessonState(course, booking, date) {
   return { lessonState: 'empty', statusText: started ? '无人报名 · 已过期' : '无人报名 · 可报名' }
 }
 
-function buildWeek(courses, selectedDate) {
+function buildWeek(courses, selectedDate, slots) {
   const monday = weekStart(selectedDate), sunday = addDays(monday, 6)
   const today = formatDate(new Date()), first = formatDate(monday), last = formatDate(sunday)
   const days = Array.from({ length: 7 }, (_, index) => {
@@ -119,10 +169,10 @@ function buildWeek(courses, selectedDate) {
       lessonCount++
     })
   })
-  days.forEach(day => positionBlocks(day.blocks))
-  const hours = Array.from({ length: 25 }, (_, hour) => ({ label: `${String(hour).padStart(2, '0')}:00`, top: hour * 120 }))
-  return { weekStart: first, weekEnd: last, weekLabel: `${first} 至 ${last}`, weekDays: days, hours, pendingCourses: pending,
+  const geometry=buildTimeline(slots,days.flatMap(day=>day.blocks))
+  days.forEach(day => positionBlocks(day.blocks,geometry.calendarTimeline))
+  return { ...geometry,weekStart: first, weekEnd: last, weekLabel: `${first} 至 ${last}`, weekDays: days, pendingCourses: pending,
     stoppedCourses: stopped, weekLessonCount: lessonCount, plannedLessonCount: plannedCount,
     overlapCount: days.reduce((count, day) => count + day.blocks.filter(block => block.overlap).length, 0) }
 }
-module.exports = { parseDate, formatDate, addDays, weekStart, timeMinutes, expandCourse, positionBlocks, singleLessonState, buildWeek }
+module.exports = { parseDate, formatDate, addDays, weekStart, timeMinutes, expandCourse, positionBlocks, singleLessonState, buildWeek,rangeStyle }

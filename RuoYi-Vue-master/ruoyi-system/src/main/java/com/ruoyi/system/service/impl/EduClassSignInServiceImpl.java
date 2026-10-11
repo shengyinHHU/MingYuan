@@ -144,6 +144,8 @@ public class EduClassSignInServiceImpl implements IEduClassSignInService
             throw new ServiceException("排课不存在或已删除");
         }
         if ("2".equals(schedule.getClassMode()) && body.getDetails() != null) {
+            if(!singleDb.rows("SELECT enrollment_id FROM edu_enrollment WHERE schedule_id=? AND class_date=? AND lesson_completed_time IS NOT NULL FOR UPDATE",scheduleId,classDate).isEmpty())
+                throw new ServiceException("本次一对一已确认完成，不能覆盖原签到或改变消课历史，请联系管理员核对");
             for (var detail : body.getDetails()) {
                 if (detail.getEnrollmentId() == null) throw new ServiceException("一对一签到需关联已确认的单次报名");
                 var rows = singleDb.rows("SELECT enrollment_id FROM edu_enrollment WHERE enrollment_id=? AND schedule_id=? AND class_date=? AND enrollment_status='1' AND del_flag='0' FOR UPDATE",detail.getEnrollmentId(),body.getScheduleId(),body.getClassDate());

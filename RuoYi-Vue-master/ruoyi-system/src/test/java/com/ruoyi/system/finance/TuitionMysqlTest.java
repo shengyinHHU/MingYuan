@@ -14,7 +14,7 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class TuitionMysqlTest {
-  static final String SCHEMA = "codex_tuition_finance_test_20261007";
+  static final String SCHEMA = "codex_tuition_finance_test_" + UUID.randomUUID().toString().replace("-", "");
   ShopRepository db;
   Object tuition, coupons;
   Path privateRoot;
@@ -28,8 +28,7 @@ class TuitionMysqlTest {
         "Enable isolated MySQL suite with -Dtuition.mysql=true");
     try (Connection c =
         DriverManager.getConnection(
-            "jdbc:mysql://127.0.0.1:3306/?serverTimezone=Asia/Shanghai", "root", "")) {
-      c.createStatement().execute("DROP DATABASE IF EXISTS " + SCHEMA);
+            "jdbc:mysql://127.0.0.1:3306/?serverTimezone=Asia/Shanghai", "root", System.getenv().getOrDefault("MYSQL_PWD", ""))) {
       c.createStatement().execute("CREATE DATABASE " + SCHEMA + " CHARACTER SET utf8mb4");
     }
     db =
@@ -37,7 +36,7 @@ class TuitionMysqlTest {
             new DriverManagerDataSource(
                 "jdbc:mysql://127.0.0.1:3306/" + SCHEMA + "?serverTimezone=Asia/Shanghai",
                 "root",
-                ""));
+                System.getenv().getOrDefault("MYSQL_PWD", "")));
     db.jdbc()
         .execute(
             "CREATE TABLE sys_user(user_id bigint PRIMARY KEY,user_name varchar(64),nick_name"
@@ -94,7 +93,7 @@ class TuitionMysqlTest {
             .get("billingStatus"));
     migrate();
     migrate();
-    privateRoot = Files.createTempDirectory(Path.of("/private/tmp"), "codex-tuition-finance-test-");
+    privateRoot = Files.createTempDirectory("codex-tuition-finance-test-");
     new com.ruoyi.common.config.RuoYiConfig().setProfile(privateRoot.resolve("public").toString());
     storage = new FinancePrivateStorage(privateRoot.resolve("private").toString());
     receiptService = new TuitionReceiptService(db, storage);
@@ -103,7 +102,7 @@ class TuitionMysqlTest {
   void migrate() throws Exception {
     Process p =
         new ProcessBuilder(
-                "/opt/homebrew/bin/mysql", "--protocol=TCP", "-h127.0.0.1", "-uroot", SCHEMA)
+                System.getenv().getOrDefault("MYSQL_CLIENT", "mysql"), "--protocol=TCP", "-h127.0.0.1", "-uroot", SCHEMA)
             .redirectErrorStream(true)
             .start();
     try (var out = p.getOutputStream()) {
@@ -118,7 +117,7 @@ class TuitionMysqlTest {
   @AfterAll
   void cleanup() throws Exception {
     if (db != null)
-      try (Connection c = DriverManager.getConnection("jdbc:mysql://127.0.0.1:3306/", "root", "")) {
+      try (Connection c = DriverManager.getConnection("jdbc:mysql://127.0.0.1:3306/", "root", System.getenv().getOrDefault("MYSQL_PWD", ""))) {
         c.createStatement().execute("DROP DATABASE IF EXISTS " + SCHEMA);
       }
     if (privateRoot != null)

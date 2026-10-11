@@ -14,7 +14,7 @@ import com.ruoyi.system.mapper.MiniAppParentMapper;
 import com.ruoyi.system.mapper.EduEnrollmentMapper;
 import com.ruoyi.system.shop.ShopRepository;
 
-/** 单次一对一是原报名表的按日期流程；支付/扣课不在此服务执行。 */
+/** 原报名表的按日期流程；复用课次账户进行暂占、释放及完成消课，不实际收款退款。 */
 @Service
 public class OneToOneEnrollmentService {
     @Autowired private ShopRepository db;
@@ -22,10 +22,12 @@ public class OneToOneEnrollmentService {
     @Autowired private EduCourseScheduleMapper schedules;
     @Autowired private MiniAppParentMapper parent;
     @Autowired private EduEnrollmentMapper enrollments;
+    @Autowired private LessonCreditService credits;
+    @Autowired private com.ruoyi.system.finance.TuitionService tuition;
     private static final ZoneId ZONE = ZoneId.of("Asia/Shanghai");
     private static final String ACTIVE = "('0','1','待确认','报名成功','已确认')";
     // 完成仅来源于该报名、班次和日期匹配且已复核的有效到课记录，不按时间推断。
-    private static final String COMPLETED = "EXISTS(SELECT 1 FROM edu_class_sign_in r WHERE r.enrollment_id=e.enrollment_id AND r.schedule_id=e.schedule_id AND r.class_date=e.class_date AND r.del_flag='0' AND r.review_status='1' AND r.sign_status IN ('1','4','5')) AS lesson_completed";
+    private static final String COMPLETED = "(e.lesson_completed_time IS NOT NULL OR (e.settlement_method='C' AND EXISTS(SELECT 1 FROM edu_class_sign_in r WHERE r.enrollment_id=e.enrollment_id AND r.schedule_id=e.schedule_id AND r.class_date=e.class_date AND r.del_flag='0' AND r.review_status='1' AND r.sign_status IN ('1','4','5')))) AS lesson_completed";
     // 与 editable 的课前及历史限制保持一致，按服务器的上海时间计算，不依赖手机时钟。
     private static final String PROCESSABLE = "COALESCE(TIMESTAMP(e.class_date,s.start_time)>? AND e.enrollment_status IN"+ACTIVE+" AND NOT EXISTS(SELECT 1 FROM edu_class_sign_in r WHERE r.enrollment_id=e.enrollment_id) AND NOT EXISTS(SELECT 1 FROM edu_attendance a WHERE a.enrollment_id=e.enrollment_id AND a.attendance_status='1'),0) AS can_process";
 
@@ -75,7 +77,7 @@ public class OneToOneEnrollmentService {
         // 调用方的课程列表已按当前教师ID隔离。
         if ("2".equals(String.valueOf(course.get("classMode")))) course.put("singleBookings",bookings(id(course,"scheduleId")));
     }
-    @Transactional(rollbackFor=Exception.class)
+    @Transactional(rollbackFor=Exception.class,isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public int enroll(MiniAppEnrollmentBody body) {
         check(body != null && body.getScheduleId() != null && body.getClassDate() != null,"请选择具体上课日期");
         EduCourseSchedule s = schedules.lockSchedule(body.getScheduleId());
@@ -89,13 +91,32 @@ public class OneToOneEnrollmentService {
         check(body.getContactPhone() == null || body.getContactPhone().length() <= 11,"联系电话过长");
         var active = db.rows("SELECT enrollment_id FROM edu_enrollment WHERE schedule_id=? AND class_date=? AND del_flag='0' AND enrollment_status IN"+ACTIVE+" FOR UPDATE",s.getScheduleId(),date);
         check(active.isEmpty(),"该日期已有人报名，请选择其他日期");
+        String settlement=body.getSettlementMethod() == null ? "C" : body.getSettlementMethod();
+        check(List.of("C","P").contains(settlement),"请选择单次付费或课包");
+        if("P".equals(settlement)) check(body.getLessonAccountId()!=null,"请先选择已有孩子的课包");
+        Map<String,Object> account=credits.enrollmentChild(SecurityUtils.getUserId(),body.getLessonAccountId(),name,s.getGradeName(),body.getContactPhone(),body.getStudentRequestKey());
+        name=account.get("studentName").toString();
+        Long accountId=id(account,"accountId");
+        String level=null; Integer lessonCredits=null;
+        if("P".equals(settlement)) {
+            Object configured=profile(s.getTeacherId()).get("teacherLevel");
+            check(configured != null && List.of("elite","senior").contains(configured.toString()),"教师级别尚未配置，无法确定课包扣次；可选择单次付费");
+            level=configured.toString(); lessonCredits="senior".equals(level) ? 2 : 1;
+            account=credits.ownForHold(accountId,SecurityUtils.getUserId(),name,lessonCredits);
+        }
         String code = "ENR"+UUID.randomUUID().toString().replace("-", "").substring(0,28);
         var values = new LinkedHashMap<String,Object>();
         values.put("enrollment_code",code); values.put("schedule_id",s.getScheduleId()); values.put("parent_id",SecurityUtils.getUserId());
         values.put("class_date",date); values.put("student_name",name); values.put("student_phone",""); values.put("contact_phone",body.getContactPhone());
         values.put("enrollment_status","0"); values.put("pay_status","0"); values.put("status","0"); values.put("del_flag","0");
+        values.put("settlement_method",settlement); values.put("lesson_account_id",accountId);
+        values.put("lesson_credits",lessonCredits); values.put("teacher_level_snapshot",level);
         values.put("create_by",SecurityUtils.getUsername()); values.put("create_time",LocalDateTime.now(ZONE));
+        values.put("student_id",account.get("studentId"));
         long enrollmentId = db.insert("edu_enrollment",values);
+        if("C".equals(settlement)) tuition.initializeBill(enrollmentId,SecurityUtils.getUserId());
+        else db.update("edu_enrollment","enrollment_id",enrollmentId,Map.of("billing_status","CLOSED","billing_closed_time",LocalDateTime.now(ZONE),"billing_close_reason","课包额度结算，无单次现金账单"));
+        if("P".equals(settlement)) credits.hold(account,enrollmentId,lessonCredits);
         parent.insertInitialAttendance("ATT"+UUID.randomUUID().toString().replace("-", "").substring(0,28),s.getScheduleId(),enrollmentId,SecurityUtils.getUserId(),name,SecurityUtils.getUsername());
         event(enrollmentId,"SUBMIT",null,"0",null);
         return 1;
@@ -137,6 +158,8 @@ public class OneToOneEnrollmentService {
             values.put("cancel_processed_by",SecurityUtils.getUserId()); values.put("cancel_processed_time",LocalDateTime.now(ZONE));
         }
         if (next.equals("2") || next.equals("3")) {
+            tuition.closeSingleReservation(enrollmentId,SecurityUtils.getUserId(),reason(reason));
+            credits.release(e);
             values.put("cancel_reason",reason(reason)); values.put("cancel_time",LocalDateTime.now(ZONE));
             enrollments.invalidateUnusedAttendance(enrollmentId,SecurityUtils.getUsername());
         }
@@ -156,7 +179,20 @@ public class OneToOneEnrollmentService {
         db.update("edu_enrollment","enrollment_id",enrollmentId,values); event(enrollmentId,"REQUEST_CANCEL",before,before,reason); return 1;
     }
     public List<Map<String,Object>> transactions() {
-        return formatRows(db.rows("SELECT e.enrollment_id,e.schedule_id,e.student_name,e.class_date,e.enrollment_status,e.cancel_request_status,e.cancel_request_reason,e.create_time,"+COMPLETED+","+PROCESSABLE+",s.course_class_name,s.start_time,s.end_time,COALESCE(NULLIF(s.lesson_location,''),c.classroom_name) AS lesson_location FROM edu_enrollment e JOIN edu_course_schedule s ON s.schedule_id=e.schedule_id LEFT JOIN edu_classroom c ON c.classroom_id=s.classroom_id WHERE s.teacher_id=? AND s.class_mode='2' AND e.class_date IS NOT NULL AND e.del_flag='0' ORDER BY (e.cancel_request_status='1' OR e.enrollment_status='0') DESC,e.class_date DESC,e.enrollment_id DESC",LocalDateTime.now(ZONE),SecurityUtils.getUserId()));
+        return formatRows(db.rows("SELECT e.enrollment_id,e.schedule_id,e.student_name,e.class_date,e.enrollment_status,e.cancel_request_status,e.cancel_request_reason,e.create_time,e.settlement_method,e.pay_status,e.lesson_credits,e.lesson_completed_time,"+COMPLETED+","+PROCESSABLE+",(e.enrollment_status='1' AND e.cancel_request_status<>'1' AND e.lesson_completed_time IS NULL AND TIMESTAMP(e.class_date,s.end_time)<=? AND EXISTS(SELECT 1 FROM edu_class_sign_in r WHERE r.enrollment_id=e.enrollment_id AND r.schedule_id=e.schedule_id AND r.class_date=e.class_date AND r.del_flag='0' AND r.sign_status IN ('1','4','5'))) AS can_complete,s.course_class_name,s.start_time,s.end_time,COALESCE(NULLIF(s.lesson_location,''),c.classroom_name) AS lesson_location FROM edu_enrollment e JOIN edu_course_schedule s ON s.schedule_id=e.schedule_id LEFT JOIN edu_classroom c ON c.classroom_id=s.classroom_id WHERE s.teacher_id=? AND s.class_mode='2' AND e.class_date IS NOT NULL AND e.del_flag='0' ORDER BY (e.cancel_request_status='1' OR e.enrollment_status='0') DESC,e.class_date DESC,e.enrollment_id DESC",LocalDateTime.now(ZONE),LocalDateTime.now(ZONE),SecurityUtils.getUserId()));
+    }
+    @Transactional(rollbackFor=Exception.class)
+    public int complete(Long enrollmentId) {
+        var e=lock(enrollmentId,true);
+        if(e.get("lessonCompletedTime") != null) return 0;
+        check("1".equals(e.get("enrollmentStatus")) && !"1".equals(e.get("cancelRequestStatus")),"仅可完成已确认且没有待处理取消申请的课程");
+        var s=(EduCourseSchedule)e.get("schedule");
+        check(!LocalDateTime.of(ScheduleCalendar.date(e.get("classDate")),s.getEndTime()).isAfter(LocalDateTime.now(ZONE)),"课程尚未结束，不能提前消课");
+        check(!db.rows("SELECT sign_in_id FROM edu_class_sign_in WHERE enrollment_id=? AND schedule_id=? AND class_date=? AND del_flag='0' AND sign_status IN ('1','4','5') FOR UPDATE",enrollmentId,s.getScheduleId(),e.get("classDate")).isEmpty(),"请先在学生出勤中登记本次到课，再确认完成");
+        credits.consume(e);
+        db.update("edu_enrollment","enrollment_id",enrollmentId,Map.of("lesson_completed_time",LocalDateTime.now(ZONE),"lesson_completed_by",SecurityUtils.getUserId(),"update_time",LocalDateTime.now(ZONE),"update_by",SecurityUtils.getUsername()));
+        event(enrollmentId,"COMPLETE","1","1","P".equals(e.get("settlementMethod")) ? "课包正式消耗"+e.get("lessonCredits")+"次额度" : "单次付费课程完成，不扣课包");
+        return 1;
     }
     public List<Map<String,Object>> history(Long id,boolean teacher) {
         var e = db.one("SELECT e.parent_id,s.teacher_id FROM edu_enrollment e JOIN edu_course_schedule s ON s.schedule_id=e.schedule_id WHERE e.enrollment_id=?",id);

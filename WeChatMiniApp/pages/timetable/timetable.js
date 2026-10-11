@@ -6,6 +6,7 @@ Page({
     loadError: '',
     loadSucceeded: false,
     teacherMode: false,
+    cancelingId: '',
     timetable: [],
     groupedTimetable: [],
     timetableCount: 0,
@@ -89,6 +90,7 @@ Page({
       const next = this.computeNextClass(item)
       return {
         ...item,
+        cancelRequestPending: !!item.classDate && String(item.cancelRequestStatus) === '1',
         viewKey: String(item.enrollmentId || item.scheduleId),
         timeText: this.buildTimeText(item),
         placeText: item.lessonLocation || item.classroomName || '',
@@ -251,39 +253,54 @@ Page({
   },
 
   async handleCancel(e) {
-    if (this.data.teacherMode) return
-    const { enrollmentId, courseName, studentName } = e.currentTarget.dataset || {}
+    if (this.data.teacherMode || this.data.loading || !this.data.loadSucceeded || this.data.loadError || this._cancelBusy) return
+    const { enrollmentId } = e.currentTarget.dataset || {}
     const record = this.data.timetable.find(item => String(item.enrollmentId) === String(enrollmentId))
-    if (record && record.classDate) { wx.navigateTo({url:'/pages/enrollment/enrollment?courseType=2'}); return }
-    if (!enrollmentId) {
+    if (!enrollmentId || !record) {
       wx.showToast({ title: '报名信息异常', icon: 'none' })
       return
     }
-    const confirmed = await new Promise((resolve) => {
-      wx.showModal({
-        title: '确认取消报名？',
-        content: `确定要取消「${studentName || '学生'}」的「${courseName || '该课程'}」吗？\n取消后将立即从课表中移除。`,
-        confirmText: '确认取消',
-        cancelText: '再想想',
-        confirmColor: '#c84444',
-        success(res) { resolve(res.confirm) },
-        fail() { resolve(false) }
-      })
-    })
-    if (!confirmed) return
-
-    wx.showLoading({ title: '取消中...', mask: true })
+    const single = !!record.classDate
+    if (single && String(record.cancelRequestStatus) === '1') {
+      wx.showToast({ title: '取消申请待老师处理', icon: 'none' })
+      return
+    }
+    const token = this._loadedToken
+    const current = () => !!token && !this._unloaded && token === wx.getStorageSync('token') && !this.data.teacherMode
+    if (!current()) return
+    this._cancelBusy = true
+    this.setData({ cancelingId: String(enrollmentId) })
+    let showingLoading = false
     try {
-      await request({
-        url: `/miniapp/parent/enrollment/${enrollmentId}`,
-        method: 'DELETE'
+      const confirmed = await new Promise((resolve) => {
+        wx.showModal({
+          title: single ? '确认申请取消本次课？' : '确认取消报名？',
+          content: `确定要${single ? '申请取消' : '取消'}「${record.studentName || '学生'}」的「${record.courseClassName || '该课程'}」吗？\n${single ? '老师同意后才会取消；待处理期间保留报名、名额及课包暂占。' : '取消后将立即从课表中移除。'}`,
+          confirmText: single ? '提交申请' : '确认取消',
+          cancelText: '再想想',
+          confirmColor: '#c84444',
+          success(res) { resolve(res.confirm) },
+          fail() { resolve(false) }
+        })
       })
-      wx.hideLoading()
-      wx.showToast({ title: '已取消报名', icon: 'success' })
+      if (!confirmed || !current()) return
+      wx.showLoading({ title: single ? '提交中...' : '取消中...', mask: true })
+      showingLoading = true
+      await request(single ? {
+        url: `/miniapp/parent/enrollment/${enrollmentId}/cancel-request`, method: 'POST',
+        data: { reason: '家长在我的课表确认申请取消本次课' }
+      } : { url: `/miniapp/parent/enrollment/${enrollmentId}`, method: 'DELETE' })
+      if (!current()) return
+      wx.hideLoading(); showingLoading = false
+      getCurrentPages().forEach(page => { if (page !== this) page._scheduleDirty = true })
+      wx.showToast({ title: single ? '已提交取消申请' : '已取消报名', icon: 'success' })
       await this.loadTimetable()
     } catch (error) {
-      wx.hideLoading()
-      wx.showToast({ title: error.message || '取消失败', icon: 'none' })
+      if (current()) wx.showToast({ title: error.message || (single ? '申请失败，请重试' : '取消失败'), icon: 'none' })
+    } finally {
+      if (showingLoading) wx.hideLoading()
+      this._cancelBusy = false
+      if (!this._unloaded) this.setData({ cancelingId: '' })
     }
   }
 })

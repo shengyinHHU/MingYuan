@@ -452,6 +452,7 @@ public class TuitionService {
     return tx(
         () -> {
           var e = lockEnrollment(enrollment, actor, true);
+          require(!"P".equals(e.get("settlementMethod")), "课包报名通过课次账户结算，不能登记单次现金收款");
           version(e, b);
           require(
               Set.of("PENDING_PRICE", "OPEN").contains(e.get("billingStatus")),
@@ -607,7 +608,7 @@ public class TuitionService {
               require(
                   "OPEN".equals(e.get("billingStatus")) && e.get("originalAmount") != null,
                   "BILL_NOT_PRICED: 等待核价／历史核验");
-              require(!Set.of("2", "已取消").contains(str(e, "enrollmentStatus")), "报名已取消");
+              require(!Set.of("2", "已取消", "3", "已拒绝").contains(str(e, "enrollmentStatus")), "报名已取消或拒绝");
               require(
                   db.rows(
                           "SELECT payment_id FROM edu_tuition_payment WHERE enrollment_id=? AND"
@@ -1003,6 +1004,9 @@ public class TuitionService {
               "REFUND_IN_PROGRESS: 当前已有在途退款");
           var e = enrollment(id(p.get("enrollmentId")), actor, admin, true);
           require(!"CLOSED".equals(e.get("billingStatus")), "已退课账单不能再次申请退款");
+          if ("WITHDRAWAL".equals(kind) && e.get("classDate") != null)
+            require(Set.of("2","已取消","3","已拒绝").contains(str(e,"enrollmentStatus")),
+                "一对一须先由教师处理取消申请或拒绝报名，再办理退课退费");
           BigDecimal previous = refunded(payment);
           require(
               requested.compareTo(money(p.get("amount")).subtract(previous)) <= 0,
@@ -1264,6 +1268,13 @@ public class TuitionService {
   }
 
   private void withdraw(long enrollment, Map<String, Object> e, long actor, String reason) {
+    if (e.get("classDate") != null) {
+      require(Set.of("2", "已取消", "3", "已拒绝").contains(str(e, "enrollmentStatus")),
+          "一对一须先由教师处理取消申请或拒绝报名，再办理退课退费");
+      updateBill(enrollment, e, values("billing_status", "CLOSED", "billing_closed_time", now(),
+          "billing_close_reason", reason), actor);
+      return;
+    }
     if (Set.of("2", "已取消").contains(str(e, "enrollmentStatus"))) return;
     require(
         db.jdbc()
@@ -1396,6 +1407,7 @@ public class TuitionService {
           var e = lockEnrollment(enrollment, actor, admin);
           if (Set.of("2", "已取消").contains(str(e, "enrollmentStatus")))
             return bill(enrollment, actor, admin);
+          require(e.get("classDate") == null, "一对一请提交取消申请，由教师处理；财务不能代替教师取消预约");
           require(
               !"HISTORY_PENDING".equals(e.get("billingStatus")),
               "HISTORY_REVIEW_REQUIRED: 历史报名需先核验");
@@ -1418,6 +1430,31 @@ public class TuitionService {
           withdraw(enrollment, enrollment(enrollment, actor, admin, true), actor, reason);
           return bill(enrollment, actor, admin);
         });
+  }
+
+  /** Joins the teacher's reservation transaction; never fabricates a receipt or refund.
+   * Outstanding real/unknown payments stay available to the existing finance workflow. */
+  public void closeSingleReservation(long enrollment, long teacher, String reason) {
+    tx(() -> {
+      var e = lockEnrollment(enrollment, teacher, true);
+      require(e.get("classDate") != null, "不是具体日期的一对一报名");
+      require(!db.rows("SELECT s.schedule_id FROM edu_course_schedule s JOIN sys_user u ON u.user_id=s.teacher_id "
+          + "WHERE s.schedule_id=? AND s.teacher_id=? AND u.status='0' AND u.del_flag='0' "
+          + "AND EXISTS(SELECT 1 FROM sys_user_role ur JOIN sys_role r ON r.role_id=ur.role_id "
+          + "WHERE ur.user_id=u.user_id AND r.role_key='teacher' AND r.status='0' AND r.del_flag='0')",
+          e.get("scheduleId"), teacher).isEmpty(), "无权处理其他教师课程的财务衔接");
+      if ("P".equals(e.get("settlementMethod")) || "HISTORY_PENDING".equals(e.get("billingStatus"))) return null;
+      boolean unresolved = false;
+      for (var p : db.rows("SELECT * FROM edu_tuition_payment WHERE enrollment_id=? ORDER BY payment_id FOR UPDATE", enrollment)) {
+        String state = str(p, "paymentStatus");
+        if ("PENDING".equals(state) && "MOCK".equals(p.get("channel"))) close(p, teacher, reason);
+        else if (Set.of("PENDING", "UNKNOWN").contains(state)
+            || ("SUCCESS".equals(state) && refunded(id(p.get("paymentId"))).compareTo(money(p.get("amount"))) < 0)) unresolved = true;
+      }
+      if (!unresolved) updateBill(enrollment, enrollment(enrollment, teacher, true, true),
+          values("billing_status", "CLOSED", "billing_closed_time", now(), "billing_close_reason", reason), teacher);
+      return null;
+    });
   }
 
   @Scheduled(fixedDelay = 60000)
@@ -1455,6 +1492,7 @@ public class TuitionService {
         tx(
             () -> {
               var e = lockEnrollment(enrollment, actor, true);
+              require(!"P".equals(e.get("settlementMethod")), "课包报名不能按单次现金账单核验");
               version(e, b);
               require(
                   "HISTORY_PENDING".equals(e.get("billingStatus"))

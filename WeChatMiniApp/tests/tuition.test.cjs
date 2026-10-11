@@ -103,7 +103,7 @@ test('home exposes parent finance routes and admin finance route without changin
   env(o => ok(o, {})); const p = page('index')
   p.applyLoginRole(); assert.ok(p.data.quickActions.some(a => a.route === '/pages/tuition-list/tuition-list')); assert.ok(p.data.quickActions.some(a => a.route === '/pages/my-coupons/my-coupons')); assert.ok(p.data.quickActions.some(a => a.route === '/pages/material/material'))
   wx.getStorageSync = key => key === 'token' ? 'jwt' : key === 'roles' ? ['admin'] : ''
-  p.applyLoginRole(); assert.ok(p.data.quickActions.some(a => a.route === '/pages/admin-tuition/admin-tuition'))
+  p.applyLoginRole(); assert.ok(p.data.quickActions.some(a => a.route === '/pages/admin-tuition/admin-tuition')); p.onUnload()
 })
 test('enrollment detail always links to financial bill and normalizes cancelled Chinese status', () => {
   env(o => ok(o, {})); let navigated

@@ -2,7 +2,7 @@
   <view class="hero">
     <view class="hero-top">
       <image class="logo" src="{{logoUrl}}" mode="widthFix"></image>
-      <view class="tag">{{tag}}</view>
+      <view class="tag" bindtap="openChildren">{{tag}}<text wx:if="{{currentRole === 'parent'}}"> ›</text></view>
     </view>
 
     <view class="role-switch">
@@ -49,11 +49,12 @@
         data-disabled="{{item.disabled}}"
         bindtap="handleAction"
       >
-        <view class="action-icon">{{item.icon}}<view class="number-badge" wx:if="{{currentRole === 'teacher' && item.badgeText}}">{{item.badgeText}}</view></view>
+        <view class="action-icon">{{item.icon}}<view class="number-badge" wx:if="{{item.badgeText}}">{{item.badgeText}}</view></view>
         <view class="action-title">{{item.title}}</view>
       </view>
     </view>
     <view class="course-pending-message" wx:if="{{currentRole === 'teacher' && coursePendingError}}"><text>{{coursePendingError}}</text><text class="pending-retry" bindtap="loadCoursePending">重新加载</text></view>
+    <view class="course-pending-message" wx:if="{{accountPendingError}}"><text>{{accountPendingError}}</text><text class="pending-retry" bindtap="loadAccountPending">重新加载</text></view>
   </view>
 
   <view class="section split">

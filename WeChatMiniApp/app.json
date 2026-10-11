@@ -18,6 +18,8 @@
     "pages/timetable/timetable",
     "pages/teacher-single-transactions/teacher-single-transactions",
     "pages/teacher-schedule-edit/teacher-schedule-edit",
+    "pages/teacher-schedule-create/teacher-schedule-create",
+    "pages/admin-transactions/admin-transactions",
     "pages/attendance/attendance",
     "pages/material/material",
     "pages/material-detail/material-detail",
@@ -41,7 +43,9 @@
     "pages/teacher-wifi-checkin/teacher-wifi-checkin",
     "pages/admin-wifi-config/admin-wifi-config",
     "pages/admin-checkin-review/admin-checkin-review",
-    "pages/homework-image-edit/homework-image-edit"
+    "pages/homework-image-edit/homework-image-edit",
+    "pages/parent-account/parent-account",
+    "pages/parent-children/parent-children"
   ],
   "permission": {
     "scope.userLocation": {

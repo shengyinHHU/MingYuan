@@ -93,74 +93,26 @@ class MiniAppLoginServiceTest
     void cleanup() { RequestContextHolder.resetRequestAttributes(); }
 
     @Test
-    void unspecifiedTeacherUsesLowestIdEnabledExistingTeacher()
+    void unspecifiedTeacherNeverSilentlySelectsAnotherTeacher() throws Exception
     {
-        users = List.of(user(20L, "teacher_b", "0", List.of(teacherRole)),
-                user(2L, "disabled", "1", List.of(teacherRole)),
-                user(10L, "teacher_a", "0", List.of(teacherRole)));
-        assertEquals("test-token", login());
-        assertEquals(10L, issuedToken.getUserId());
-    }
-
-    @Test
-    void explicitUsernameOverridesAutomaticChoice() throws Exception
-    {
-        users = List.of(users.get(0), user(20L, "teacher_b", "0", List.of(teacherRole)));
-        set("mockTeacherUsername", "teacher_b");
-        assertEquals("test-token", login());
-        assertEquals(20L, issuedToken.getUserId());
-    }
-
-    @Test
-    void missingExplicitUsernameDoesNotSilentlySwitchToPhoneOrAnotherTeacher() throws Exception
-    {
-        set("mockTeacherUsername", "missing_teacher");
-        set("mockTeacherPhone", users.get(0).getPhonenumber());
-        assertThrows(ServiceException.class, this::login);
+        set("mockTeacherUsername", "teacher_a");
+        assertThrows(ServiceException.class, () -> service.login("mock","mock","Teacher","teacher"));
         assertNull(issuedToken);
     }
 
     @Test
-    void explicitPhoneIsSupportedWhenUsernameIsBlank() throws Exception
+    void selectedTeacherRetainsAllActiveRoles() throws Exception
     {
-        set("mockTeacherPhone", users.get(0).getPhonenumber());
-        assertEquals("test-token", login());
-        assertEquals(10L, issuedToken.getUserId());
+        SysRole parent=new SysRole(8L); parent.setRoleKey("parent"); parent.setStatus("0"); parent.setDelFlag("0");
+        users.get(0).setRoles(List.of(parent,teacherRole));
+        assertEquals("test-token",login());
+        assertEquals(List.of("parent","teacher"),issuedToken.getUser().getRoles().stream().map(SysRole::getRoleKey).toList());
     }
 
     @Test
-    void phoneLoginRetainsAllRolesDespiteLegacyJoinedLookupLimit() throws Exception
+    void missingSelectedTeacherDoesNotFallback() throws Exception
     {
-        SysRole parent = new SysRole(8L);
-        parent.setRoleKey("parent");
-        parent.setStatus("0");
-        parent.setDelFlag("0");
-        users.get(0).setRoles(List.of(parent, teacherRole));
-        set("mockTeacherPhone", users.get(0).getPhonenumber());
-        assertEquals("test-token", login());
-        assertEquals(List.of("parent", "teacher"), issuedToken.getUser().getRoles().stream()
-                .map(SysRole::getRoleKey).toList());
-    }
-
-    @Test
-    void sharedParentPhoneSelectsTheTeacherNotTheFirstUser() throws Exception
-    {
-        SysUser parent = user(3L, "parent_a", "0", List.of());
-        parent.setPhonenumber(users.get(0).getPhonenumber());
-        users = List.of(parent, users.get(0));
-        set("mockTeacherPhone", parent.getPhonenumber());
-        assertEquals("test-token", login());
-        assertEquals(10L, issuedToken.getUserId());
-    }
-
-    @Test
-    void phoneSharedByTwoEnabledTeachersRequiresExplicitUsername() throws Exception
-    {
-        SysUser other = user(20L, "teacher_b", "0", List.of(teacherRole));
-        other.setPhonenumber(users.get(0).getPhonenumber());
-        users = List.of(users.get(0), other);
-        set("mockTeacherPhone", other.getPhonenumber());
-        assertThrows(ServiceException.class, this::login);
+        assertThrows(ServiceException.class, () -> service.login("mock","mock","Teacher","teacher",99L));
         assertNull(issuedToken);
     }
 
@@ -271,7 +223,7 @@ class MiniAppLoginServiceTest
         assertEquals("10", service.developmentTeachers().get(0).get("userId"));
     }
 
-    private String login() { return service.login("mock", "mock", "Test Teacher", "teacher"); }
+    private String login() { return service.login("mock", "mock", "Test Teacher", "teacher", 10L); }
 
     private SysUser user(long id, String name, String status, List<SysRole> roles)
     {
