@@ -5,6 +5,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 <mapper namespace="com.ruoyi.system.mapper.EduEnrollmentMapper">
     
     <resultMap type="EduEnrollment" id="EduEnrollmentResult">
+        <result property="classDate" column="class_date" />
+        <result property="cancelRequestStatus" column="cancel_request_status" />
         <result property="enrollmentId"    column="enrollment_id"    />
         <result property="enrollmentCode"    column="enrollment_code"    />
         <result property="scheduleId"    column="schedule_id"    />
@@ -37,7 +39,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     </resultMap>
 
     <sql id="selectEduEnrollmentVo">
-        select e.enrollment_id, e.enrollment_code, e.schedule_id, e.parent_id, e.student_name, e.student_phone, e.contact_phone, e.enrollment_status, e.pay_status, e.cancel_time, e.cancel_reason, e.status, e.del_flag, e.create_by, e.create_time, e.update_by, e.update_time, e.remark,
+        select e.class_date,e.cancel_request_status,e.enrollment_id, e.enrollment_code, e.schedule_id, e.parent_id, e.student_name, e.student_phone, e.contact_phone, e.enrollment_status, e.pay_status, e.cancel_time, e.cancel_reason, e.status, e.del_flag, e.create_by, e.create_time, e.update_by, e.update_time, e.remark,
                s.grade_name, s.subject_name, s.class_type, coalesce(nullif(trim(teacher.nick_name), ''), s.teacher_name) as teacher_name, s.recruit_status, s.course_class_name, parent.phonenumber as parent_phone,
                ifnull(history.attended_lesson_count, 0) as attended_lesson_count,
                ifnull(history.pending_lesson_count, 0) as pending_lesson_count,

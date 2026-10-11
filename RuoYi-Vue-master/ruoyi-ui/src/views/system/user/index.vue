@@ -160,6 +160,12 @@
             </el-form-item>
           </el-col>
         </el-row>
+        <div v-if="form.userId && roleOptions.some(role => role.roleKey === 'teacher' && (form.roleIds || []).includes(role.roleId))" v-loading="teacherProfileLoading">
+          <el-divider>教师授课配置</el-divider>
+          <el-form-item label="授课学科"><el-select v-model="teacherProfile.teacherSubject"><el-option v-for="subject in dict.type.edu_subject" :key="subject.dictValue" :label="subject.dictLabel" :value="subject.dictLabel" /></el-select></el-form-item>
+          <el-form-item label="教师等级"><el-select v-model="teacherProfile.teacherLevel"><el-option label="精英教师" value="elite" /><el-option label="资深教师" value="senior" /></el-select></el-form-item>
+          <el-button size="small" :disabled="teacherProfileLoading" @click="saveTeacherProfile">保存授课配置</el-button>
+        </div>
       </el-form>
       <div slot="footer" class="dialog-footer">
         <el-button type="primary" @click="submitForm">确 定</el-button>
@@ -181,12 +187,13 @@ import "@riophae/vue-treeselect/dist/vue-treeselect.css"
 import TreePanel from "@/components/TreePanel"
 import ExcelImportDialog from "@/components/ExcelImportDialog"
 import UserViewDrawer from "./view"
+import request from "@/utils/request"
 import passwordRule from "@/utils/passwordRule"
 
 export default {
   name: "User",
   mixins: [passwordRule],
-  dicts: ['sys_normal_disable', 'sys_user_sex'],
+  dicts: ['sys_normal_disable', 'sys_user_sex', 'edu_subject'],
   components: { Treeselect, TreePanel, ExcelImportDialog, UserViewDrawer },
   data() {
     return {
@@ -222,6 +229,7 @@ export default {
       roleOptions: [],
       // 表单参数
       form: {},
+      teacherProfile: {}, teacherProfileLoading: false,
       // 查询参数
       queryParams: {
         pageNum: 1,
@@ -398,6 +406,9 @@ export default {
         this.open = true
         this.title = "修改用户"
         this.form.password = ""
+        this.teacherProfile = {}
+        this.teacherProfileLoading = true
+        request({ url: `/system/teacherProfile/${this.form.userId}` }).then(res => { this.teacherProfile = res.data || {} }).finally(() => { this.teacherProfileLoading = false })
       })
     },
     /** 重置密码按钮操作 */
@@ -417,6 +428,11 @@ export default {
     handleAuthRole(row) {
       const userId = row.userId
       this.$router.push("/system/user-auth/role/" + userId)
+    },
+    saveTeacherProfile() {
+      if (this.teacherProfileLoading) return
+      this.teacherProfileLoading = true
+      request({ url: `/system/teacherProfile/${this.form.userId}`, method: "put", data: this.teacherProfile }).then(() => this.$modal.msgSuccess("授课配置已保存")).finally(() => { this.teacherProfileLoading = false })
     },
     /** 提交按钮 */
     submitForm() {

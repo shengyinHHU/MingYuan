@@ -1,7 +1,7 @@
 <view class="page">
   <view class="header">
     <view class="header-title">学生出勤</view>
-    <view class="header-subtitle">选择课次 · 记录到课 · 供教务复核</view>
+    <view class="header-subtitle">选择班级，记录本次出勤</view>
   </view>
 
   <view class="list" wx:if="{{!showEmpty}}">
@@ -13,9 +13,9 @@
         </view>
         <view class="meta">
           <text class="tag" wx:if="{{item.periodName}}">{{item.periodName}}</text>
-          <text class="tag" wx:if="{{item.timeSlot}}">{{item.timeSlot}}</text>
-          <text class="room" wx:if="{{item.room}}">{{item.room}}</text>
         </view>
+        <view class="ui-time">{{item.timeSlot || '上课时间待配置'}}</view>
+        <view class="room" wx:if="{{item.room}}">{{item.room}}</view>
         <view class="footer">
           <text class="sign-date">最近签到：{{item.lastDateText}}</text>
           <text class="count" wx:if="{{item.actualText}}">实到 {{item.actualText}}</text>

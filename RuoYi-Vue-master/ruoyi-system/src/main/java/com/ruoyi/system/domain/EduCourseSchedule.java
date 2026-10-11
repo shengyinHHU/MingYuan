@@ -30,6 +30,10 @@ public class EduCourseSchedule extends BaseEntity
     @Excel(name = "教室ID")
     private Long classroomId;
 
+    private String lessonLocation;
+    public String getLessonLocation() { return lessonLocation; }
+    public void setLessonLocation(String value) { lessonLocation = value; }
+
     /** 课程年份 */
     @Excel(name = "课程年份")
     private Long courseYear;

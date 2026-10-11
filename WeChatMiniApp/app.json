@@ -10,6 +10,7 @@
     "pages/admin-enrollment-list/admin-enrollment-list",
     "pages/admin-enrollment-detail/admin-enrollment-detail",
     "pages/timetable/timetable",
+    "pages/teacher-single-transactions/teacher-single-transactions",
     "pages/teacher-schedule-edit/teacher-schedule-edit",
     "pages/attendance/attendance",
     "pages/material/material",
