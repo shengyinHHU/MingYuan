@@ -43,7 +43,7 @@ const roleProfiles = {
     title: '上课、点名与班级管理',
     stats: [
       { key: 'teacherClasses', label: '负责班级', value: '—', suffix: '班', linkText: '查看学员', route: '/pages/teacher-students/teacher-students' },
-      { key: 'teacherHomeworkPending', label: '待批提交', value: '—', suffix: '份', linkText: '去批阅', route: '/pages/teacher-homework/teacher-homework?filter=pending' },
+      { key: 'teacherMyCourses', label: '我的课程', value: '—', suffix: '班', route: '/pages/timetable/timetable' },
       { key: 'teacherHomework', label: '我的作业', value: '—', suffix: '项', linkText: '查看作业', route: '/pages/teacher-homework/teacher-homework' },
       { key: 'teacherSinglePending', label: '一对一事务', value: '—', suffix: '项', linkText: '去处理', route: '/pages/teacher-single-transactions/teacher-single-transactions?tab=bookings' }
     ],
@@ -52,7 +52,7 @@ const roleProfiles = {
       { key: 'teacherCourses', title: '我的课程', icon: '课', tone: 'orange', route: '/pages/teacher-single-transactions/teacher-single-transactions' },
       { title: '请假审核', icon: '假', tone: 'violet' },
       { title: '班级学员', icon: '班', tone: 'green', route: '/pages/teacher-students/teacher-students' },
-      { title: 'WiFi打卡', icon: '卡', tone: 'red' },
+      { title: 'WiFi打卡', icon: '卡', tone: 'red', route: '/pages/teacher-wifi-checkin/teacher-wifi-checkin' },
       { title: '资料商城', icon: '资', tone: 'indigo', route: '/pages/material/material' },
       { title: '我的资料', icon: '料', tone: 'green', route: '/pages/material-upload/material-upload' },
       { title: '作业管理', icon: '作', tone: 'violet', route: '/pages/teacher-homework/teacher-homework' }
@@ -71,7 +71,7 @@ const roleProfiles = {
       { label: '续费率', value: '83', suffix: '%' }
     ],
     actions: [
-      { title: '签到复核', icon: '核', tone: 'blue', route: '/pages/sign-review/sign-review' },
+      { title: '打卡复核', icon: '核', tone: 'blue', route: '/pages/admin-checkin-review/admin-checkin-review' },
       { title: '课程报名', icon: '招', tone: 'blue', route: '/pages/admin-enrollment/admin-enrollment' },
       { title: '排课管理', icon: '排', tone: 'orange' },
       { title: '教室管理', icon: '室', tone: 'cyan', route: '/pages/admin-classrooms/admin-classrooms' },
@@ -81,9 +81,37 @@ const roleProfiles = {
       { title: '薪资核算', icon: '薪', tone: 'red' },
       { title: '运营分析', icon: '析', tone: 'violet' },
       { title: '资料商城', icon: '资', tone: 'indigo', route: '/pages/material/material' },
-      { title: '资料管理', icon: '料', tone: 'green', route: '/pages/material-upload/material-upload' }
+      { title: '资料管理', icon: '料', tone: 'green', route: '/pages/material-upload/material-upload' },
+      { title: 'WiFi配置', icon: '网', tone: 'red', route: '/pages/admin-wifi-config/admin-wifi-config' }
     ],
     agendaTitle: '管理待办',
+    schedule: [
+      { time: '09:20', name: '五年级数学提高班', room: '教师时间冲突', teacher: '徐老师', status: '需处理' },
+      { time: '14:00', name: '新初一暑期班', room: '待分配教室', teacher: '教务组', status: '待排课' }
+    ]
+  },
+  academic: {
+    name: '教务',
+    tag: '教务管理',
+    eyebrow: '教务端',
+    title: '班级、学员、教师与教室管理',
+    stats: [
+      { label: '在读学员', value: '386', suffix: '人' },
+      { label: '班级总数', value: '24', suffix: '班' },
+      { label: '在职教师', value: '17', suffix: '人' }
+    ],
+    actions: [
+      { title: '打卡复核', icon: '核', tone: 'blue', route: '/pages/admin-checkin-review/admin-checkin-review' },
+      { title: '课程报名', icon: '报', tone: 'blue', route: '/pages/admin-enrollment/admin-enrollment' },
+      { title: '排课管理', icon: '排', tone: 'orange' },
+      { title: '教室管理', icon: '室', tone: 'cyan', route: '/pages/admin-classrooms/admin-classrooms' },
+      { title: '学生档案', icon: '档', tone: 'green', route: '/pages/admin-students/admin-students' },
+      { title: '教师管理', icon: '师', tone: 'indigo', route: '/pages/admin-teachers/admin-teachers' },
+      { title: '资料商城', icon: '资', tone: 'indigo', route: '/pages/material/material' },
+      { title: '资料管理', icon: '料', tone: 'green', route: '/pages/material-upload/material-upload' },
+      { title: 'WiFi配置', icon: '网', tone: 'red', route: '/pages/admin-wifi-config/admin-wifi-config' }
+    ],
+    agendaTitle: '教务待办',
     schedule: [
       { time: '09:20', name: '五年级数学提高班', room: '教师时间冲突', teacher: '徐老师', status: '需处理' },
       { time: '14:00', name: '新初一暑期班', room: '待分配教室', teacher: '教务组', status: '待排课' }
@@ -226,6 +254,8 @@ function buildRoleState(roleKey, visibleRoles) {
 }
 
 function getRoleFromStorage() {
+  const devRole = wx.getStorageSync('devRole')
+  if (devRole && roleProfiles[devRole]) return devRole
   const roles = wx.getStorageSync('roles') || []
   if (roles.includes('admin')) return 'admin'
   if (roles.includes('teacher')) return 'teacher'
@@ -364,11 +394,11 @@ Page({
     if (version !== this._teacherLoadVersion || this.data.currentRole !== 'teacher' || wx.getStorageSync('token') !== token) return
     const classes = results[0].status === 'fulfilled' ? (results[0].value.data || []) : null
     const homework = results[1].status === 'fulfilled' ? (results[1].value.data || []) : null
-    const pending = homework && homework.reduce((sum, item) => sum + Math.max(0, Number(item.submissionCount || 0) - Number(item.reviewedCount || 0)), 0)
+    const openCount = homework ? homework.filter(item => String(item.status) === '1').length : 0
     const statValues = {
       teacherClasses: classes ? String(classes.length) : '—',
-      teacherHomeworkPending: homework ? String(pending) : '—',
-      teacherHomework: homework ? String(homework.length) : '—',
+      teacherMyCourses: classes ? String(classes.length) : '—',
+      teacherHomework: homework ? String(openCount) : '—',
       teacherSinglePending: this.data.coursePendingCount == null ? '—' : String(this.data.coursePendingCount)
     }
     this.setData({
@@ -461,11 +491,12 @@ Page({
 
   async loginAsDevRole(role) {
     const previousToken = wx.getStorageSync('token')
+    const backendRole = role === 'academic' ? 'admin' : role
     this.stopCoursePendingRefresh()
     this.setCoursePending(null)
     this.setData({ roleSwitching: true })
     try {
-      const cached = await devSession.restore(role, undefined, () =>
+      const cached = await devSession.restore(backendRole, undefined, () =>
         !this._unloaded && wx.getStorageSync('token') === previousToken)
       if (this._unloaded) return
       if (cached.restarted) {
@@ -473,6 +504,7 @@ Page({
         return
       }
       if (cached.restored) {
+        if (role !== backendRole) wx.setStorageSync('devRole', role)
         await this.applyLoginRole()
         return
       }
@@ -489,15 +521,16 @@ Page({
         data: {
           loginCode,
           phoneCode: 'mock',
-          devRole: role,
-          nickName: `MiniApp ${role}`
+          devRole: backendRole,
+          nickName: `MiniApp ${backendRole}`
         }
       })
       if (this._unloaded || wx.getStorageSync('token') !== previousToken) return
 
       const infoRes = await request({ url: '/getInfo', header: { Authorization: `Bearer ${loginRes.token}` } })
       if (this._unloaded || wx.getStorageSync('token') !== previousToken) return
-      devSession.activate(role, loginRes.token, infoRes, loginRes.devSessionVersion)
+      devSession.activate(backendRole, loginRes.token, infoRes, loginRes.devSessionVersion)
+      if (role !== backendRole) wx.setStorageSync('devRole', role)
 
       this.applyLoginRole()
       wx.showToast({ title: `${roleProfiles[role].name}已登录`, icon: 'none' })
