@@ -29,56 +29,16 @@ test('historical unknown money stays unknown and refunds use server due amount',
   const refunded = t.bill({ ...bill, receivedAmount: '900.00', refundedAmount: '300.00', netAmount: '600.00', dueAmount: '0.00', payments: [{ paymentId: '9', paymentStatus: 'SUCCESS' }] })
   assert.equal(refunded.dueText, '¥0.00'); assert.equal(refunded.canPay, false)
 })
-test('payment retry after ambiguous create reuses account scoped immutable payload across pages', async () => {
-  storage = new Map(); let creates = 0, payload
-  env(o => {
-    if (o.url.endsWith('/quote')) ok(o, { ...bill, userCouponId: '9007199254740997' })
-    else if (o.url.endsWith('/payments')) { creates++; if (creates === 1) { payload = structuredClone(o.data); o.fail({ errMsg: 'socket closed' }) } else { assert.deepEqual(o.data, payload); ok(o, { paymentId: '9007199254740999', channel: 'MOCK', paymentStatus: 'PENDING' }) } }
-    else if (o.url.endsWith('/mock-confirm')) ok(o, { paymentStatus: 'SUCCESS' })
-    else if (o.url.includes('/payments/')) ok(o, { paymentId: '9007199254740999', channel: 'MOCK', paymentStatus: 'SUCCESS' })
-    else ok(o, bill)
-  })
-  const first = page('tuition-detail'); first.onLoad({ id: bill.enrollmentId }); await first.onShow(); await first.pay()
-  assert.equal(creates, 1); assert.ok(storage.size > 0)
-  const retry = page('tuition-detail'); retry.onLoad({ id: bill.enrollmentId }); await retry.onShow(); retry.setData({ selectedCouponId: 'changed', quote: { payableAmount: '1.00', financialVersion: 99 } }); await retry.pay()
-  assert.equal(creates, 2); assert.equal(payload.expectedPayableAmount, '900.00'); assert.equal(payload.userCouponId, '9007199254740997'); assert.equal(storage.size, 0)
-  assert.equal(calls.some(c => 'parentId' in c.data), false)
-})
-test('real positive bills cannot invoke mock creation while zero quote uses FREE without mock-confirm', async () => {
-  storage = new Map(); let zero = false
-  env(o => o.url.endsWith('/quote') ? ok(o, { ...bill, payableAmount: zero ? '0.00' : '900.00' }) : o.url.endsWith('/payments') ? ok(o, { paymentId: '88', channel: 'FREE', paymentStatus: 'SUCCESS' }) : ok(o, { ...bill, financeMode: 'REAL', mockAllowed: false }))
-  const p = page('tuition-detail'); p.onLoad({ id: bill.enrollmentId }); await p.onShow(); await p.pay(); assert.equal(calls.some(c => c.url.endsWith('/payments')), false)
-  zero = true; await p.onShow(); await p.pay(); assert.equal(calls.find(c => c.url.endsWith('/payments')).data.channel, 'FREE'); assert.equal(calls.some(c => c.url.endsWith('/mock-confirm')), false)
-})
 test('teacher cannot read admin bills and missing operation permission prevents writes', async () => {
   env(o => ok(o, {}), 'teacher'); const p = page('admin-tuition'); p.onLoad({}); await p.onShow(); assert.equal(calls.length, 0)
   env(o => o.url.endsWith('/getInfo') ? o.success({ statusCode: 200, data: { code: 200, roles: ['admin'], permissions: ['system:tuition:list', 'system:tuition:query'] } }) : ok(o, bill), 'admin')
   const a = page('admin-tuition'); a.onLoad({ id: bill.enrollmentId }); await a.onShow(); a.setData({ price: '1.00' }); await a.savePrice(); assert.equal(calls.some(c => c.method === 'PUT'), false)
-})
-test('refund validates positive exact amount and retries same application after lost response', async () => {
-  storage = new Map(); let sent
-  env(o => { if (o.method === 'POST') { if (!sent) { sent = structuredClone(o.data); o.fail({ errMsg: 'timeout' }) } else { assert.deepEqual(o.data, sent); ok(o, { refundId: '9' }) } } else if (o.url.endsWith('/refunds')) o.success({ statusCode: 200, data: { code: 200, rows: [], total: 0 } }); else ok(o, { ...bill, refundableAmount: '900.00', payments: [{ paymentId: '9007199254740999', paymentStatus: 'SUCCESS', channel: 'MOCK', amount: '900.00' }] }) })
-  const p = page('tuition-refund'); p.onLoad({ id: bill.enrollmentId }); await p.onShow(); p.setData({ amount: '1.001', reason: '原因' }); await p.apply(); assert.equal(sent, undefined)
-  p.setData({ amount: '300.00' }); await p.apply(); p.setData({ amount: '600.00' }); await p.apply(); assert.equal(sent.requestedAmount, '300.00'); assert.equal(sent.paymentId, '9007199254740999'); assert.equal(storage.size, 0)
 })
 test('receipt only opens authenticated successful PDF and blocks a JSON error download', async () => {
   env(o => ok(o, {})); let downloaded, opened = 0, pdf = false
   wx.downloadFile = o => { downloaded = o; o.success({ statusCode: 200, tempFilePath: '/tmp/receipt.pdf' }) }; wx.openDocument = o => { opened++; o.success() }; wx.getFileSystemManager = () => ({ readFile(o) { o.success({ data: Buffer.from(pdf ? '%PDF-1.7\n' : '{"code":403,"msg":"无权限"}') }) } })
   const t = helper(); await assert.rejects(t.downloadReceipt('9007199254740999'), /PDF|无权限/); assert.equal(opened, 0)
   pdf = true; await t.downloadReceipt('9007199254740999'); assert.equal(downloaded.header.Authorization, 'Bearer jwt'); assert.equal(opened, 1)
-})
-test('pending UNKNOWN result is queried and never mock confirmed or recreated', async () => {
-  storage = new Map()
-  env(o => ok(o, o.url.includes('/payments/') ? { paymentId: '72', paymentStatus: 'UNKNOWN' } : { ...bill, payments: [{ paymentId: '72', channel: 'MOCK', paymentStatus: 'UNKNOWN' }] }))
-  const p = page('tuition-detail'); p.onLoad({ id: bill.enrollmentId }); await p.onShow(); await p.resumePayment()
-  assert.equal(calls.filter(c => c.method === 'POST').length, 0); assert.equal(p.data.detail.activePayment.paymentStatus, 'UNKNOWN')
-})
-test('stale coupon quote cannot replace the latest selected coupon', async () => {
-  storage = new Map(); const quotes = []
-  env(o => { if (o.url.endsWith('/quote')) quotes.push(o); else ok(o, bill) })
-  const p = page('tuition-detail'); p.onLoad({ id: bill.enrollmentId }); const loading = p.onShow(); await new Promise(r => setImmediate(r)); ok(quotes[0], { ...bill }); await loading
-  const old = p.quoteCoupon('1'), latest = p.quoteCoupon('2'); ok(quotes[2], { ...bill, userCouponId: '2', payableAmount: '800.00' }); await latest; ok(quotes[1], { ...bill, userCouponId: '1', payableAmount: '900.00' }); await old
-  assert.equal(p.data.selectedCouponId, '2'); assert.equal(p.data.quote.payableAmount, '800.00')
 })
 test('parent bill pagination, receipt and coupon lists consume TableDataInfo without forging owner', async () => {
   storage = new Map()
@@ -99,11 +59,11 @@ test('fee waived bill cannot produce a cash refund application', async () => {
   storage = new Map(); env(o => o.url.endsWith('/refunds') ? o.success({ statusCode: 200, data: { code: 200, rows: [], total: 0 } }) : ok(o, { ...bill, payableAmount: '0.00', refundableAmount: '0.00', payments: [{ paymentId: '9', channel: 'FREE', amount: '0.00', paymentStatus: 'SUCCESS' }] }))
   const p = page('tuition-refund'); p.onLoad({ id: bill.enrollmentId }); await p.onShow(); p.setData({ amount: '1.00', reason: '退课' }); await p.apply(); assert.equal(calls.some(c => c.method === 'POST'), false)
 })
-test('home exposes parent finance routes and admin finance route without changing shop routes', () => {
-  env(o => ok(o, {})); const p = page('index')
-  p.applyLoginRole(); assert.ok(p.data.quickActions.some(a => a.route === '/pages/tuition-list/tuition-list')); assert.ok(p.data.quickActions.some(a => a.route === '/pages/my-coupons/my-coupons')); assert.ok(p.data.quickActions.some(a => a.route === '/pages/material/material'))
-  wx.getStorageSync = key => key === 'token' ? 'jwt' : key === 'roles' ? ['admin'] : ''
-  p.applyLoginRole(); assert.ok(p.data.quickActions.some(a => a.route === '/pages/admin-tuition/admin-tuition')); p.onUnload()
+test('home exposes parent finance routes and admin finance route without changing shop routes', async () => {
+  env(o => o.url.endsWith('/getInfo') ? o.success({ statusCode: 200, data: { code: 200, roles: app.globalData.roles, permissions: ['system:tuition:list'] } }) : ok(o, {})); const p = page('index')
+  await p.applyLoginRole(); assert.ok(p.data.quickActions.some(a => a.route === '/pages/tuition-list/tuition-list')); assert.ok(p.data.quickActions.some(a => a.route === '/pages/my-coupons/my-coupons')); assert.ok(p.data.quickActions.some(a => a.route === '/pages/material/material'))
+  app.globalData.roles = ['admin']
+  await p.applyLoginRole(); assert.ok(p.data.quickActions.some(a => a.route === '/pages/admin-tuition/admin-tuition')); p.onUnload()
 })
 test('enrollment detail always links to financial bill and normalizes cancelled Chinese status', () => {
   env(o => ok(o, {})); let navigated
@@ -120,23 +80,6 @@ test('only an unpaid current bill may cancel enrollment; paid, history and unkno
     current = blocked; await p.onShow(); const before = calls.filter(c => c.method === 'DELETE').length; await p.cancelEnrollment(); assert.equal(calls.filter(c => c.method === 'DELETE').length, before)
   }
 })
-test('lost payment confirmation is reconciled from status before showing success', async () => {
-  storage = new Map(); let confirmed = false
-  env(o => { if (o.url.endsWith('/quote')) ok(o, bill); else if (o.url.endsWith('/payments')) ok(o, { paymentId: '91', channel: 'MOCK', paymentStatus: 'PENDING' }); else if (o.url.endsWith('/mock-confirm')) { confirmed = true; o.fail({ errMsg: 'lost confirmation response' }) } else if (o.url.includes('/payments/')) ok(o, { paymentId: '91', paymentStatus: 'SUCCESS' }); else ok(o, confirmed ? { ...bill, receivedAmount: '900.00', dueAmount: '0.00', payments: [{ paymentId: '91', paymentStatus: 'SUCCESS', channel: 'MOCK' }] } : bill) })
-  const p = page('tuition-detail'); p.onLoad({ id: bill.enrollmentId }); await p.onShow(); await p.pay(); assert.equal(p.data.detail.receivedText, '¥900.00'); assert.equal(p.data.detail.canPay, false); assert.equal(p.data.error, '')
-})
-test('leaving during payment confirmation never sends a financial mutation', async () => {
-  storage = new Map(); let modal
-  env(o => o.url.endsWith('/quote') ? ok(o, bill) : ok(o, bill)); wx.showModal = o => { modal = o }
-  const p = page('tuition-detail'); p.onLoad({ id: bill.enrollmentId }); await p.onShow(); const paying = p.pay(); p.onHide(); modal.success({ confirm: true }); await paying
-  assert.equal(calls.some(c => c.url.endsWith('/payments')), false)
-})
-test('returning after an abandoned confirmation restores actionable current page state', async () => {
-  storage = new Map(); let modal
-  env(o => ok(o, bill)); wx.showModal = o => { modal = o }
-  const p = page('tuition-detail'); p.onLoad({ id: bill.enrollmentId }); await p.onShow(); const paying = p.pay(); p.onHide(); await p.onShow(); modal.success({ confirm: true }); await paying
-  assert.equal(p.data.submitting, false); assert.equal(calls.some(c => c.url.endsWith('/payments')), false)
-})
 test('a superseded detail refresh cannot replace the newer financial state', async () => {
   storage = new Map(); const reads = []
   env(o => { if (o.url.endsWith('/quote')) ok(o, bill); else reads.push(o) })
@@ -144,16 +87,10 @@ test('a superseded detail refresh cannot replace the newer financial state', asy
   ok(reads[1], { ...bill, receivedAmount: '900.00', payments: [{ paymentId: '9', paymentStatus: 'SUCCESS' }] }); await newest; ok(reads[0], bill); await first
   assert.equal(p.data.detail.receivedText, '¥900.00'); assert.equal(p.data.detail.canPay, false)
 })
-test('malformed success payment response retains the original attempt without querying undefined ID', async () => {
-  storage = new Map()
-  env(o => { if (o.url.endsWith('/payments')) ok(o, {}); else ok(o, bill) })
-  const p = page('tuition-detail'); p.onLoad({ id: bill.enrollmentId }); await p.onShow(); await p.pay()
-  assert.equal(p.data.retrying, true); assert.match(p.data.error, /尚未确定/); assert.equal(calls.some(c => c.url.includes('/undefined')), false)
-})
 test('refund return after abandoned modal resets submission without posting an old application', async () => {
   storage = new Map(); let modal
-  env(o => o.url.endsWith('/refunds') ? o.success({ statusCode: 200, data: { code: 200, rows: [], total: 0 } }) : ok(o, { ...bill, refundableAmount: '900.00', payments: [{ paymentId: '9', channel: 'MOCK', paymentStatus: 'SUCCESS' }] })); wx.showModal = o => { modal = o }
-  const p = page('tuition-refund'); p.onLoad({ id: bill.enrollmentId }); await p.onShow(); p.setData({ amount: '100.00', reason: '原因' }); const applying = p.apply(); p.onHide(); await p.onShow(); modal.success({ confirm: true }); await applying
+  env(o => o.url.endsWith('/refunds') ? o.success({ statusCode: 200, data: { code: 200, rows: [], total: 0 } }) : ok(o, { ...bill, canApplyRefund: true, payments: [{ paymentId: '9', channel: 'MOCK', paymentStatus: 'SUCCESS' }] })); wx.showModal = o => { modal = o }
+  const p = page('tuition-refund'); p.onLoad({ id: bill.enrollmentId }); await p.onShow(); p.setData({ reason: '原因' }); const applying = p.apply(); p.onHide(); await p.onShow(); modal.success({ confirm: true }); await applying
   assert.equal(p.data.submitting, false); assert.equal(calls.some(c => c.method === 'POST'), false)
 })
 test('admin returning after abandoned price modal resets busy state and rejects old mutation', async () => {
@@ -161,4 +98,116 @@ test('admin returning after abandoned price modal resets busy state and rejects 
   env(o => o.url.endsWith('/getInfo') ? o.success({ statusCode: 200, data: { code: 200, roles: ['admin'], permissions: ['*:*:*'] } }) : ok(o, bill), 'admin'); wx.showModal = o => { modal = o }
   const p = page('admin-tuition'); p.onLoad({ id: bill.enrollmentId }); await p.onShow(); p.setData({ price: '100.00' }); const pricing = p.savePrice(); p.onHide(); await p.onShow(); modal.success({ confirm: true }); await pricing
   assert.equal(p.data.submitting, false); assert.equal(calls.some(c => c.method === 'PUT'), false)
+})
+
+test('parent detail has only read calls and preserves old unknown payment intent', async () => {
+  storage = new Map(); env(o => ok(o, { ...bill, coupons: [{ userCouponId: '8', couponName: '课程券' }] }))
+  helper().intent('payment', bill.enrollmentId, { channel: 'MOCK' })
+  const p = page('tuition-detail'); p.onLoad({ id: bill.enrollmentId }); await p.onShow()
+  assert.equal(p.pay, undefined); assert.equal(p.confirmMock, undefined); assert.equal(p.resumePayment, undefined)
+  assert.equal(calls.some(c => c.method !== 'GET'), false); assert.equal(p.data.coupons[0].couponName, '课程券')
+  assert.ok(helper().savedIntent('payment', bill.enrollmentId))
+})
+test('parent refund eligibility uses server boolean; amounts only project after SUCCESS; payment label stays payment', () => {
+  env(o => ok(o, {})); const t = helper()
+  assert.equal(t.bill({ ...bill, refundableAmount: undefined, canApplyRefund: true }).canRefund, true)
+  assert.equal(t.bill({ ...bill, refundableAmount: '900.00', canApplyRefund: false }).canRefund, false)
+  for (const refundStatus of ['WAIT_EDU', 'WAIT_ADMIN', 'APPROVED']) {
+    const r = t.refund({ refundStatus, requestedAmount: '800.00', approvedAmount: '300.00' })
+    assert.equal(r.requestedText, ''); assert.equal(r.approvedText, ''); assert.equal(r.canCancel, false)
+  }
+  assert.equal(t.refund({ refundStatus: 'WAIT_EDU' }).statusText, '等待教务确认金额')
+  assert.equal(t.refund({ refundStatus: 'WAIT_ADMIN' }).statusText, '教务已阅，等待管理员退款')
+  assert.equal(t.refund({ refundStatus: 'SUCCESS', approvedAmount: '300.00' }).approvedText, '¥300.00')
+  assert.equal(t.refund({ refundStatus: 'SUCCESS' }).statusText, '已退款')
+  assert.equal(t.bill({ ...bill, payments: [{ paymentStatus: 'SUCCESS' }] }).payments[0].statusText, '已成功')
+})
+const target = { targetType: 'CLASS_SIGN_IN', targetId: '9007199254740993', label: '2026-10-10 数学 徐老师 已返0次', returnedUnits: 0 }
+function refundEnv(post, targets = [target]) {
+  env(o => {
+    if (o.url.endsWith('/refund-targets')) ok(o, { rows: targets })
+    else if (o.method === 'POST') post(o)
+    else if (o.url.endsWith('/refunds')) o.success({ statusCode: 200, data: { code: 200, rows: [], total: 0 } })
+    else ok(o, { ...bill, canApplyRefund: true, refundableAmount: undefined, payments: [{ paymentId: '9007199254740999', paymentStatus: 'SUCCESS', channel: 'CASH' }] })
+  })
+}
+test('SESSION choice submits exact ID without amount and freezes retries across pages', async () => {
+  storage = new Map(); let sent, posts = 0
+  refundEnv(o => { posts++; if (!sent) { sent = structuredClone(o.data); o.fail({ errMsg: 'timeout' }) } else { assert.deepEqual(o.data, sent); ok(o, { refundId: '9' }) } })
+  const first = page('tuition-refund'); first.onLoad({ id: bill.enrollmentId }); await first.onShow()
+  await first.kind({ detail: { value: '2' } }); first.setData({ reason: '请假' }); await first.apply()
+  assert.equal(posts, 1); assert.equal(sent.refundKind, 'SESSION'); assert.equal(sent.classSignInId, '9007199254740993')
+  assert.equal(Object.hasOwn(sent, 'requestedAmount'), false); assert.equal(Object.hasOwn(sent, 'lessonBookingId'), false)
+  const retry = page('tuition-refund'); retry.onLoad({ id: bill.enrollmentId }); await retry.onShow(); retry.setData({ reason: 'changed', kindIndex: 0 }); await retry.apply()
+  assert.equal(posts, 2); assert.equal(storage.size, 0); assert.equal(retry.cancel, undefined)
+})
+test('failed, empty or invented SESSION targets cannot submit', async () => {
+  for (const failure of ['failure', 'empty', 'invented']) {
+    storage = new Map(); refundEnv(o => ok(o, { refundId: '9' }), failure === 'empty' ? [] : [target])
+    const original = wx.request
+    if (failure === 'failure') wx.request = o => o.url.endsWith('/refund-targets') ? o.fail({ errMsg: 'offline' }) : original(o)
+    const p = page('tuition-refund'); p.onLoad({ id: bill.enrollmentId }); await p.onShow()
+    await p.kind({ detail: { value: '2' } }); p.setData({ reason: '请假', ...(failure === 'invented' ? { targetIndex: 9 } : {}) }); await p.apply()
+    assert.equal(calls.some(c => c.method === 'POST'), false)
+  }
+})
+test('legacy saved amount intent stays blocked with original key after unknown outcome', async () => {
+  storage = new Map(); env(o => ok(o, {})); const saved = helper().intent('refund', bill.enrollmentId, { paymentId: '9', requestedAmount: '100.00', refundKind: 'PARTIAL', reason: 'old' })
+  refundEnv(o => ok(o, { refundId: '9' })); const p = page('tuition-refund'); p.onLoad({ id: bill.enrollmentId }); await p.onShow(); await p.apply()
+  assert.equal(calls.some(c => c.method === 'POST'), false); assert.deepEqual(helper().savedIntent('refund', bill.enrollmentId), saved); assert.match(p.data.error, /历史.*教务/)
+})
+test('education needs actual menu permission, pure teacher and revoked role cannot collect', async () => {
+  for (const [roles, permissions, expected] of [[['education'], ['system:tuition:query', 'system:tuition:price'], true], [['education'], [], false], [['teacher'], ['*:*:*'], false], [['parent'], ['*:*:*'], false]]) {
+    storage = new Map(); env(o => o.url.endsWith('/getInfo') ? o.success({ statusCode: 200, data: { code: 200, roles, permissions } }) : ok(o, bill), roles[0])
+    const p = page('admin-tuition'); p.onLoad({ id: bill.enrollmentId }); await p.onShow(); p.setData({ price: '1200.00' }); await p.savePrice()
+    assert.equal(calls.some(c => c.method === 'PUT'), expected)
+  }
+})
+test('homepage real education role never becomes devRole or parent requests and still requires permissions', async () => {
+  storage = new Map(); let permissions = ['system:tuition:list']
+  env(o => o.url.endsWith('/getInfo') ? o.success({ statusCode: 200, data: { code: 200, roles: ['education'], permissions } }) : ok(o, {}), 'education')
+  const p = page('index'); await p.applyLoginRole()
+  assert.equal(p.data.currentRole, 'education'); assert.equal(p.data.roleLocked, true); assert.ok(p.data.quickActions.some(a => a.route === '/pages/admin-tuition/admin-tuition'))
+  assert.equal(calls.some(c => c.url.includes('/miniapp/parent')), false)
+  await p.loginAsDevRole('education'); assert.equal(calls.some(c => c.data.devRole === 'education'), false)
+  permissions = []; await p.applyLoginRole(); assert.equal(p.data.quickActions.some(a => a.route === '/pages/admin-tuition/admin-tuition'), false)
+})
+
+test('abandoned SESSION query cannot populate a different refund scope', async () => {
+  storage = new Map(); refundEnv(o => ok(o, { refundId: '9' })); let pending
+  const original = wx.request; wx.request = o => o.url.endsWith('/refund-targets') ? (pending = o) : original(o)
+  const p = page('tuition-refund'); p.onLoad({ id: bill.enrollmentId }); await p.onShow()
+  const changing = p.kind({ detail: { value: '2' } }); await p.kind({ detail: { value: '0' } })
+  assert.equal(p.data.targetsLoading, false)
+  ok(pending, { rows: [target] }); await changing; assert.equal(p.data.targets.length, 0)
+})
+test('malformed application success preserves immutable original intent and duplicate click posts once', async () => {
+  storage = new Map(); let pending
+  refundEnv(o => { pending = o })
+  const p = page('tuition-refund'); p.onLoad({ id: bill.enrollmentId }); await p.onShow(); p.setData({ reason: '费用调整' })
+  const first = p.apply(); await new Promise(resolve => setImmediate(resolve)); await p.apply()
+  assert.equal(calls.filter(c => c.method === 'POST').length, 1)
+  ok(pending, {}); await first; assert.equal(p.data.retrying, true)
+  const saved = helper().savedIntent('refund', bill.enrollmentId)
+  assert.equal(saved.refundKind, 'PARTIAL'); assert.equal(Object.hasOwn(saved, 'requestedAmount'), false)
+})
+
+test('whitespace application ID preserves miniapp reason and original retry intent', async () => {
+  storage = new Map(); const sent = []
+  refundEnv(o => { sent.push(structuredClone(o.data)); ok(o, { refundId: sent.length === 1 ? ' \t\n' : '9' }) })
+  const p = page('tuition-refund'); p.onLoad({ id: bill.enrollmentId }); await p.onShow(); p.setData({ reason: '费用调整' })
+  await p.apply()
+  assert.equal(p.data.retrying, true); assert.equal(p.data.reason, '费用调整'); assert.match(p.data.error, /结果尚未确定/)
+  assert.deepEqual(helper().savedIntent('refund', bill.enrollmentId), sent[0])
+  p.setData({ reason: 'changed', kindIndex: 1 }); await p.apply()
+  assert.equal(sent.length, 2); assert.deepEqual(sent[1], sent[0]); assert.equal(storage.size, 0); assert.equal(p.data.retrying, false)
+})
+
+test('legacy completed refund explains history instead of claiming new two-stage progress', () => {
+  env(o => ok(o, {})); const t = helper()
+  for (const refundWorkflow of ['LEGACY', undefined]) {
+    const r = t.refund({ refundStatus: 'SUCCESS', approvedAmount: '100.00', refundWorkflow })
+    assert.match(r.progressText || r.workflowText, /历史流程.*管理员/)
+  }
+  assert.equal(t.refund({ refundStatus: 'SUCCESS', refundWorkflow: 'OFFLINE_TWO_STAGE' }).progressText, '线下退款已登记完成。')
 })

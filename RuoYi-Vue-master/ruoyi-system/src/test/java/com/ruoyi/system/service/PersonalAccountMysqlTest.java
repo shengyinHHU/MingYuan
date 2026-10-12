@@ -72,7 +72,7 @@ public class PersonalAccountMysqlTest extends LessonCreditMysqlTest {
         long paidEnrollment=enroll(parent,paidCourse,date.plusDays(60),"现金审批孩子",null);
         payCash(paidEnrollment);
         var payment=db.one("SELECT payment_id FROM edu_tuition_payment WHERE enrollment_id=?",paidEnrollment);
-        var refundBody=Map.<String,Object>of("paymentId",payment.get("paymentId"),"refundKind","WITHDRAWAL","requestedAmount","100","reason","测试退课","idempotencyKey",UUID.randomUUID().toString());
+        var refundBody=Map.<String,Object>of("paymentId",payment.get("paymentId"),"refundKind","WITHDRAWAL","reason","测试退课","idempotencyKey",UUID.randomUUID().toString());
         assertThrows(ServiceException.class,()->payments.cancelEnrollment(paidEnrollment,1,true));
         assertThrows(ServiceException.class,()->payments.applyRefund(parent,false,refundBody));
         ScheduleCrudTest.principal(teacher,"teacher");tx(()->single.decide(paidEnrollment,"CONFIRM",null));
@@ -81,8 +81,8 @@ public class PersonalAccountMysqlTest extends LessonCreditMysqlTest {
         assertEquals("SUCCESS",db.one("SELECT payment_status FROM edu_tuition_payment WHERE enrollment_id=?",paidEnrollment).get("paymentStatus"));
         assertEquals("OPEN",db.one("SELECT billing_status FROM edu_enrollment WHERE enrollment_id=?",paidEnrollment).get("billingStatus"));
         var refund=payments.applyRefund(parent,false,refundBody);
-        payments.reviewRefund(id(refund,"refundId"),1,Map.of("approved",true,"approvedAmount","100","reviewRemark","同意"));
-        payments.executeRefund(id(refund,"refundId"),1);
+        payments.reviewRefund(id(refund,"refundId"),1,Map.of("approved",true,"approvedAmount","100","reviewRemark","同意","version",0));
+        payments.markRefunded(id(refund,"refundId"),1,Map.of("version",1));
         assertEquals("CLOSED",db.one("SELECT billing_status FROM edu_enrollment WHERE enrollment_id=?",paidEnrollment).get("billingStatus"));
         assertEquals("2",db.one("SELECT enrollment_status FROM edu_enrollment WHERE enrollment_id=?",paidEnrollment).get("enrollmentStatus"));
         System.out.println("PASS: personal account child CRUD/ownership, cash and class automatic linkage, rollback/idempotency/concurrent creation, rename duplicate protection, scoped pending count, manual legacy link, unified history ordering and read-only queries");

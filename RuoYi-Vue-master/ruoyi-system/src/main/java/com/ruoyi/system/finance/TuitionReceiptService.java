@@ -49,6 +49,7 @@ public class TuitionReceiptService {
           + " AS parent_name";
 
   public Map<String, Object> list(long actor, boolean admin, Map<String, String> q) {
+    if (admin) FinanceRules.tuitionStaff(db, actor);
     StringBuilder where = new StringBuilder(" WHERE 1=1");
     List<Object> args = new ArrayList<>();
     if (!admin) {
@@ -106,6 +107,7 @@ public class TuitionReceiptService {
   }
 
   public Map<String, Object> receipt(long id, long actor, boolean admin) {
+    if (admin) FinanceRules.tuitionStaff(db, actor);
     var row =
         db.one(
             COLUMNS
@@ -134,6 +136,7 @@ public class TuitionReceiptService {
   }
 
   public Map<String, Object> issue(long paymentId, long actor) {
+    new CouponService(db).admin(actor);
     long id =
         db.transactions()
             .execute(
@@ -201,12 +204,14 @@ public class TuitionReceiptService {
   }
 
   public Map<String, Object> retry(long id, long actor) {
+    new CouponService(db).admin(actor);
     receipt(id, actor, true);
     generatePending(id);
     return receipt(id, actor, true);
   }
 
   public Map<String, Object> replace(long id, long actor, String reason) {
+    new CouponService(db).admin(actor);
     if (reason == null || reason.isBlank() || reason.length() > 255)
       throw new ServiceException("请填写255字以内的作废补开原因");
     long replacement =

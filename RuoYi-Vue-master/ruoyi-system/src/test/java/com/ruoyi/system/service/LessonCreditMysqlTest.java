@@ -69,8 +69,8 @@ public class LessonCreditMysqlTest {
         var e=db.one("SELECT financial_version FROM edu_enrollment WHERE enrollment_id=?",enrollment);
         var priced=payments.price(enrollment,1,Map.of("originalAmount","100","financeMode","MOCK","financialVersion",e.get("financialVersion")));
         var bill=db.one("SELECT financial_version FROM edu_enrollment WHERE enrollment_id=?",enrollment);
-        var p=payments.createPayment(enrollment,parent,false,Map.of("channel","MOCK","expectedPayableAmount","100","financialVersion",bill.get("financialVersion"),"idempotencyKey",UUID.randomUUID().toString()));
-        payments.confirmPayment(id(p,"paymentId"),parent,false,Map.of());
+        var p=payments.createPayment(enrollment,1,true,Map.of("channel","MOCK","expectedPayableAmount","100","financialVersion",bill.get("financialVersion"),"idempotencyKey",UUID.randomUUID().toString()));
+        payments.confirmPayment(id(p,"paymentId"),1,true,Map.of());
     }
     void balances(long account,int remaining,int reserved,int consumed) {var a=db.one("SELECT * FROM edu_student_lesson_account WHERE account_id=?",account);assertEquals(remaining,id(a,"remainingCredits"));assertEquals(reserved,id(a,"reservedCredits"));assertEquals(consumed,id(a,"consumedCredits"));}
     void run() throws Exception {

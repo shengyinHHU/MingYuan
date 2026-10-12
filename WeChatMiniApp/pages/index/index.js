@@ -91,33 +91,6 @@ const roleProfiles = {
       { time: '09:20', name: '五年级数学提高班', room: '教师时间冲突', teacher: '徐老师', status: '需处理' },
       { time: '14:00', name: '新初一暑期班', room: '待分配教室', teacher: '教务组', status: '待排课' }
     ]
-  },
-  academic: {
-    name: '教务',
-    tag: '教务管理',
-    eyebrow: '教务端',
-    title: '班级、学员、教师与教室管理',
-    stats: [
-      { label: '在读学员', value: '386', suffix: '人' },
-      { label: '班级总数', value: '24', suffix: '班' },
-      { label: '在职教师', value: '17', suffix: '人' }
-    ],
-    actions: [
-      { title: '打卡复核', icon: '核', tone: 'blue', route: '/pages/admin-checkin-review/admin-checkin-review' },
-      { title: '课程报名', icon: '报', tone: 'blue', route: '/pages/admin-enrollment/admin-enrollment' },
-      { title: '排课管理', icon: '排', tone: 'orange' },
-      { title: '教室管理', icon: '室', tone: 'cyan', route: '/pages/admin-classrooms/admin-classrooms' },
-      { title: '学生档案', icon: '档', tone: 'green', route: '/pages/admin-students/admin-students' },
-      { title: '教师管理', icon: '师', tone: 'indigo', route: '/pages/admin-teachers/admin-teachers' },
-      { title: '资料商城', icon: '资', tone: 'indigo', route: '/pages/material/material' },
-      { title: '资料管理', icon: '料', tone: 'green', route: '/pages/material-upload/material-upload' },
-      { title: 'WiFi配置', icon: '网', tone: 'red', route: '/pages/admin-wifi-config/admin-wifi-config' }
-    ],
-    agendaTitle: '教务待办',
-    schedule: [
-      { time: '09:20', name: '五年级数学提高班', room: '教师时间冲突', teacher: '徐老师', status: '需处理' },
-      { time: '14:00', name: '新初一暑期班', room: '待分配教室', teacher: '教务组', status: '待排课' }
-    ]
   }
 }
 
@@ -126,6 +99,12 @@ const roleOptions = Object.keys(roleProfiles).map((key) => ({
   name: roleProfiles[key].name,
   className: ''
 }))
+
+// Education is a real authenticated role, never a development login option.
+roleProfiles.education = {
+  name: '教务', tag: '教务工作台', eyebrow: '教务端', title: '线下收费与退费金额核定',
+  stats: [], actions: [], agendaTitle: '教务工作说明', schedule: []
+}
 
 function normalizeRole(roleKey) {
   return roleProfiles[roleKey] ? roleKey : 'parent'
@@ -255,11 +234,9 @@ function buildRoleState(roleKey, visibleRoles) {
   }
 }
 
-function getRoleFromStorage() {
-  const devRole = wx.getStorageSync('devRole')
-  if (devRole && roleProfiles[devRole]) return devRole
-  const roles = wx.getStorageSync('roles') || []
+function getRoleFromStorage(roles = wx.getStorageSync('roles') || []) {
   if (roles.includes('admin')) return 'admin'
+  if (roles.includes('education')) return 'education'
   if (roles.includes('teacher')) return 'teacher'
   return 'parent'
 }
@@ -327,10 +304,23 @@ Page({
         return
       }
     }
-    const role = getRoleFromStorage()
+    // Only getInfo grants the finance entry; cached roles and role tabs cannot do so.
+    this.setData({ quickActions: this.data.quickActions.filter(a => a.route !== '/pages/admin-tuition/admin-tuition') })
+    let info
+    try {
+      info = await request({ url: '/getInfo' })
+      if (this._unloaded || loadVersion !== this._roleLoadVersion || wx.getStorageSync('token') !== token) return
+      getApp().globalData.roles = info.roles || []
+      getApp().globalData.permissions = info.permissions || []
+      if (info.user) getApp().globalData.userInfo = info.user
+    } catch (error) {
+      if (!this._unloaded && loadVersion === this._roleLoadVersion) wx.showToast({ title: error.message || '身份核对失败，请重新登录', icon: 'none' })
+      return
+    }
+    const role = getRoleFromStorage(info.roles || [])
     this._teacherLoadVersion = (this._teacherLoadVersion || 0) + 1
     this.setData({ teacherDataMessage: '' })
-    if (DEV_ROLE_SWITCH_ENABLED) {
+    if (DEV_ROLE_SWITCH_ENABLED && role !== 'education') {
       this.setData({
         roleLocked: false,
         ...buildRoleState(role, roleOptions)
@@ -343,6 +333,12 @@ Page({
     }
 
     if(role==='parent' || role==='admin') { this.loadAccountPending(); this._accountTimer=setInterval(()=>this.loadAccountPending(),30000) }
+    const staff = (info.roles || []).some(r => ['admin', 'education'].includes(r))
+    const financeAllowed = staff && (info.permissions || []).some(p => p === '*:*:*' || p === 'system:tuition:list')
+    const actions = this.data.quickActions.filter(a => a.route !== '/pages/admin-tuition/admin-tuition')
+    if (financeAllowed) actions.push({ title: '收费财务', icon: '财', tone: 'gold', route: '/pages/admin-tuition/admin-tuition' })
+    this.setData({ quickActions: actions })
+
     if (role === 'parent') {
       this.loadParentTag()
       this.loadParentSchedule()
@@ -503,8 +499,9 @@ Page({
   },
 
   async loginAsDevRole(role) {
+    if (!roleOptions.some(option => option.key === role)) return
     const previousToken = wx.getStorageSync('token')
-    const backendRole = role === 'academic' ? 'admin' : role
+    const backendRole = role
     this.stopCoursePendingRefresh()
     this.stopAccountRefresh()
     this.setCoursePending(null)
@@ -518,7 +515,6 @@ Page({
         return
       }
       if (cached.restored) {
-        if (role !== backendRole) wx.setStorageSync('devRole', role)
         await this.applyLoginRole()
         return
       }
@@ -544,7 +540,6 @@ Page({
       const infoRes = await request({ url: '/getInfo', header: { Authorization: `Bearer ${loginRes.token}` } })
       if (this._unloaded || wx.getStorageSync('token') !== previousToken) return
       devSession.activate(backendRole, loginRes.token, infoRes, loginRes.devSessionVersion)
-      if (role !== backendRole) wx.setStorageSync('devRole', role)
 
       this.applyLoginRole()
       wx.showToast({ title: `${roleProfiles[role].name}已登录`, icon: 'none' })

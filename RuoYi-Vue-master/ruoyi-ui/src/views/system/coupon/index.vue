@@ -1,11 +1,22 @@
 <template>
   <div class="app-container">
     <el-alert
-      title="现金抵扣券仅用于课程；每模板每家长一张，一次最多100人，整批成功或整批失败。已发模板的金额、范围和有效期冻结，暂停只停止新发放。"
+      title="现金抵扣券仅用于课程；每模板每家长一张，每批最多100人，单批成功或失败。全选超过100人时分批发放。已发模板规则冻结，暂停只停止新发放。"
       type="info"
       :closable="false"
       class="mb8"
     />
+    <el-row v-if="grantBatch && !grantOpen" class="mb8">
+      <el-button
+        v-hasPermi="['system:coupon:grant']"
+        type="warning"
+        size="small"
+        :disabled="saving || selectingAll"
+        @click="openGrant(grantTemplate)"
+      >
+        继续原批次
+      </el-button>
+    </el-row>
     <el-tabs v-model="activeTab" @tab-click="loadTab">
       <el-tab-pane label="券模板" name="templates">
         <el-form :inline="true" :model="queryParams" size="small">
@@ -93,7 +104,9 @@
               <el-button
                 v-hasPermi="['system:coupon:grant']"
                 :disabled="
-                  s.row.templateStatus !== 'ACTIVE' || s.row.issuedQuantity >= s.row.totalQuantity
+                  parentSelectionLocked() ||
+                  s.row.templateStatus !== 'ACTIVE' ||
+                  s.row.issuedQuantity >= s.row.totalQuantity
                 "
                 type="text"
                 @click="openGrant(s.row)"
@@ -296,12 +309,14 @@
       width="810px"
       append-to-body
       :close-on-click-modal="false"
+      :close-on-press-escape="!saving && !selectingAll"
+      :show-close="!saving && !selectingAll"
     >
       <el-alert
         :title="
           '模板：' +
           (grantTemplate ? grantTemplate.couponName : '') +
-          '；整批处理，失败后重试保留同一批次标识。'
+          '；每批最多100人，失败后从未确认批次重试并保留原名单及标识。'
         "
         type="info"
         :closable="false"
@@ -314,49 +329,114 @@
         :closable="false"
         class="mb8"
       />
-      <el-form :inline="true" size="small">
+      <el-form :inline="true" size="small" :disabled="parentSelectionLocked()">
         <el-form-item label="查找家长">
           <el-input
             v-model="parentQuery.search"
+            maxlength="64"
             placeholder="账号／姓名"
+            @input="parentFiltersChanged"
             @keyup.enter.native="searchParents"
+          />
+        </el-form-item>
+        <el-form-item label="报名年级">
+          <el-input
+            v-model="parentQuery.gradeName"
+            maxlength="20"
+            clearable
+            placeholder="如：五年级"
+            @input="parentFiltersChanged"
+          />
+        </el-form-item>
+        <el-form-item label="学科">
+          <el-input
+            v-model="parentQuery.subjectName"
+            maxlength="20"
+            clearable
+            placeholder="如：英语"
+            @input="parentFiltersChanged"
           />
         </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="searchParents">查询</el-button>
+          <el-button :loading="selectingAll" @click="selectAllParents"
+            >一键全选筛选结果</el-button
+          >
+          <el-button @click="clearParentSelection">清空选择</el-button>
         </el-form-item>
       </el-form>
-      <el-table
-        ref="parentsTable"
-        v-loading="parentsLoading"
-        :data="parents"
-        :row-key="parentRowKey"
-        @selection-change="selectParents"
+      <div class="mb8">
+        表头勾选：全选当前页；跨页选择会保留。“一键全选筛选结果”覆盖全部匹配家长。
+      </div>
+      <fieldset
+        :disabled="parentSelectionLocked()"
+        style="border: 0; margin: 0; padding: 0"
       >
-        <el-table-column type="selection" :reserve-selection="true" width="55" />
-        <el-table-column label="家长ID" prop="userId" />
-        <el-table-column label="账号" prop="userName" />
-        <el-table-column label="姓名" prop="nickName" />
-      </el-table>
+        <el-table
+          ref="parentsTable"
+          v-loading="parentsLoading"
+          :data="parents"
+          :row-key="parentRowKey"
+          @selection-change="selectParents"
+        >
+          <el-table-column
+            type="selection"
+            :reserve-selection="true"
+            :selectable="parentSelectable"
+            width="55"
+          />
+          <el-table-column label="家长ID" prop="userId" />
+          <el-table-column label="账号" prop="userName" />
+          <el-table-column label="姓名" prop="nickName" />
+          <el-table-column label="命中孩子／报名年级／学科" min-width="240">
+            <template slot-scope="s">
+              <div v-for="child in s.row.matchedChildren || []" :key="child.enrollmentId">
+                {{ child.studentName }}／{{ child.gradeName }}／{{ child.subjectName }}
+              </div>
+            </template>
+          </el-table-column>
+        </el-table>
+      </fieldset>
       <pagination
-        v-show="parentTotal > 0"
+        v-show="parentTotal > 0 && !parentSelectionLocked()"
         :total="parentTotal"
         :page.sync="parentQuery.pageNum"
         :limit.sync="parentQuery.pageSize"
         @pagination="getParents"
       />
-      <el-form label-width="85px" size="small">
+      <el-form label-width="85px" size="small" :disabled="parentSelectionLocked()">
         <el-form-item label="已选家长">
-          {{ grantForm.parentIds.length }} 人（最多100人）
+          {{ grantForm.parentIds.length }} 人；报名年级：{{
+            parentQuery.gradeName || '全部'
+          }}；学科：{{ parentQuery.subjectName || '全部' }}；家长：{{
+            parentQuery.search || '全部'
+          }}
         </el-form-item>
         <el-form-item label="发放原因">
           <el-input v-model="grantForm.reason" type="textarea" maxlength="255" />
         </el-form-item>
       </el-form>
+      <el-alert
+        v-if="grantBatch"
+        :title="grantProgress()"
+        type="warning"
+        :closable="false"
+        class="mb8"
+      />
       <span slot="footer">
-        <el-button :disabled="saving" @click="grantOpen = false">取消</el-button>
-        <el-button type="primary" :loading="saving" :disabled="parentsLoading" @click="submitGrant">
-          确认整批发放
+        <el-button :disabled="saving || selectingAll" @click="grantOpen = false"
+          >关闭</el-button
+        >
+        <el-button v-if="grantBatch" :disabled="saving" @click="cancelGrantBatch"
+          >放弃原批次并重新选择</el-button
+        >
+        <el-button
+          type="primary"
+          :loading="saving"
+          :disabled="parentsLoading || selectingAll"
+          @click="submitGrant"
+        >
+          {{ grantBatch ? '重试未确认批次' : '确认分批发放' }}
         </el-button>
       </span>
     </el-dialog>
@@ -425,8 +505,19 @@ export default {
       grantFormError: '',
       parents: [],
       parentTotal: 0,
-      parentQuery: { pageNum: 1, pageSize: 10, search: '' },
+      parentQuery: {
+        pageNum: 1,
+        pageSize: 10,
+        search: '',
+        gradeName: '',
+        subjectName: '',
+      },
       parentsLoading: false,
+      selectingAll: false,
+      parentRequest: 0,
+      parentFilterSnapshot: '',
+      syncingParentSelection: false,
+      grantBatch: null,
       revokeOpen: false,
       revokeForm: {},
       revokeError: '',
@@ -560,58 +651,251 @@ export default {
       }
     },
     async openGrant(row) {
+      if (this.parentSelectionLocked()) {
+        if (this.grantBatch) {
+          this.grantOpen = true
+          this.grantFormError = '原批次尚未完成；请重试，或核对历史发放后明确放弃原批次。'
+        }
+        return
+      }
       this.grantTemplate = row
-      this.grantForm = { parentIds: [], reason: '', idempotencyKey: requestKey() }
+      this.grantForm = {
+        parentIds: [],
+        reason: '',
+        idempotencyKey: requestKey(),
+      }
       this.grantFormError = ''
       this.grantOpen = true
-      this.parentQuery = { pageNum: 1, pageSize: 10, search: '' }
-      if (this.$refs.parentsTable) this.$refs.parentsTable.clearSelection()
+      this.parentQuery = {
+        pageNum: 1,
+        pageSize: 10,
+        search: '',
+        gradeName: '',
+        subjectName: '',
+      }
+      this.parentFiltersChanged()
       await this.getParents()
     },
     parentRowKey(row) {
       return String(row.userId || row.parentId)
     },
     selectParents(selection) {
-      this.grantForm.parentIds = selection.map(this.parentRowKey)
+      if (this.parentSelectionLocked() || this.syncingParentSelection) return
+      const current = new Set(this.parents.map(this.parentRowKey))
+      this.grantForm.parentIds = [
+        ...new Set([
+          ...this.grantForm.parentIds.filter((id) => !current.has(id)),
+          ...selection.map(this.parentRowKey),
+        ]),
+      ]
+    },
+    parentSelectionLocked() {
+      return this.saving || this.selectingAll || !!this.grantBatch
+    },
+    parentSelectable() {
+      return !this.parentSelectionLocked()
+    },
+    parentFilters() {
+      return {
+        search: String(this.parentQuery.search || '').trim(),
+        gradeName: String(this.parentQuery.gradeName || '').trim(),
+        subjectName: String(this.parentQuery.subjectName || '').trim(),
+      }
+    },
+    parentFilterKey() {
+      return JSON.stringify(this.parentFilters())
+    },
+    clearParentSelection() {
+      if (this.parentSelectionLocked()) return
+      this.grantForm.parentIds = []
+      this.syncingParentSelection = true
+      if (this.$refs && this.$refs.parentsTable) this.$refs.parentsTable.clearSelection()
+      this.syncingParentSelection = false
+    },
+    parentFiltersChanged() {
+      if (this.parentSelectionLocked()) return
+      this.parentRequest++
+      this.clearParentSelection()
+      this.parents = []
+      this.parentTotal = 0
+      this.parentsLoading = false
+      this.parentQuery.pageNum = 1
+      this.parentFilterSnapshot = this.parentFilterKey()
+    },
+    syncParentSelection() {
+      if (!this.$refs || !this.$refs.parentsTable) return
+      this.syncingParentSelection = true
+      const table = this.$refs.parentsTable
+      table.clearSelection()
+      for (const row of this.parents)
+        if (this.grantForm.parentIds.includes(this.parentRowKey(row)))
+          table.toggleRowSelection(row, true)
+      this.syncingParentSelection = false
     },
     searchParents() {
+      if (this.parentSelectionLocked()) return
       this.parentQuery.pageNum = 1
       return this.getParents()
     },
     async getParents() {
+      if (this.parentSelectionLocked()) return
+      const filterKey = this.parentFilterKey()
+      if (filterKey !== this.parentFilterSnapshot) this.parentFiltersChanged()
+      const request = ++this.parentRequest
       this.parentsLoading = true
       this.grantFormError = ''
       try {
-        const r = await listParents({ ...this.parentQuery, q: this.parentQuery.search })
+        const r = await listParents({
+          ...this.parentQuery,
+          q: this.parentQuery.search,
+        })
+        if (request !== this.parentRequest || filterKey !== this.parentFilterKey()) return
         this.parents = (r.rows || []).map((p) => ({
           ...p,
           userId: String(p.userId || p.parentId),
           nickName: p.nickName || p.parentName,
         }))
         this.parentTotal = r.total || 0
+        if (this.$nextTick) await this.$nextTick()
+        this.syncParentSelection()
       } catch (e) {
+        if (request !== this.parentRequest) return
+        this.clearParentSelection()
         this.parents = []
         this.parentTotal = 0
         this.grantFormError = e.message || '家长查询失败'
       } finally {
+        if (request === this.parentRequest) this.parentsLoading = false
+      }
+    },
+    async selectAllParents() {
+      if (this.parentSelectionLocked()) return
+      this.clearParentSelection()
+      const filters = this.parentFilters(),
+        filterKey = this.parentFilterKey()
+      const request = ++this.parentRequest
+      this.selectingAll = true
+      this.grantFormError = ''
+      try {
+        const ids = new Set()
+        let total = null
+        for (let pageNum = 1; ; pageNum++) {
+          const r = await listParents({
+            ...filters,
+            q: filters.search,
+            pageNum,
+            pageSize: 100,
+          })
+          if (request !== this.parentRequest || filterKey !== this.parentFilterKey())
+            throw new Error('筛选已改变，请重新查询并全选')
+          if (total === null) total = Number(r.total || 0)
+          if (Number(r.total || 0) !== total)
+            throw new Error('候选名单已改变，请重新查询并全选')
+          for (const row of r.rows || []) ids.add(this.parentRowKey(row))
+          if (pageNum * 100 >= total) break
+          if (!(r.rows || []).length) throw new Error('候选名单不完整，请重新查询并全选')
+        }
+        if (ids.size !== total) throw new Error('候选名单已改变，请重新查询并全选')
+        this.grantForm.parentIds = [...ids]
+        this.parentFilterSnapshot = filterKey
+        this.parentTotal = total
+        this.syncParentSelection()
+      } catch (e) {
+        this.grantForm.parentIds = []
+        this.parents = []
+        this.parentTotal = 0
+        this.grantFormError = e.message || '全选失败，请重新查询'
+      } finally {
+        this.selectingAll = false
         this.parentsLoading = false
       }
     },
+    grantProgress() {
+      if (!this.grantBatch) return ''
+      const batch = this.grantBatch
+      const completed = batch.batches
+        .slice(0, batch.index)
+        .reduce((n, body) => n + body.parentIds.length, 0)
+      return (
+        '已完成 ' +
+        completed +
+        ' 人；未确认 ' +
+        (batch.total - completed) +
+        ' 人。重试保留原名单、模板、原因和批次标识。'
+      )
+    },
+    async cancelGrantBatch() {
+      if (this.saving || this.selectingAll || !this.grantBatch) return
+      try {
+        await this.$modal.confirm(
+          '放弃重试前请核对历史发放记录；未确认批次可能已成功。确认放弃原批次并重新选择？'
+        )
+        this.grantBatch = null
+        this.grantForm.idempotencyKey = requestKey()
+        this.clearParentSelection()
+        this.grantFormError = ''
+      } catch (_) {
+        /* Keep the frozen batch when cancellation is dismissed. */
+      }
+    },
     async submitGrant() {
-      if (this.saving) return
+      if (this.saving || this.selectingAll || this.parentsLoading) return
       this.saving = true
       this.grantFormError = ''
       try {
-        const body = grantBody(this.grantForm)
-        await this.$modal.confirm(
-          '确认给 ' + body.parentIds.length + ' 位现有家长整批发放？任一账号校验失败将整批失败。'
-        )
-        await grantCoupon(this.grantTemplate.templateId, body)
+        if (!this.grantBatch) {
+          const parentIds = [...new Set(this.grantForm.parentIds.map(String))]
+          if (!parentIds.length) throw new Error('请选择现有家长账号')
+          const filters = this.parentFilters()
+          const key = this.grantForm.idempotencyKey || requestKey()
+          const batches = []
+          for (let i = 0; i < parentIds.length; i += 100)
+            batches.push({
+              ...grantBody({
+                ...this.grantForm,
+                parentIds: parentIds.slice(i, i + 100),
+                idempotencyKey:
+                  parentIds.length <= 100 ? key : key.slice(0, 55) + '-' + (i / 100 + 1),
+              }),
+              gradeName: filters.gradeName,
+              subjectName: filters.subjectName,
+            })
+          const snapshot = {
+            templateId: this.grantTemplate.templateId,
+            batches,
+            index: 0,
+            total: parentIds.length,
+          }
+          await this.$modal.confirm(
+            '确认使用模板“' +
+              (this.grantTemplate.couponName || snapshot.templateId) +
+              '”给 ' +
+              parentIds.length +
+              ' 位家长分 ' +
+              batches.length +
+              ' 批发放？报名年级：' +
+              (filters.gradeName || '全部') +
+              '；学科：' +
+              (filters.subjectName || '全部') +
+              '；原因：' +
+              batches[0].reason +
+              '。任一批次失败将停止后续发放。'
+          )
+          this.grantBatch = snapshot
+        }
+        const batch = this.grantBatch
+        while (batch.index < batch.batches.length) {
+          await grantCoupon(batch.templateId, batch.batches[batch.index])
+          batch.index++
+        }
+        this.grantBatch = null
         this.grantOpen = false
-        this.$modal.msgSuccess('整批发放成功')
+        this.$modal.msgSuccess('已完成 ' + batch.total + ' 位家长的全部发放')
         await this.getList()
       } catch (e) {
-        if (e && e.message) this.grantFormError = e.message
+        if (e && e.message)
+          this.grantFormError =
+            e.message + (this.grantBatch ? '；' + this.grantProgress() : '')
       } finally {
         this.saving = false
       }
