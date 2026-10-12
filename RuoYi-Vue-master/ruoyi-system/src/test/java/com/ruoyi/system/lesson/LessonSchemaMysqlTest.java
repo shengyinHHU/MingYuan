@@ -34,7 +34,7 @@ class LessonSchemaMysqlTest {
         "jdbc:mysql://127.0.0.1:3306/" + SCHEMA + "?serverTimezone=Asia/Shanghai", "root", ""));
     String schema = Files.readString(Path.of("../../database/schema.sql"));
     for (String table : List.of("sys_user", "sys_role", "sys_menu", "sys_role_menu", "sys_config",
-        "edu_classroom", "edu_course_schedule", "edu_enrollment", "edu_teacher_salary_config")) {
+        "edu_classroom", "edu_course_schedule", "edu_enrollment", "edu_teacher_salary_config", "edu_class_sign_in", "edu_attendance")) {
       Matcher m = Pattern.compile("CREATE TABLE `" + table + "` \\(.*?\\) ENGINE=.*?;", Pattern.DOTALL).matcher(schema);
       assertTrue(m.find(), table);
       db.execute(m.group());
@@ -213,6 +213,38 @@ class LessonSchemaMysqlTest {
     Result result = migrate(MIGRATION);
     assertNotEquals(0, result.exit, "Must refuse incompatible " + kind);
     assertTrue(result.output.contains(name), result.output);
+  }
+
+  @Test @Order(12)
+  void sessionIncrementIsRepeatablePreservesHistoryAndRejectsConflictingShapes() throws Exception {
+    resetFixture();migrateSuccessfully();
+    for(String file:List.of("20261010_tuition_refund_single_admin.sql","20261010_tuition_offline_two_stage.sql")) {
+      var result=migrate(Path.of("../../database/migrations/"+file));assertEquals(0,result.exit,result.output);
+    }
+    Path session=Path.of("../../database/migrations/20261010_tuition_session_refund.sql");
+    var first=migrate(session);assertEquals(0,first.exit,first.output);
+    var repeat=migrate(session);assertEquals(0,repeat.exit,repeat.output);
+    assertNotEquals(0,migrate(MIGRATION).exit,"Old one-to-one check must not be replayed after upgrading");
+    seedLesson();booking("SESSION","CANCELLED");
+    checkRejected("UPDATE edu_student_package SET reserved_refund_units=11 WHERE student_package_id=1");
+    checkRejected("UPDATE edu_student_package SET reserved_refund_units=-1 WHERE student_package_id=1");
+    db.execute("UPDATE edu_student_package SET reserved_refund_units=2 WHERE student_package_id=1");
+    checkRejected("UPDATE edu_student_package SET available_units=1 WHERE student_package_id=1");
+    checkRejected("UPDATE edu_one_to_one_booking SET cash_refunded_units=1 WHERE booking_code='SESSION'");
+    db.execute("UPDATE edu_one_to_one_booking SET returned_units=1,cash_refunded_units=1 WHERE booking_code='SESSION'");
+    assertThrows(Exception.class,()->db.execute("UPDATE edu_one_to_one_booking SET returned_units=0,cash_refunded_units=0 WHERE booking_code='SESSION'"));
+    db.execute("ALTER TABLE edu_student_package ALTER COLUMN reserved_refund_units SET DEFAULT 1");
+    assertNotEquals(0,migrate(session).exit);db.execute("ALTER TABLE edu_student_package ALTER COLUMN reserved_refund_units SET DEFAULT 0");
+    db.execute("ALTER TABLE edu_tuition_refund MODIFY active_class_sign_in_id bigint GENERATED ALWAYS AS(CASE WHEN refund_status IN ('WAIT_EDU','WAIT_ADMIN','PENDING_REVIEW','APPROVED','PROCESSING','UNKNOWN') THEN class_sign_in_id END) STORED");
+    assertNotEquals(0,migrate(session).exit);
+    db.execute("ALTER TABLE edu_tuition_refund MODIFY active_class_sign_in_id bigint GENERATED ALWAYS AS(CASE WHEN refund_status IN ('WAIT_EDU','WAIT_ADMIN','PENDING_REVIEW','APPROVED','PROCESSING','UNKNOWN','SUCCESS') THEN class_sign_in_id END) STORED");
+    db.execute("ALTER TABLE edu_student_package DROP CHECK ck_session_reserved, ADD CONSTRAINT ck_session_reserved CHECK(reserved_refund_units>=0)");
+    assertNotEquals(0,migrate(session).exit);
+    db.execute("ALTER TABLE edu_student_package DROP CHECK ck_session_reserved");
+    var repaired=migrate(session);assertEquals(0,repaired.exit,repaired.output);
+    assertEquals(2,db.queryForObject("SELECT reserved_refund_units FROM edu_student_package WHERE student_package_id=1",Integer.class));
+    assertEquals(1,db.queryForObject("SELECT cash_refunded_units FROM edu_one_to_one_booking WHERE booking_code='SESSION'",Integer.class));
+    assertEquals("已支付",db.queryForObject("SELECT pay_status FROM edu_enrollment WHERE enrollment_code='HISTORY'",String.class));
   }
 
   @Test @Order(7)

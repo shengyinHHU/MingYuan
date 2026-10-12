@@ -7,17 +7,17 @@ Page({
   onUnload() { this.onHide() },
   onPullDownRefresh() { return this.load(true).finally(() => wx.stopPullDownRefresh()) },
   onReachBottom() { if (!this.id && !this.data.loading && this.data.rows.length < this.data.total) return this.load(false) },
-  permitted(action) { return t.auth('admin') && t.can(`system:tuition:${action}`) },
+  permitted(action) { return t.auth('staff') && t.can(`system:tuition:${action}`) },
   async load(reset = true) {
-    if (!t.auth('admin')) { this.setData({ error: '仅管理员可处理收费' }); return }
+    if (!t.auth('staff')) { this.setData({ error: '仅授权管理员或教务可处理收费' }); return }
     const visit = this._visit, sequence = this._loadSequence = (this._loadSequence || 0) + 1, pageNum = reset ? 1 : this.data.pageNum + 1
-    this.setData({ loading: true, error: '' })
+    this.setData({ loading: true, error: '', allowed: {}, ...(reset ? { detail: null, rows: [] } : {}) })
     try {
       const info = await t.request({ url: '/getInfo' })
       if (!this._active || visit !== this._visit || sequence !== this._loadSequence) return
       getApp().globalData.permissions = info.permissions || []
       getApp().globalData.roles = info.roles || []
-      if (!t.auth('admin')) throw new Error('管理员权限已失效')
+      if (!t.auth('staff')) throw new Error('收费角色权限已失效')
       const allowed = {}; ['list', 'query', 'price', 'collect', 'confirm'].forEach(p => { allowed[p] = t.can(`system:tuition:${p}`) }); allowed.download = t.can('system:tuitionReceipt:download')
       this.setData({ allowed })
       if (!allowed[this.id ? 'query' : 'list']) throw new Error('当前账号没有收费查询权限')

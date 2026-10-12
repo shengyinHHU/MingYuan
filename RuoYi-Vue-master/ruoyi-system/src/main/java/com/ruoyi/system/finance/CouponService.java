@@ -157,9 +157,16 @@ public class CouponService {
     SortedSet<Long> parents = new TreeSet<>();
     for (Object p : (Collection<?>) b.get("parentIds")) parents.add(id(p));
     require(!parents.isEmpty() && parents.size() <= 100, "每批请选择1至100名家长");
-    String hash =
-        hash(
+    var filters = recipientFilters(b);
+    Map<String, Object> snapshot =
+        new HashMap<>(
             Map.of("templateId", String.valueOf(template), "parentIds", parents, "reason", reason));
+    // Preserve hashes of legacy requests that did not carry recipient filters.
+    filters.forEach(
+        (name, value) -> {
+          if (!value.isEmpty()) snapshot.put(name, value);
+        });
+    String hash = hash(snapshot);
     return db.transactions()
         .execute(
             tx -> {
@@ -183,19 +190,21 @@ public class CouponService {
                   "ACTIVE".equals(t.get("templateStatus"))
                       && time(t.get("validUntil")).after(now()),
                   "模板未启用或已过期");
-              for (long parent : parents)
-                require(
-                    db.jdbc()
-                            .queryForObject(
-                                "SELECT COUNT(*) FROM sys_user u JOIN sys_user_role ur ON"
-                                    + " u.user_id=ur.user_id JOIN sys_role r ON"
-                                    + " r.role_id=ur.role_id WHERE u.user_id=? AND u.status='0' AND"
-                                    + " u.del_flag='0' AND r.role_key='parent' AND r.status='0' AND"
-                                    + " r.del_flag='0'",
-                                Integer.class,
-                                parent)
-                        > 0,
-                    "接收人必须是有效家长账号");
+              List<Object> recipientArgs = new ArrayList<>(parents);
+              String recipientWhere =
+                  PARENT_WHERE
+                      + " AND u.user_id IN ("
+                      + placeholders(parents.size())
+                      + ")"
+                      + recipientMatch(filters, recipientArgs);
+              require(
+                  db.jdbc()
+                          .queryForObject(
+                              "SELECT COUNT(*) FROM sys_user u" + recipientWhere,
+                              Integer.class,
+                              recipientArgs.toArray())
+                      == parents.size(),
+                  "接收人必须是有效家长账号且仍匹配报名年级／学科筛选，整批未发放");
               require(
                   db.jdbc()
                           .update(
@@ -401,24 +410,92 @@ public class CouponService {
 
   public Map<String, Object> parents(long actor, Map<String, String> q) {
     admin(actor);
-    String where =
-        " WHERE u.status='0' AND u.del_flag='0' AND EXISTS(SELECT 1 FROM sys_user_role ur JOIN"
-            + " sys_role r ON r.role_id=ur.role_id WHERE ur.user_id=u.user_id AND"
-            + " r.role_key='parent' AND r.status='0' AND r.del_flag='0')";
+    var filters = recipientFilters(q);
     List<Object> a = new ArrayList<>();
-    String search = q.getOrDefault("q", q.getOrDefault("search", ""));
+    String where = PARENT_WHERE + recipientMatch(filters, a);
+    String search = text(q.getOrDefault("q", q.getOrDefault("search", "")));
+    require(search.length() <= 64, "家长搜索条件最多64字");
     if (!search.isBlank()) {
       where += " AND (u.user_name LIKE ? OR u.nick_name LIKE ?)";
       a.add("%" + search + "%");
       a.add("%" + search + "%");
     }
-    return page(
-        db,
-        "SELECT u.user_id parent_id,u.nick_name parent_name,u.user_name FROM sys_user u"
-            + where
-            + " ORDER BY u.user_id",
-        "SELECT COUNT(*) FROM sys_user u" + where,
-        a,
-        q);
+    var result =
+        page(
+            db,
+            "SELECT u.user_id parent_id,u.nick_name parent_name,u.user_name FROM sys_user u"
+                + where
+                + " ORDER BY u.user_id",
+            "SELECT COUNT(*) FROM sys_user u" + where,
+            a,
+            q);
+    @SuppressWarnings("unchecked")
+    var rows = (List<Map<String, Object>>) result.get("rows");
+    if (!rows.isEmpty()) {
+      List<Object> detailArgs = new ArrayList<>();
+      String detailWhere = enrollmentMatch(filters, detailArgs);
+      rows.forEach(row -> detailArgs.add(row.get("parentId")));
+      var details =
+          db.rows(
+              "SELECT e.parent_id,e.enrollment_id,e.student_name,s.grade_name,s.subject_name"
+                  + ENROLLMENT_FROM
+                  + " WHERE "
+                  + detailWhere
+                  + " AND e.parent_id IN ("
+                  + placeholders(rows.size())
+                  + ") ORDER BY e.parent_id,e.enrollment_id",
+              detailArgs.toArray());
+      Map<String, List<Map<String, Object>>> byParent = new HashMap<>();
+      for (var detail : details) {
+        String parent = str(detail, "parentId");
+        detail.remove("parentId");
+        byParent.computeIfAbsent(parent, ignored -> new ArrayList<>()).add(detail);
+      }
+      rows.forEach(
+          row ->
+              row.put("matchedChildren", byParent.getOrDefault(str(row, "parentId"), List.of())));
+    }
+    return result;
+  }
+
+  private static final String PARENT_WHERE =
+      " WHERE u.status='0' AND u.del_flag='0' AND EXISTS(SELECT 1 FROM sys_user_role ur JOIN"
+          + " sys_role r ON r.role_id=ur.role_id WHERE ur.user_id=u.user_id AND"
+          + " r.role_key='parent' AND r.status='0' AND r.del_flag='0')";
+  private static final String ENROLLMENT_FROM =
+      " FROM edu_enrollment e JOIN edu_course_schedule s ON s.schedule_id=e.schedule_id";
+
+  private static Map<String, String> recipientFilters(Map<String, ?> input) {
+    String grade = str(input, "gradeName"), subject = str(input, "subjectName");
+    require(grade.length() <= 20 && subject.length() <= 20, "报名年级／学科筛选最多20字");
+    return Map.of("gradeName", grade, "subjectName", subject);
+  }
+
+  private static String enrollmentMatch(Map<String, String> filters, List<Object> args) {
+    String where =
+        "e.enrollment_status IN ('报名成功','1','已确认') AND e.status='0' AND e.del_flag='0'"
+            + " AND s.status='0' AND s.del_flag='0'";
+    if (!filters.get("gradeName").isEmpty()) {
+      where += " AND s.grade_name=?";
+      args.add(filters.get("gradeName"));
+    }
+    if (!filters.get("subjectName").isEmpty()) {
+      where += " AND s.subject_name=?";
+      args.add(filters.get("subjectName"));
+    }
+    return where;
+  }
+
+  private static String recipientMatch(Map<String, String> filters, List<Object> args) {
+    if (filters.values().stream().allMatch(String::isEmpty)) return "";
+    return " AND EXISTS(SELECT 1"
+        + ENROLLMENT_FROM
+        + " WHERE e.parent_id=u.user_id AND "
+        + enrollmentMatch(filters, args)
+        + ")";
+  }
+
+  private static String placeholders(int size) {
+    return String.join(",", Collections.nCopies(size, "?"));
   }
 }

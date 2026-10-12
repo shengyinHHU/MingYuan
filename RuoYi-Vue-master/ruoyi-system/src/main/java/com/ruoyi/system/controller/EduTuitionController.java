@@ -34,6 +34,12 @@ public class EduTuitionController {
     return result;
   }
 
+  @PreAuthorize("@ss.hasPermi('system:tuition:query')")
+  @GetMapping("/{id}/refund-targets")
+  public AjaxResult refundTargets(@PathVariable long id) {
+    return ok(tuition.refundTargets(id, SecurityUtils.getUserId(), true));
+  }
+
   @PreAuthorize("@ss.hasPermi('system:tuition:list')")
   @GetMapping("/list")
   public TableDataInfo list(@RequestParam Map<String, String> q) {
@@ -214,6 +220,17 @@ public class EduTuitionController {
   @PostMapping("/refunds/{id}/execute")
   public AjaxResult execute(@PathVariable long id) {
     return EduTuitionController.ok(tuition.executeRefund(id, SecurityUtils.getUserId()));
+  }
+
+  @PreAuthorize("@ss.hasPermi('system:tuitionRefund:markRefunded')")
+  @Log(
+      title = "学费已退款登记",
+      businessType = BusinessType.UPDATE,
+      isSaveRequestData = false,
+      isSaveResponseData = false)
+  @PostMapping("/refunds/{id}/mark-refunded")
+  public AjaxResult markRefunded(@PathVariable long id, @RequestBody Map<String, Object> b) {
+    return EduTuitionController.ok(tuition.markRefunded(id, SecurityUtils.getUserId(), b));
   }
 
   @PreAuthorize("@ss.hasPermi('system:tuitionRefund:confirm')")
