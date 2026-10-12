@@ -21,7 +21,7 @@ const roleProfiles = {
       { title: '课程报名', icon: '报', tone: 'blue', route: '/pages/enrollment/enrollment' },
       { title: '我的课表', icon: '课', tone: 'orange', route: '/pages/timetable/timetable' },
       { title: '考勤记录', icon: '勤', tone: 'cyan', route: '/pages/attendance/attendance' },
-      { title: '请假申请', icon: '假', tone: 'violet' },
+      { title: '请假申请', icon: '假', tone: 'violet', route: '/pages/parent-leave/parent-leave' },
       { title: '资料商城', icon: '资', tone: 'indigo', route: '/pages/material/material' },
       { title: '我的资料', icon: '料', tone: 'green', route: '/pages/material-orders/material-orders' },
       { title: '我的作业', icon: '作', tone: 'violet', route: '/pages/homework/homework' },
@@ -51,7 +51,7 @@ const roleProfiles = {
     actions: [
       { title: '学生出勤', icon: '签', tone: 'blue', route: '/pages/sign-in/sign-in' },
       { key: 'teacherCourses', title: '我的课程', icon: '课', tone: 'orange', route: '/pages/teacher-single-transactions/teacher-single-transactions' },
-      { title: '请假审核', icon: '假', tone: 'violet' },
+      { key: 'teacherLeave', title: '请假审核', icon: '假', tone: 'violet', route: '/pages/teacher-leave/teacher-leave' },
       { title: '班级学员', icon: '班', tone: 'green', route: '/pages/teacher-students/teacher-students' },
       { title: 'WiFi打卡', icon: '卡', tone: 'red', route: '/pages/teacher-wifi-checkin/teacher-wifi-checkin' },
       { title: '资料商城', icon: '资', tone: 'indigo', route: '/pages/material/material' },
@@ -350,10 +350,24 @@ Page({
       const user = wx.getStorageSync('userInfo') || {}
       this.setData({ tag: user.nickName || user.userName || '教师工作台' })
       this.loadTeacherData()
+      this.loadLeavePending()
       this._coursePendingOwnerToken = token
       this.loadCoursePending()
       this.startCoursePendingRefresh()
     }
+  },
+
+  async loadLeavePending() {
+    if(this._leavePendingLoading || this._unloaded || !this._visible || this.data.currentRole!=='teacher' || getRoleFromStorage()!=='teacher')return
+    const token=wx.getStorageSync('token'),version=this._roleLoadVersion
+    const requestVersion=this._leavePendingVersion=(this._leavePendingVersion || 0)+1
+    this._leavePendingLoading=true
+    try {
+      const r=await request({url:'/miniapp/teacher/leave',data:{state:'PENDING'},timeout:15000})
+      if(this._unloaded || !this._visible || requestVersion!==this._leavePendingVersion || version!==this._roleLoadVersion || this.data.currentRole!=='teacher' || getRoleFromStorage()!=='teacher' || wx.getStorageSync('token')!==token)return
+      this.setData({quickActions:this.data.quickActions.map(a=>a.key==='teacherLeave'?{...a,badgeText:courseState.badgeText(Number((r.data || {}).pendingCount))}:a)})
+    } catch(e) { /* 审核页提供失败提示及重试，首页不把加载失败当作0。 */ }
+    finally {if(requestVersion===this._leavePendingVersion)this._leavePendingLoading=false}
   },
 
   setCoursePending(count, error = '') {
@@ -365,7 +379,7 @@ Page({
   startCoursePendingRefresh() {
     if (!this._visible || this._unloaded || this.data.currentRole !== 'teacher') return
     clearInterval(this._coursePendingTimer)
-    this._coursePendingTimer = setInterval(()=>this.loadCoursePending(),30000)
+    this._coursePendingTimer = setInterval(()=>{this.loadCoursePending();this.loadLeavePending()},30000)
   },
   stopCoursePendingRefresh() {
     clearInterval(this._coursePendingTimer)
@@ -373,6 +387,8 @@ Page({
     this._coursePendingVersion = (this._coursePendingVersion || 0) + 1
     this._coursePendingLoading = false
     this._coursePendingOwnerToken = null
+    this._leavePendingVersion = (this._leavePendingVersion || 0) + 1
+    this._leavePendingLoading = false
   },
   async loadCoursePending() {
     const token = wx.getStorageSync('token')

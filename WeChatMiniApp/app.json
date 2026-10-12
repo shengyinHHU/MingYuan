@@ -45,7 +45,9 @@
     "pages/admin-checkin-review/admin-checkin-review",
     "pages/homework-image-edit/homework-image-edit",
     "pages/parent-account/parent-account",
-    "pages/parent-children/parent-children"
+    "pages/parent-children/parent-children",
+    "pages/parent-leave/parent-leave",
+    "pages/teacher-leave/teacher-leave"
   ],
   "permission": {
     "scope.userLocation": {

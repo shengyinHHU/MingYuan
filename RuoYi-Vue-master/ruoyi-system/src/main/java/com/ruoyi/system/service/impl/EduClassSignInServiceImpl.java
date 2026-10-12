@@ -46,6 +46,7 @@ public class EduClassSignInServiceImpl implements IEduClassSignInService
     @Autowired
     private EduCourseScheduleMapper scheduleMapper;
     @Autowired private com.ruoyi.system.shop.ShopRepository singleDb;
+    @Autowired private com.ruoyi.system.service.ClassLeaveService classLeaves;
 
     @Override
     public List<EduClassSignIn> selectTeacherSchedules(Long teacherId)
@@ -70,6 +71,9 @@ public class EduClassSignInServiceImpl implements IEduClassSignInService
         result.put("classDate", classDate);
         result.put("details", details);
         result.put("review", formatReviewInfo(info));
+        boolean reviewed = info != null && ("1".equals(String.valueOf(info.get("review_status")))
+            || info.get("review1_admin_id") != null || info.get("review2_admin_id") != null);
+        result.put("approvedLeaveEnrollmentIds", reviewed ? java.util.Set.of() : classLeaves.approved(scheduleId,classDate));
         return result;
     }
 
@@ -163,14 +167,17 @@ public class EduClassSignInServiceImpl implements IEduClassSignInService
 
         // 已复核完成的课次锁定，不允许修改签到
         Map<String, Object> info = signInMapper.selectReviewInfo(scheduleId, classDate);
-        if (info != null && "1".equals(String.valueOf(info.get("review_status"))))
+        if (info != null && ("1".equals(String.valueOf(info.get("review_status")))
+            || info.get("review1_admin_id") != null || info.get("review2_admin_id") != null))
         {
-            throw new ServiceException("该课次已复核完成，不能修改签到");
+            throw new ServiceException("该课次已有管理员复核，不能修改签到");
         }
 
-        // 校验并按学生姓名去重（同一课次同一学生仅一条）
+        // 报名学员按稳定报名编号去重，同名孩子不能互相覆盖；自由添加的学员仍按姓名检查。
         List<EduClassSignIn> rows = new ArrayList<>();
         Set<String> names = new LinkedHashSet<>();
+        Set<Long> enrollmentIds = new LinkedHashSet<>();
+        Set<String> freeNames = new LinkedHashSet<>();
         for (MiniAppSignSubmitBody.Detail d : details)
         {
             if (d == null || StringUtils.isEmpty(d.getStudentName()))
@@ -187,10 +194,15 @@ public class EduClassSignInServiceImpl implements IEduClassSignInService
             {
                 throw new ServiceException("学生「" + d.getStudentName() + "」的学员来源无效");
             }
-            if (!names.add(d.getStudentName().trim()))
+            String name = d.getStudentName().trim();
+            boolean duplicate = d.getEnrollmentId() == null
+                ? !freeNames.add(name) || names.contains(name)
+                : !enrollmentIds.add(d.getEnrollmentId()) || freeNames.contains(name);
+            if (duplicate)
             {
                 throw new ServiceException("学生「" + d.getStudentName() + "」重复出现");
             }
+            names.add(name);
             EduClassSignIn row = new EduClassSignIn();
             row.setScheduleId(scheduleId);
             row.setClassDate(java.sql.Date.valueOf(classDate));
@@ -235,6 +247,8 @@ public class EduClassSignInServiceImpl implements IEduClassSignInService
         {
             throw new ServiceException("缺少排课或课次日期");
         }
+        // 与签到及请假审批使用同一排课锁，避免复核期间被覆盖式提交清除。
+        if (scheduleMapper.lockSchedule(scheduleId) == null) throw new ServiceException("排课不存在");
         int rows = signInMapper.countByScheduleAndDate(scheduleId, classDate);
         if (rows == 0)
         {
