@@ -78,8 +78,8 @@ page {
 }
 
 .role-chip {
-  flex: 0 0 auto;
-  min-width: 116rpx;
+  flex: 1 1 0;
+  min-width: 0;
   height: 56rpx;
   padding: 0 18rpx;
   border-radius: 14rpx;

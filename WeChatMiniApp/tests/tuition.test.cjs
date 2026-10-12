@@ -173,6 +173,44 @@ test('homepage real education role never becomes devRole or parent requests and 
   permissions = []; await p.applyLoginRole(); assert.equal(p.data.quickActions.some(a => a.route === '/pages/admin-tuition/admin-tuition'), false)
 })
 
+test('education tab remains visible but refuses unauthorized users without a new login', async () => {
+  for (const [role, permissions] of [['parent', ['*:*:*']], ['teacher', ['*:*:*']], ['admin', []]]) {
+    storage = new Map(); env(o => o.url.endsWith('/getInfo') ? o.success({ statusCode: 200, data: { code: 200, roles: [role], permissions } }) : ok(o, []), role)
+    const notices = []; wx.showToast = o => notices.push(o.title)
+    const p = page('index'); p.onLoad()
+    try {
+      await p.applyLoginRole()
+      assert.deepEqual(p.data.roles.map(r => r.name), ['家长', '教师', '管理员', '教务'])
+      await p.switchRole({ currentTarget: { dataset: { role: 'education' } } })
+      assert.equal(p.data.currentRole, role)
+      assert.equal(p.data.quickActions.some(a => a.route === '/pages/admin-tuition/admin-tuition'), false)
+      assert.ok(notices.some(n => /授权|权限|登录/.test(n)))
+      assert.equal(calls.some(c => c.url.endsWith('/miniapp/login')), false)
+      assert.equal(wx.getStorageSync('token'), 'jwt')
+    } finally { p.onUnload() }
+  }
+})
+
+test('admin education view preserves identity, survives refresh and checks revoked authority', async () => {
+  storage = new Map(); let roles = ['admin'], permissions = ['*:*:*']
+  env(o => o.url.endsWith('/getInfo') ? o.success({ statusCode: 200, data: { code: 200, roles, permissions } }) : ok(o, []), 'admin')
+  const p = page('index'); p.onLoad()
+  try {
+    await p.applyLoginRole(); await p.switchRole({ currentTarget: { dataset: { role: 'education' } } })
+    assert.equal(p.data.currentRole, 'education'); assert.equal(p.data.currentRoleName, '教务')
+    assert.ok(p.data.roles.some(r => r.key === 'education' && r.className === 'active'))
+    assert.ok(p.data.quickActions.some(a => a.route === '/pages/admin-tuition/admin-tuition'))
+    assert.deepEqual(app.globalData.roles, ['admin']); assert.equal(wx.getStorageSync('token'), 'jwt')
+    await p.applyLoginRole(); assert.equal(p.data.currentRole, 'education')
+    await p.switchRole({ currentTarget: { dataset: { role: 'admin' } } }); assert.equal(p.data.currentRole, 'admin')
+    assert.equal(calls.some(c => c.url.endsWith('/miniapp/login')), false)
+    await p.switchRole({ currentTarget: { dataset: { role: 'education' } } })
+    roles = ['parent']; await p.applyLoginRole()
+    assert.equal(p.data.currentRole, 'parent')
+    assert.equal(p.data.quickActions.some(a => a.route === '/pages/admin-tuition/admin-tuition'), false)
+  } finally { p.onUnload() }
+})
+
 test('abandoned SESSION query cannot populate a different refund scope', async () => {
   storage = new Map(); refundEnv(o => ok(o, { refundId: '9' })); let pending
   const original = wx.request; wx.request = o => o.url.endsWith('/refund-targets') ? (pending = o) : original(o)
