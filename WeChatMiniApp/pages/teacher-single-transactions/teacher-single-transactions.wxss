@@ -1,6 +1,7 @@
 @import "../timetable/timetable.wxss";
 @import "../../styles/number-badge.wxss";
 @import "../../styles/education-ui.wxss";
+@import "../../styles/teacher-week-calendar.wxss";
 .module-subtitle { margin-top:12rpx; color:#647286; font-size:25rpx; }
 .summary { flex-wrap:wrap; gap:16rpx; }
 .summary-item { flex:1; min-width:160rpx; flex-direction:column; align-items:flex-start; gap:4rpx; }
@@ -17,10 +18,6 @@
 .calendar-filter { margin:0 24rpx 16rpx; padding:16rpx; background:white; border-radius:12rpx; font-size:25rpx; color:#0b326a; }
 .calendar-warning { margin:12rpx 24rpx; }
 .teacher-calendar .calendar-warning { margin:12rpx 0; }
-.calendar-legend { display:flex; flex-wrap:wrap; gap:14rpx 20rpx; margin:16rpx 24rpx; font-size:22rpx; color:#647286; }
-.calendar-legend > view { display:flex; align-items:center; }
-.legend-dot { display:inline-block; width:18rpx; height:18rpx; margin-right:8rpx; border-radius:4rpx; }
-.gray { background:#8c939e; }.yellow { background:#cc9400; }.blue { background:#367ccd; }.orange { background:#dd801c; }.green { background:#249477; }.purple { background:#8251bd; }
 .module-section { margin:24rpx; }
 .module-card { background:white; padding:24rpx; margin:20rpx 0; border-radius:16rpx; line-height:1.6; font-size:26rpx; word-break:break-all; }
 .module-card-title { font-size:29rpx; font-weight:700; color:#0b326a; }
@@ -57,33 +54,6 @@
 .calendar-filter { display:flex; align-items:center; justify-content:space-between; gap:12rpx; margin:0 24rpx 8rpx; padding:4rpx 0; background:transparent; }
 .calendar-filter picker { padding:12rpx 18rpx; border:1rpx solid #e8edf4; background:white; border-radius:10rpx; font-size:25rpx; }
 .calendar-help { color:#68778c; font-size:23rpx; }
-.teacher-calendar { margin:0 24rpx; }
-.week-toolbar { gap:6rpx; margin-top:12rpx; background:white; border:1rpx solid #e8edf4; border-radius:12rpx; padding:8rpx; }
-.week-toolbar .week-arrow { flex-shrink:0; padding:0; width:54rpx; min-width:54rpx; height:62rpx; line-height:56rpx; font-size:42rpx; color:#52627a; background:transparent; }
-.week-date { flex:1; min-width:0; }
-.week-label { display:flex; align-items:center; justify-content:center; gap:6rpx; margin:0; font-size:26rpx; color:#202b3d; line-height:62rpx; font-weight:600; white-space:nowrap; }
-.week-label text { margin-left:0; flex-shrink:0; color:#68778c; font-size:22rpx; }
-.week-toolbar .week-today { padding:0 12rpx; height:54rpx; line-height:54rpx; background:#edf2ff; font-size:23rpx; color:#2459d9; flex-shrink:0; }
-.calendar-note { color:#68778c; font-size:23rpx; margin:12rpx 0; line-height:1.6; }
-.calendar-warning { padding:14rpx 18rpx; font-size:24rpx; background:#fff6e4; color:#8c5c05; border-radius:10rpx; line-height:1.6; }
-.legend-scroll { width:100%; white-space:nowrap; margin:12rpx 0; }
-.calendar-legend { display:inline-flex; flex-wrap:nowrap; gap:18rpx; margin:0; padding:4rpx 0; font-size:22rpx; color:#68778c; }
-.calendar-legend > view { flex-shrink:0; white-space:nowrap; }
-.legend-dot { width:14rpx; height:14rpx; border-radius:3rpx; margin-right:6rpx; }
-.week-horizontal { border:1rpx solid #e3e9f2; border-radius:14rpx; }
-.fixed-time-column,.time-axis { width:84rpx; }
-.day-scroll { width:calc(100% - 84rpx); }
-.fixed-time-column { background:#f9fafc; }
-.time-head { background:#f0f3f8; font-size:23rpx; color:#68778c; }
-.day-header-row { background:#f0f3f8; font-size:24rpx; color:#52627a; }
-.day-head.today { background:#edf2ff; color:#2459d9; }
-.hour-label { color:#68778c; font-size:22rpx; }
-.day-head,.day-column { border-left-color:#e8edf4; }
-.lesson-block { padding:10rpx; border-radius:10rpx; font-size:23rpx; line-height:1.5; }
-.block-time { font-size:24rpx; }
-.block-name { font-size:24rpx; margin:6rpx 0; }
-.block-place { font-size:22rpx; opacity:.9; }
-.block-status { margin-top:8rpx; font-size:22rpx; font-weight:600; }
 .module-section { margin:20rpx 24rpx; }
 .module-card { border:1rpx solid #e8edf4; border-radius:18rpx; margin:16rpx 0; padding:24rpx; word-break:break-word; }
 .module-card-title { font-size:30rpx; color:#202b3d; line-height:1.5; }

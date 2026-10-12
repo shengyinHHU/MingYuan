@@ -1,3 +1,4 @@
+-- Historical legacy-booking migration. Unified enrollment branches use 20261012_tuition_session_unified.sql instead.
 -- Run after tuition offline two-stage AND original one-to-one migration.
 -- Original one-to-one must not be replayed after this increment changes its log constraint.
 -- Stop backend and back up first; this migration changes no balances or teacher grades.

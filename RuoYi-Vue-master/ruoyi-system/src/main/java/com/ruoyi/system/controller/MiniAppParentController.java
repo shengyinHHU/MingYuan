@@ -27,6 +27,29 @@ public class MiniAppParentController extends BaseController
     @Autowired
     private IMiniAppParentService miniAppParentService;
     @Autowired private com.ruoyi.system.service.OneToOneEnrollmentService singleService;
+    @Autowired private com.ruoyi.system.service.LessonCreditService lessonCredits;
+    @Autowired private com.ruoyi.system.service.ParentAccountService personal;
+
+    @PreAuthorize("@ss.hasRole('parent')") @GetMapping("/account")
+    public AjaxResult account() { return success(personal.detail(com.ruoyi.common.utils.SecurityUtils.getUserId(),false)); }
+    @PreAuthorize("@ss.hasRole('parent')") @GetMapping("/account/records")
+    public AjaxResult accountRecords(@RequestParam(defaultValue="enrollments") String kind,@RequestParam(defaultValue="1") int pageNum,@RequestParam(defaultValue="false") boolean pendingOnly) { return success(personal.records(com.ruoyi.common.utils.SecurityUtils.getUserId(),false,kind,pageNum,pendingOnly)); }
+    @PreAuthorize("@ss.hasRole('parent')") @GetMapping("/account/pending-count")
+    public AjaxResult pending() { return success(personal.pending(false)); }
+    @PreAuthorize("@ss.hasRole('parent')") @PostMapping("/children") @Log(title="家长新增孩子",businessType=BusinessType.INSERT)
+    public AjaxResult createChild(@RequestBody com.ruoyi.system.service.LessonCreditService.AccountDraft body) { return success(lessonCredits.createMine(body)); }
+    @PreAuthorize("@ss.hasRole('parent')") @org.springframework.web.bind.annotation.PutMapping("/children/{id}") @Log(title="家长修改孩子",businessType=BusinessType.UPDATE)
+    public AjaxResult editChild(@PathVariable Long id,@RequestBody com.ruoyi.system.service.LessonCreditService.AccountDraft body) { lessonCredits.editChild(id,body,false); return success(); }
+    @PreAuthorize("@ss.hasRole('parent')") @DeleteMapping("/children/{id}") @Log(title="家长删除未使用孩子",businessType=BusinessType.DELETE)
+    public AjaxResult deleteChild(@PathVariable Long id) { lessonCredits.deleteChild(id,false); return success(); }
+
+    @PreAuthorize("@ss.hasRole('parent')")
+    @GetMapping("/lesson-accounts")
+    public AjaxResult lessonAccounts() { return success(lessonCredits.mine()); }
+
+    @PreAuthorize("@ss.hasRole('parent')")
+    @GetMapping("/lesson-accounts/{id}/history")
+    public AjaxResult lessonAccountHistory(@PathVariable Long id) { return success(lessonCredits.history(id,false)); }
 
     @PreAuthorize("@ss.hasAnyRoles('parent')")
     @GetMapping("/schedules")

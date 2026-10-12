@@ -47,11 +47,10 @@
         <view class="course-meta">{{course.placeText}}</view>
         <view class="course-footer" wx:if="{{!teacherMode}}">
           <view class="student">学生：{{course.studentName}}</view>
-          <view class="cancel-btn"
+          <view class="cancel-pending-label" wx:if="{{course.cancelRequestPending}}">取消待处理</view>
+          <view class="cancel-btn" wx:else
                 catchtap="handleCancel"
-                data-enrollment-id="{{course.enrollmentId}}"
-                data-course-name="{{course.courseClassName}}"
-                data-student-name="{{course.studentName}}">{{course.classDate ? '申请取消' : '取消'}}</view>
+                data-enrollment-id="{{course.enrollmentId}}">{{cancelingId === course.viewKey ? '处理中…' : (course.classDate ? '申请取消' : '取消')}}</view>
         </view>
       </view>
       <view class="pay-tag" wx:if="{{!teacherMode}}">{{course.payText}}</view>

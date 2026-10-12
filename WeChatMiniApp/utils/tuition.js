@@ -14,9 +14,9 @@ function cents(value) { const [whole, part] = amount(value).split('.'); return N
 function bill(item) {
   const successful = (item.payments || []).some(p => p.paymentStatus === 'SUCCESS') || ['已支付', '已退款', '部分退款', '已减免', '1', '2'].includes(String(item.payStatus))
   const activePayment = (item.payments || []).find(p => ['PENDING', 'UNKNOWN'].includes(p.paymentStatus))
-  const canPay = item.billingStatus === 'OPEN' && item.payableAmount != null && !successful && !activePayment
+  const canPay = !['2','已取消','3','已拒绝'].includes(String(item.enrollmentStatus)) && item.billingStatus === 'OPEN' && item.payableAmount != null && !successful && !activePayment
   return { ...item, statusText: status(item.billingStatus), modeText: item.financeMode === 'MOCK' ? '模拟 · 不涉及真实资金' : '真实线下收费',
-    originalText: money(item.originalAmount), discountText: money(item.discountAmount), payableText: money(item.payableAmount), receivedText: money(item.receivedAmount), refundedText: money(item.refundedAmount), netText: money(item.netAmount), dueText: money(item.dueAmount), refundableText: money(item.refundableAmount), canPay, activePayment, canCancel: ['OPEN', 'PENDING_PRICE'].includes(item.billingStatus) && !successful && !activePayment && !['2', '已取消'].includes(String(item.enrollmentStatus)),
+    originalText: money(item.originalAmount), discountText: money(item.discountAmount), payableText: money(item.payableAmount), receivedText: money(item.receivedAmount), refundedText: money(item.refundedAmount), netText: money(item.netAmount), dueText: money(item.dueAmount), refundableText: money(item.refundableAmount), canPay, activePayment, canCancel: !item.classDate && ['OPEN', 'PENDING_PRICE'].includes(item.billingStatus) && !successful && !activePayment && !['2', '已取消'].includes(String(item.enrollmentStatus)),
     canRefund: item.canApplyRefund === true,
     payments: (item.payments || []).map(p => ({ ...p, statusText: status(p.paymentStatus), channelText: status(p.channel), amountText: money(p.amount) })),
     refunds: (item.refunds || []).map(refund), receipts: (item.receipts || []).map(receipt) }

@@ -14,7 +14,7 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class TuitionMysqlTest {
-  static final String SCHEMA = "codex_tuition_finance_test_20261007";
+  static final String SCHEMA = "codex_tuition_finance_test_" + UUID.randomUUID().toString().replace("-", "");
   ShopRepository db;
   Object tuition, coupons;
   Path privateRoot;
@@ -28,8 +28,7 @@ class TuitionMysqlTest {
         "Enable isolated MySQL suite with -Dtuition.mysql=true");
     try (Connection c =
         DriverManager.getConnection(
-            "jdbc:mysql://127.0.0.1:3306/?serverTimezone=Asia/Shanghai", "root", "")) {
-      c.createStatement().execute("DROP DATABASE IF EXISTS " + SCHEMA);
+            "jdbc:mysql://127.0.0.1:3306/?serverTimezone=Asia/Shanghai", "root", System.getenv().getOrDefault("MYSQL_PWD", ""))) {
       c.createStatement().execute("CREATE DATABASE " + SCHEMA + " CHARACTER SET utf8mb4");
     }
     db =
@@ -37,7 +36,7 @@ class TuitionMysqlTest {
             new DriverManagerDataSource(
                 "jdbc:mysql://127.0.0.1:3306/" + SCHEMA + "?serverTimezone=Asia/Shanghai",
                 "root",
-                ""));
+                System.getenv().getOrDefault("MYSQL_PWD", "")));
     db.jdbc()
         .execute(
             "CREATE TABLE sys_user(user_id bigint PRIMARY KEY,user_name varchar(64),nick_name"
@@ -107,9 +106,9 @@ class TuitionMysqlTest {
     db.jdbc()
         .update(
             "INSERT INTO sys_user_role SELECT 5,role_id FROM sys_role WHERE role_key='education'");
-    runMigration("20261010_one_to_one.sql", "20261010_tuition_session_refund.sql");
-    runMigration("20261010_tuition_session_refund.sql");
-    privateRoot = Files.createTempDirectory(Path.of("/private/tmp"), "codex-tuition-finance-test-");
+    runMigration("20261012_tuition_session_unified.sql");
+    runMigration("20261012_tuition_session_unified.sql");
+    privateRoot = Files.createTempDirectory("codex-tuition-finance-test-");
     new com.ruoyi.common.config.RuoYiConfig().setProfile(privateRoot.resolve("public").toString());
     storage = new FinancePrivateStorage(privateRoot.resolve("private").toString());
     receiptService = new TuitionReceiptService(db, storage);
@@ -123,8 +122,8 @@ class TuitionMysqlTest {
                         + " AND table_name='edu_tuition_refund' AND column_name='class_sign_in_id'",
                     Integer.class)
             > 0;
-    runMigration(
-        session ? "20261010_tuition_session_refund.sql" : "20261010_tuition_offline_two_stage.sql");
+    runMigration("20261010_tuition_offline_two_stage.sql");
+    if (session) runMigration("20261012_tuition_session_unified.sql");
   }
 
   void migrateLegacy() throws Exception {
@@ -134,7 +133,7 @@ class TuitionMysqlTest {
   void runMigration(String... files) throws Exception {
     Process p =
         new ProcessBuilder(
-                "/opt/homebrew/bin/mysql", "--protocol=TCP", "-h127.0.0.1", "-uroot", SCHEMA)
+                System.getenv().getOrDefault("MYSQL_CLIENT", "mysql"), "--protocol=TCP", "-h127.0.0.1", "--default-character-set=utf8mb4", "-uroot", SCHEMA)
             .redirectErrorStream(true)
             .start();
     try (var out = p.getOutputStream()) {
@@ -148,7 +147,7 @@ class TuitionMysqlTest {
   @AfterAll
   void cleanup() throws Exception {
     if (db != null)
-      try (Connection c = DriverManager.getConnection("jdbc:mysql://127.0.0.1:3306/", "root", "")) {
+      try (Connection c = DriverManager.getConnection("jdbc:mysql://127.0.0.1:3306/", "root", System.getenv().getOrDefault("MYSQL_PWD", ""))) {
         c.createStatement().execute("DROP DATABASE IF EXISTS " + SCHEMA);
       }
     if (privateRoot != null)

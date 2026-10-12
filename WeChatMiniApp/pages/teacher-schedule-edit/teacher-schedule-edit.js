@@ -9,7 +9,7 @@ const RECRUIT = [{ value: '0', label: '可报名' }, { value: '1', label: '停�
 Page({
   data: {
     loading: true, submitting: false, error: '', editing: false, teacherName: '',
-    form: {}, pickers: [], weeks: 1, weekOptions: Array.from({ length: 52 }, (_, i) => `${i + 1}周`), endPreview: '', lastDate: ''
+    form: {}, pickers: []
   },
   onLoad(options) {
     this._token = wx.getStorageSync('token')
@@ -20,13 +20,18 @@ Page({
       return
     }
     this._id = options.id || ''
+    if(!this._id) { wx.redirectTo({url:'/pages/teacher-schedule-create/teacher-schedule-create'}); return }
     if (this._id && !/^[1-9]\d*$/.test(this._id)) {
       this.setData({ loading: false, error: '排课编号无效' }); return
     }
     this.loadForm()
   },
   onUnload() { this._unloaded = true },
-  current() { return !this._unloaded && this._token === wx.getStorageSync('token') },
+  onShow() {
+    if(!this.current()) { this.setData({form:{},pickers:[],loading:false,error:'登录身份已变化，请返回首页重新进入'}); return }
+    if(this._scheduleDirty && this._id) { this._scheduleDirty=false; this.loadForm() }
+  },
+  current() { const roles=wx.getStorageSync('roles') || []; return !this._unloaded && !!this._token && this._token === wx.getStorageSync('token') && roles.includes('teacher') && !roles.includes('admin') },
   async loadForm() {
     this.setData({ loading: true, error: '' })
     try {
@@ -51,7 +56,7 @@ Page({
         courseClassName: course.courseClassName || '', recruitStatus: course.recruitStatus || '0',
         status: course.status || '0', remark: course.remark || ''
       }
-      this.setData({ form, simpleMode: !this._id || (String(form.classMode) === '2' && form.classPattern === 'WEEKLY'), weeks: course.startDate && course.endDate ? Math.floor((calendar.parseDate(course.endDate) - calendar.parseDate(course.startDate)) / 86400000 / 7) + 1 : 1, editing: !!this._id, teacherName: this._dims.currentUserNick || '当前教师', teacherLevelText: ({ elite: '精英教师', senior: '资深教师' })[(profile.data || {}).teacherLevel] || '后台未配置', subjectConfigured: !!(profile.data || {}).teacherSubject, enrolledCount: course.enrolledCount || 0 })
+      this.setData({ form, simpleMode:String(form.classMode) === '2', editing:!!this._id, teacherName:this._dims.currentUserNick || '当前教师',teacherLevelText:({elite:'精英教师',senior:'资深教师'})[(profile.data || {}).teacherLevel] || '后台未配置',subjectConfigured:!!(profile.data || {}).teacherSubject,enrolledCount:course.enrolledCount || 0 })
       this.updatePickers()
       this.updatePreview()
     } catch (error) {
@@ -98,16 +103,8 @@ Page({
     }
     this.updatePickers()
   },
-  chooseWeeks(e) {
-    if (!this.current() || this.data.submitting) return
-    this.setData({ weeks: Number(e.detail.value) + 1 }); this.updatePreview()
-  },
   updatePreview() {
     this.setData({ startPickerTime: String(this.data.form.startTime || '').slice(0, 5), endPickerTime: String(this.data.form.endTime || '').slice(0, 5) })
-    if (this.data.editing && !this.data.simpleMode) return
-    const start = calendar.timeMinutes(this.data.form.startTime), date = calendar.parseDate(this.data.form.startDate)
-    const end = start === null || start >= 1320 ? '' : `${String(Math.floor((start + 120) / 60)).padStart(2, '0')}:${String((start + 120) % 60).padStart(2, '0')}`
-    this.setData({ endPreview: end, lastDate: date ? calendar.formatDate(calendar.addDays(date, (this.data.weeks - 1) * 7)) : '' })
   },
   chooseDate(e) { this.setField(e, e.detail.value) },
   chooseTime(e) { this.setField(e, e.detail.value + ':00') },
@@ -120,12 +117,9 @@ Page({
     const form = this.data.form
     if (!this.data.editing && form.classMode !== '2') return '教师只能新增一对一课程'
     if (this.data.simpleMode) {
-      for (const [field, label] of [['lessonLocation', '上课地点'], ['gradeName', '年级'], ['subjectName', '后台授课学科'], ['courseClassName', '课名']]) {
+      for (const [field, label] of [['gradeName', '年级'], ['courseClassName', '课名']]) {
         if (!String(form[field] || '').trim()) return `请填写${label}`
       }
-      if (!calendar.parseDate(form.startDate)) return '请选择开始日期'
-      if (!this.data.endPreview) return '开始时间需早于22:00，暂不支持跨午夜排课'
-      if (!Number.isInteger(this.data.weeks) || this.data.weeks < 1 || this.data.weeks > 52) return '请选择1至52周'
       return ''
     }
     for (const [field, label] of [['classroomId', '教室'], ['termName', '学期'], ['periodName', '期次／上课日'], ['timeSlot', '时段'], ['gradeName', '年级'], ['subjectName', '学科'], ['courseClassName', '课程班名称']]) {
@@ -142,7 +136,7 @@ Page({
     return ''
   },
   async save() {
-    if (!this.current() || this.data.loading || this.data.error || this.data.submitting) return
+    if (!this._id || !this.current() || this.data.loading || this.data.error || this.data.submitting) return
     const error = this.validation()
     if (error) { wx.showToast({ title: error, icon: 'none' }); return }
     if (!this.data.form.startDate) {
@@ -155,13 +149,9 @@ Page({
       let payload = { ...form, classPattern: form.classPattern || null, startDate: form.startDate || null, endDate: form.endDate || null, classroomId: form.classMode === '2' ? null : Number(form.classroomId), courseYear: Number(form.courseYear),
         courseClassName: form.courseClassName.trim(), remark: form.remark.trim() }
       if (this.data.editing && this.data.simpleMode) {
-        payload.endTime = this.data.endPreview + ':00'; payload.endDate = this.data.lastDate
-        payload.periodName = ['周日','周一','周二','周三','周四','周五','周六'][calendar.parseDate(form.startDate).getDay()]
-        payload.courseYear = calendar.parseDate(form.startDate).getFullYear(); payload.classPattern = 'WEEKLY'
-        payload.timeSlot = String(form.startTime).slice(0,5) + '-' + this.data.endPreview
+        payload={scheduleId:form.scheduleId,courseClassName:form.courseClassName.trim(),gradeName:form.gradeName,recruitStatus:form.recruitStatus,status:form.status,remark:form.remark.trim()}
       }
-      if (!this.data.editing) payload = { lessonLocation: form.lessonLocation.trim(), gradeName: form.gradeName, courseClassName: form.courseClassName.trim(), startDate: form.startDate, startTime: form.startTime, weeks: this.data.weeks }
-      await request({ url: '/miniapp/teacher/course/schedule', method: this.data.editing ? 'PUT' : 'POST', data: payload })
+      await request({ url: '/miniapp/teacher/course/schedule', method: 'PUT', data: payload })
       if (!this.current()) return
       wx.showToast({ title: '已保存', icon: 'success' })
       this.backToCalendar()
@@ -169,6 +159,7 @@ Page({
       if (this.current()) wx.showToast({ title: error.message || '保存失败', icon: 'none' })
     } finally { if (this.current()) this.setData({ submitting: false }) }
   },
+  reselectTime() { if(this.current() && !this.data.submitting && !this.data.loading) wx.navigateTo({url:`/pages/teacher-schedule-create/teacher-schedule-create?id=${this._id}`}) },
   async remove() {
     if (!this.current() || !this.data.editing || this.data.loading || this.data.error || this.data.submitting) return
     const confirmed = await this.confirm('删除排课？', '仅无报名、考勤、调课或作业引用的排课可删除。有历史记录请把排课状态改为停用。')

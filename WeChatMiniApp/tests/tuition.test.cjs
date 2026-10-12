@@ -63,7 +63,7 @@ test('home exposes parent finance routes and admin finance route without changin
   env(o => o.url.endsWith('/getInfo') ? o.success({ statusCode: 200, data: { code: 200, roles: app.globalData.roles, permissions: ['system:tuition:list'] } }) : ok(o, {})); const p = page('index')
   await p.applyLoginRole(); assert.ok(p.data.quickActions.some(a => a.route === '/pages/tuition-list/tuition-list')); assert.ok(p.data.quickActions.some(a => a.route === '/pages/my-coupons/my-coupons')); assert.ok(p.data.quickActions.some(a => a.route === '/pages/material/material'))
   app.globalData.roles = ['admin']
-  await p.applyLoginRole(); assert.ok(p.data.quickActions.some(a => a.route === '/pages/admin-tuition/admin-tuition'))
+  await p.applyLoginRole(); assert.ok(p.data.quickActions.some(a => a.route === '/pages/admin-tuition/admin-tuition')); p.onUnload()
 })
 test('enrollment detail always links to financial bill and normalizes cancelled Chinese status', () => {
   env(o => ok(o, {})); let navigated

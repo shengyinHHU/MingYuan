@@ -6,15 +6,13 @@
 
   <view class="date-bar">
     <view class="date-label">课次日期</view>
-    <picker mode="date" value="{{classDate}}" end="{{maxDate}}" disabled="{{loading || submitting}}" bindchange="onDateChange">
-      <view class="date-picker">{{classDate}} ▾</view>
-    </picker>
+    <view class="date-value">{{classDate}}</view>
     <view class="review-tag {{locked ? 'done' : 'pending'}}" wx:if="{{review}}">
-      {{locked ? '复核完成' : (review.confirmedCount > 0 ? '已确认 ' + review.confirmedCount + '/2' : '待复核')}}
+      {{review.reviewStatus === '1' ? '复核完成' : (review.confirmedCount > 0 ? '已确认 ' + review.confirmedCount + '/2' : '待复核')}}
     </view>
   </view>
 
-  <view class="banner done" wx:if="{{locked}}">该课次已复核完成，签到已锁定，不可修改</view>
+  <view class="banner done" wx:if="{{locked}}">该课次已有管理员复核，签到已锁定，不可修改</view>
 
   <view class="stats" wx:if="{{stats && stats.total > 0}}">
     <view class="stat main"><text class="num">{{stats.actual}}</text><text class="label">实到</text></view>

@@ -1,15 +1,26 @@
+SET NAMES utf8mb4;
 -- Stop the backend and back up first. Run after 20261007 and the single-admin increment.
 -- Incremental and repeatable; no business records or user-role assignments are changed.
 DELIMITER $$
 DROP PROCEDURE IF EXISTS tuition_offline_check$$
 CREATE PROCEDURE tuition_offline_check(IN n varchar(64), IN expected text)
 BEGIN
-  DECLARE actual text;
+  DECLARE actual TEXT; DECLARE canonical TEXT; DECLARE probe_created BOOLEAN DEFAULT FALSE;
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN IF probe_created THEN DROP TABLE __tuition_offline_verify; END IF; RESIGNAL; END;
+  IF EXISTS(SELECT 1 FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='__tuition_offline_verify') THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Inspect interrupted offline refund verification probe';
+  END IF;
   SELECT cc.check_clause INTO actual FROM information_schema.check_constraints cc
     JOIN information_schema.table_constraints tc ON tc.constraint_schema=cc.constraint_schema AND tc.constraint_name=cc.constraint_name
     WHERE tc.constraint_schema=DATABASE() AND tc.table_name='edu_tuition_refund' AND tc.constraint_name=n AND tc.enforced='YES';
-  IF actual IS NULL OR REPLACE(REGEXP_REPLACE(REPLACE(REPLACE(REPLACE(LOWER(actual),CHAR(92),''),'`',''),'_utf8mb4',''),'[[:space:]()]',''),'!=','<>')
-      <>REPLACE(REGEXP_REPLACE(LOWER(expected),'[[:space:]()]',''),'!=','<>') THEN
+  IF actual IS NULL THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Missing refund check'; END IF;
+  CREATE TABLE __tuition_offline_verify LIKE edu_tuition_refund;
+  SET probe_created=TRUE;
+  SET @ddl=CONCAT('ALTER TABLE __tuition_offline_verify ADD CONSTRAINT ck_tuition_offline_verify CHECK (',expected,')');
+  PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+  SELECT check_clause INTO canonical FROM information_schema.check_constraints WHERE constraint_schema=DATABASE() AND constraint_name='ck_tuition_offline_verify';
+  DROP TABLE __tuition_offline_verify; SET probe_created=FALSE;
+  IF NOT(BINARY actual<=>BINARY canonical) THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Conflicting refund check expression';
   END IF;
 END$$
@@ -84,7 +95,12 @@ BEGIN
     END IF;
   END IF;
   CALL tuition_offline_check('ck_tr_money','(requested_amount IS NULL OR requested_amount>0) AND (approved_amount IS NULL OR approved_amount>0) AND (requested_amount IS NULL OR approved_amount IS NULL OR approved_amount<=requested_amount)');
-  CALL tuition_offline_check('ck_tr_state','refund_kind IN (''PARTIAL'',''WITHDRAWAL'') AND refund_status IN (''PENDING_REVIEW'',''APPROVED'',''PROCESSING'',''SUCCESS'',''REJECTED'',''CANCELLED'',''FAILED'',''UNKNOWN'',''WAIT_EDU'',''WAIT_ADMIN'')');
+  IF EXISTS(SELECT 1 FROM information_schema.table_constraints WHERE constraint_schema=DATABASE()
+      AND table_name='edu_tuition_refund' AND constraint_name='ck_session_target' AND enforced='YES') THEN
+    CALL tuition_offline_check('ck_tr_state','refund_kind IN (''PARTIAL'',''WITHDRAWAL'',''SESSION'') AND refund_status IN (''PENDING_REVIEW'',''APPROVED'',''PROCESSING'',''SUCCESS'',''REJECTED'',''CANCELLED'',''FAILED'',''UNKNOWN'',''WAIT_EDU'',''WAIT_ADMIN'')');
+  ELSE
+    CALL tuition_offline_check('ck_tr_state','refund_kind IN (''PARTIAL'',''WITHDRAWAL'') AND refund_status IN (''PENDING_REVIEW'',''APPROVED'',''PROCESSING'',''SUCCESS'',''REJECTED'',''CANCELLED'',''FAILED'',''UNKNOWN'',''WAIT_EDU'',''WAIT_ADMIN'')');
+  END IF;
   CALL tuition_offline_check('ck_tr_approved','refund_status NOT IN (''APPROVED'',''PROCESSING'',''SUCCESS'',''UNKNOWN'',''WAIT_ADMIN'') OR approved_amount IS NOT NULL');
   CALL tuition_offline_check('ck_tr_success','refund_status<>''SUCCESS'' OR completed_time IS NOT NULL');
   CALL tuition_offline_check('ck_tr_offline','

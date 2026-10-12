@@ -149,7 +149,8 @@ public class MiniAppLoginService
         }
         else if (EduRoleConstants.TEACHER.equals(role))
         {
-            user = devTeacherId == null ? findMockTeacherUser() : userService.selectUserById(devTeacherId);
+            if(devTeacherId == null) throw new ServiceException("请先选择要登录的教师");
+            user = userService.selectUserById(devTeacherId);
             if (!isEligibleTeacher(user))
             {
                 throw new ServiceException("该教师不存在、已停用或不具备独立教师身份，请刷新教师列表");
@@ -175,49 +176,6 @@ public class MiniAppLoginService
     private void assertDevelopmentTeacherLogin()
     {
         developmentSession.getVersion();
-    }
-
-    private SysUser findMockTeacherUser()
-    {
-        // Explicit configuration must not silently log in as a different teacher.
-        boolean byUsername = StringUtils.isNotBlank(mockTeacherUsername);
-        if (byUsername || StringUtils.isNotBlank(mockTeacherPhone))
-        {
-            SysUser user = byUsername
-                    ? userService.selectUserByUserName(mockTeacherUsername.trim())
-                    : findExistingTeacher(mockTeacherPhone.trim());
-            if (!isEligibleTeacher(user))
-            {
-                throw new ServiceException("配置的模拟教师不可用，请检查账号、启用状态和教师角色（WECHAT_MOCK_TEACHER_USERNAME / WECHAT_MOCK_TEACHER_PHONE）");
-            }
-            return user;
-        }
-        return findExistingTeacher(null);
-    }
-
-    private SysUser findExistingTeacher(String phone)
-    {
-        // Reuse existing users and role assignments; never create a demo teacher.
-        SysRole teacherRole = roleMapper.checkRoleKeyUnique(EduRoleConstants.TEACHER);
-        if (teacherRole == null || !UserConstants.ROLE_NORMAL.equals(teacherRole.getStatus())
-                || !UserConstants.NORMAL.equals(teacherRole.getDelFlag()))
-        {
-            return null;
-        }
-        SysUser filter = new SysUser();
-        filter.setRoleId(teacherRole.getRoleId());
-        List<SysUser> candidates = userMapper.selectAllocatedList(filter).stream()
-                .filter(user -> UserConstants.NORMAL.equals(user.getStatus()))
-                .filter(user -> phone == null || phone.equals(user.getPhonenumber()))
-                .sorted(Comparator.comparing(SysUser::getUserId))
-                .map(user -> userService.selectUserById(user.getUserId()))
-                .filter(this::isEligibleTeacher)
-                .limit(phone == null ? 1 : 2).toList();
-        if (candidates.size() > 1)
-        {
-            throw new ServiceException("该手机号对应多个可用教师，请用 WECHAT_MOCK_TEACHER_USERNAME 指定用户名");
-        }
-        return candidates.isEmpty() ? null : candidates.get(0);
     }
 
     public String developmentSessionVersion()

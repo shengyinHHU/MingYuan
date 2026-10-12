@@ -224,12 +224,15 @@
           </el-col>
           <el-col :span="24">
             <el-form-item label="家长用户ID" prop="parentId">
-              <el-input v-model="form.parentId" placeholder="请输入家长用户ID" :disabled="form.enrollmentId != null" />
+              <el-input v-model="form.parentId" placeholder="请输入家长用户ID" :disabled="form.enrollmentId != null" @change="loadChildChoices" />
             </el-form-item>
+          </el-col>
+          <el-col :span="24" v-if="form.enrollmentId == null">
+            <el-form-item label="报名孩子"><el-select v-model="childChoice" :loading="childrenLoading" :disabled="!form.parentId || childrenLoading" placeholder="先填写家长用户ID" @change="chooseChild"><el-option v-for="a in childChoices" :key="a.accountId" :value="String(a.accountId)" :label="`${a.studentName} · ${a.gradeName} · #${a.accountId}`"/><el-option value="new" label="＋ 添加孩子信息（报名成功自动建零余额账户）"/></el-select><div class="edu-table-secondary" v-if="childError">{{childError}}</div></el-form-item>
           </el-col>
           <el-col :span="24">
             <el-form-item label="学生姓名" prop="studentName">
-              <el-input v-model="form.studentName" placeholder="请输入学生姓名" />
+              <el-input v-model="form.studentName" placeholder="请输入学生姓名" :disabled="!!form.lessonAccountId || (form.enrollmentId == null && childChoice!=='new')" />
             </el-form-item>
           </el-col>
           <el-col :span="24">
@@ -280,11 +283,13 @@
 
 <script>
 import { listEnrollment, getEnrollment, cancelEnrollment, addEnrollment, updateEnrollment } from "@/api/system/enrollment"
+import { personalDetail } from "@/api/system/transaction"
 
 export default {
   name: "Enrollment",
   data() {
     return {
+      childChoices: [], childChoice: 'new', childrenLoading:false, childError:'', childVersion:0, childrenParent:null,
       // 遮罩层
       loading: true,
       // 选中数组
@@ -361,7 +366,10 @@ export default {
     },
     // 表单重置
     reset() {
+      this.childVersion++
+      this.childChoices=[];this.childChoice='new';this.childError='';this.childrenParent=null;this.childrenLoading=false
       this.form = {
+        lessonAccountId:null,studentRequestKey:`child_${Date.now()}_${Math.random().toString(36).slice(2,14)}`,
         enrollmentId: null,
         enrollmentCode: null,
         scheduleId: null,
@@ -416,8 +424,21 @@ export default {
         this.title = "修改课程报名"
       })
     },
+    async loadChildChoices() {
+      const parentId=this.form.parentId,v=++this.childVersion
+      this.childChoices=[];this.form.lessonAccountId=null;this.form.studentName='';this.childChoice='new';this.childrenParent=null;this.childError=''
+      if(!parentId)return
+      this.childrenLoading=true
+      try{const r=await personalDetail(parentId);if(v!==this.childVersion)return;this.childChoices=r.data.children || [];this.childrenParent=String(parentId)}catch(e){if(v===this.childVersion)this.childError='家长或孩子资料查询失败，请检查家长ID后重新填写'}finally{if(v===this.childVersion)this.childrenLoading=false}
+    },
+    chooseChild(value) {
+      const a=this.childChoices.find(a=>String(a.accountId)===value)
+      this.form.lessonAccountId=a?a.accountId:null;this.form.studentName=a?a.studentName:''
+      this.form.studentRequestKey=`child_${Date.now()}_${Math.random().toString(36).slice(2,14)}`
+    },
     /** 提交按钮 */
     submitForm() {
+      if(this.form.enrollmentId == null && (this.childrenLoading || this.childError || this.childrenParent!==String(this.form.parentId))){this.$modal.msgError('请先核对家长并加载孩子资料');return}
       this.$refs["form"].validate(valid => {
         if (valid) {
           if (this.form.enrollmentId != null) {
@@ -482,7 +503,7 @@ export default {
     /** 通用报名表单只发送允许编辑的字段，财务汇总由专用流程维护。 */
     enrollmentBody() {
       const body = {}
-      for (const key of ['enrollmentId', 'enrollmentCode', 'scheduleId', 'parentId', 'studentName', 'studentPhone', 'contactPhone', 'remark']) {
+      for (const key of ['enrollmentId', 'enrollmentCode', 'scheduleId', 'parentId', 'lessonAccountId', 'studentRequestKey', 'studentName', 'studentPhone', 'contactPhone', 'remark']) {
         if (this.form[key] !== undefined) body[key] = this.form[key]
       }
       return body

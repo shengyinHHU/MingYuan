@@ -9,7 +9,7 @@ import com.ruoyi.common.core.domain.BaseEntity;
 
 /**
  * 课程报名对象 edu_enrollment
- * 
+ *
  * @author ruoyi
  * @date 2026-08-05
  */
@@ -19,6 +19,12 @@ public class EduEnrollment extends BaseEntity
 
     /** 报名ID */
     private Long enrollmentId;
+    private Long lessonAccountId;
+    private String studentRequestKey;
+    public Long getLessonAccountId() { return lessonAccountId; }
+    public void setLessonAccountId(Long value) { lessonAccountId=value; }
+    public String getStudentRequestKey() { return studentRequestKey; }
+    public void setStudentRequestKey(String value) { studentRequestKey=value; }
     private java.time.LocalDate classDate;
     private String cancelRequestStatus;
     public java.time.LocalDate getClassDate() { return classDate; }
@@ -124,127 +130,127 @@ public class EduEnrollment extends BaseEntity
         this.enrollmentId = enrollmentId;
     }
 
-    public Long getEnrollmentId() 
+    public Long getEnrollmentId()
     {
         return enrollmentId;
     }
 
-    public void setEnrollmentCode(String enrollmentCode) 
+    public void setEnrollmentCode(String enrollmentCode)
     {
         this.enrollmentCode = enrollmentCode;
     }
 
-    public String getEnrollmentCode() 
+    public String getEnrollmentCode()
     {
         return enrollmentCode;
     }
 
-    public void setScheduleId(Long scheduleId) 
+    public void setScheduleId(Long scheduleId)
     {
         this.scheduleId = scheduleId;
     }
 
-    public Long getScheduleId() 
+    public Long getScheduleId()
     {
         return scheduleId;
     }
 
-    public void setParentId(Long parentId) 
+    public void setParentId(Long parentId)
     {
         this.parentId = parentId;
     }
 
-    public Long getParentId() 
+    public Long getParentId()
     {
         return parentId;
     }
 
-    public void setStudentName(String studentName) 
+    public void setStudentName(String studentName)
     {
         this.studentName = studentName;
     }
 
-    public String getStudentName() 
+    public String getStudentName()
     {
         return studentName;
     }
 
-    public void setStudentPhone(String studentPhone) 
+    public void setStudentPhone(String studentPhone)
     {
         this.studentPhone = studentPhone;
     }
 
-    public String getStudentPhone() 
+    public String getStudentPhone()
     {
         return studentPhone;
     }
 
-    public void setContactPhone(String contactPhone) 
+    public void setContactPhone(String contactPhone)
     {
         this.contactPhone = contactPhone;
     }
 
-    public String getContactPhone() 
+    public String getContactPhone()
     {
         return contactPhone;
     }
 
-    public void setEnrollmentStatus(String enrollmentStatus) 
+    public void setEnrollmentStatus(String enrollmentStatus)
     {
         this.enrollmentStatus = enrollmentStatus;
     }
 
-    public String getEnrollmentStatus() 
+    public String getEnrollmentStatus()
     {
         return enrollmentStatus;
     }
 
-    public void setPayStatus(String payStatus) 
+    public void setPayStatus(String payStatus)
     {
         this.payStatus = payStatus;
     }
 
-    public String getPayStatus() 
+    public String getPayStatus()
     {
         return payStatus;
     }
 
-    public void setCancelTime(Date cancelTime) 
+    public void setCancelTime(Date cancelTime)
     {
         this.cancelTime = cancelTime;
     }
 
-    public Date getCancelTime() 
+    public Date getCancelTime()
     {
         return cancelTime;
     }
 
-    public void setCancelReason(String cancelReason) 
+    public void setCancelReason(String cancelReason)
     {
         this.cancelReason = cancelReason;
     }
 
-    public String getCancelReason() 
+    public String getCancelReason()
     {
         return cancelReason;
     }
 
-    public void setStatus(String status) 
+    public void setStatus(String status)
     {
         this.status = status;
     }
 
-    public String getStatus() 
+    public String getStatus()
     {
         return status;
     }
 
-    public void setDelFlag(String delFlag) 
+    public void setDelFlag(String delFlag)
     {
         this.delFlag = delFlag;
     }
 
-    public String getDelFlag() 
+    public String getDelFlag()
     {
         return delFlag;
     }
