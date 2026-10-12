@@ -6,7 +6,7 @@
   <view wx:for="{{groups}}" wx:key="grade" class="group">
     <view class="group-title" bindtap="toggle" data-index="{{index}}">{{item.grade}} <text>{{item.collapsed ? '展开 ＋' : '收起 －'}}</text></view>
     <block wx:if="{{!item.collapsed}}"><view wx:for="{{item.items}}" wx:for-item="schedule" wx:key="scheduleId" class="card" bindtap="open" data-id="{{schedule.scheduleId}}">
-      <view class="title">{{schedule.course}}</view><view>{{schedule.teacherName || '教师未提供'}} · {{schedule.time}}</view>
+      <view class="title">{{schedule.course}}</view><view class="ui-time">{{schedule.time}}</view><view class="muted">{{schedule.teacherName || '教师未提供'}}</view>
       <view class="muted">{{schedule.courseYear}} {{schedule.termName}} · {{schedule.room}}</view>
       <view class="row"><text>报名 {{schedule.enrolledCount}} / {{schedule.capacityText}}</text><text>{{schedule.recruitText}} · 查看名单 ›</text></view>
     </view></block>

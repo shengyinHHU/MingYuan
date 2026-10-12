@@ -73,6 +73,23 @@ function positionBlocks(blocks) {
   return blocks
 }
 
+function singleLessonState(course, booking, date) {
+  if (booking) {
+    const status = String(booking.enrollmentStatus)
+    if (String(booking.cancelRequestStatus) === '1') return { lessonState: 'cancel-pending', statusText: '取消申请待处理' }
+    if (['1', '报名成功', '已确认'].includes(status) && [true, 1, '1'].includes(booking.lessonCompleted)) return { lessonState: 'completed', statusText: '已完成' }
+    if (['0', '待确认'].includes(status)) return { lessonState: 'pending', statusText: '待老师确认' }
+    if (['1', '报名成功', '已确认'].includes(status)) return { lessonState: 'confirmed', statusText: '已确认' }
+    if (status === '2') return { lessonState: 'cancelled', statusText: '已取消' }
+    if (status === '3') return { lessonState: 'rejected', statusText: '已拒绝' }
+    return { lessonState: 'unavailable', statusText: '状态待核对' }
+  }
+  if (String(course.status) === '1') return { lessonState: 'unavailable', statusText: '已停用' }
+  if (String(course.recruitStatus || '0') !== '0') return { lessonState: 'unavailable', statusText: '已停招' }
+  const started = new Date(`${date}T${course.startTime || '00:00:00'}`) <= new Date()
+  return { lessonState: 'empty', statusText: started ? '无人报名 · 已过期' : '无人报名 · 可报名' }
+}
+
 function buildWeek(courses, selectedDate) {
   const monday = weekStart(selectedDate), sunday = addDays(monday, 6)
   const today = formatDate(new Date()), first = formatDate(monday), last = formatDate(sunday)
@@ -93,9 +110,12 @@ function buildWeek(courses, selectedDate) {
     expanded.dates.forEach(date => {
       const day = byDate.get(date)
       if (!day) return
-      day.blocks.push({ ...course, date, key: `${course.scheduleId}:${date}`, startMinute: start, endMinute: end,
+      const booking = (course.singleBookings || []).find(item => String(item.classDate).slice(0, 10) === date)
+      const isSingle = String(course.classMode) === '2'
+      const state = isSingle ? singleLessonState(course, booking, date) : { lessonState: 'class-course', statusText: '班课' }
+      day.blocks.push({ ...course, ...state, studentName: booking ? booking.studentName : '', enrollmentId: booking ? booking.enrollmentId : null, cancelRequestStatus: booking ? booking.cancelRequestStatus : '0', date, key: `${course.scheduleId}:${date}`, startMinute: start, endMinute: end,
         timeText: `${String(course.startTime).slice(0, 5)}–${String(course.endTime).slice(0, 5)}`,
-        modeText: course.classMode === '2' ? '一对一' : '班课' })
+        modeText: isSingle ? '一对一' : '班课' })
       lessonCount++
     })
   })
@@ -105,4 +125,4 @@ function buildWeek(courses, selectedDate) {
     stoppedCourses: stopped, weekLessonCount: lessonCount, plannedLessonCount: plannedCount,
     overlapCount: days.reduce((count, day) => count + day.blocks.filter(block => block.overlap).length, 0) }
 }
-module.exports = { parseDate, formatDate, addDays, weekStart, timeMinutes, expandCourse, positionBlocks, buildWeek }
+module.exports = { parseDate, formatDate, addDays, weekStart, timeMinutes, expandCourse, positionBlocks, singleLessonState, buildWeek }

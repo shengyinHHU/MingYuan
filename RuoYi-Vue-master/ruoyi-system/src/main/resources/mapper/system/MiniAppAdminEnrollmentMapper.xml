@@ -23,7 +23,7 @@
     <sql id="scheduleView">
         select s.schedule_id as scheduleId, s.course_class_name as courseClassName,
                s.grade_name as gradeName, s.subject_name as subjectName,
-               coalesce(nullif(trim(teacher.nick_name), ''), s.teacher_name) as teacherName, s.class_type as classType, s.class_mode as classMode,
+               coalesce(nullif(trim(teacher.user_name), ''), nullif(trim(teacher.nick_name), ''), s.teacher_name) as teacherName, s.class_type as classType, s.class_mode as classMode, s.lesson_location as lessonLocation,
                s.course_year as courseYear, s.term_name as termName,
                s.period_name as periodName, s.time_slot as timeSlot,
                s.start_time as startTime, s.end_time as endTime,

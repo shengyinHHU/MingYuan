@@ -473,7 +473,7 @@ public class CouponService {
 
   private static String enrollmentMatch(Map<String, String> filters, List<Object> args) {
     String where =
-        "e.enrollment_status='报名成功' AND e.status='0' AND e.del_flag='0'"
+        "e.enrollment_status IN ('报名成功','1','已确认') AND e.status='0' AND e.del_flag='0'"
             + " AND s.status='0' AND s.del_flag='0'";
     if (!filters.get("gradeName").isEmpty()) {
       where += " AND s.grade_name=?";

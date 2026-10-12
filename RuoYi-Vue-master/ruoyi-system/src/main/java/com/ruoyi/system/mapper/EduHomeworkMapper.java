@@ -23,6 +23,8 @@ public interface EduHomeworkMapper
     List<EduHomeworkFile> selectHomeworkFiles(Long homeworkId);
     int deleteHomeworkFiles(Long homeworkId);
     List<EduHomeworkFile> selectAnswerFiles(Long submissionId);
+    List<EduHomeworkFile> selectReviewFiles(Long submissionId);
+    int deleteReviewFiles(Long submissionId);
     int insertSubmission(EduHomeworkSubmission submission);
     EduHomeworkSubmission selectSubmissionByHomeworkEnrollment(@Param("homeworkId") Long homeworkId, @Param("enrollmentId") Long enrollmentId);
     EduHomeworkSubmission selectSubmissionById(Long submissionId);

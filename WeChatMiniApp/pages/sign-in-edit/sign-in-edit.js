@@ -79,7 +79,7 @@ Page({
       } else {
         const res = await request({
           url: '/miniapp/teacher/sign/students',
-          data: { scheduleId }
+          data: { scheduleId, classDate }
         })
         if (!current()) return
         rows = (res.data || []).map((s) => this.decorateRow({

@@ -161,4 +161,13 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         where enrollment_id = #{enrollmentId}
     </update>
 
+    <update id="invalidateUnusedAttendance">
+        update edu_attendance
+        set attendance_status = '2', status = '1',
+            update_by = #{updateBy}, update_time = now()
+        where enrollment_id = #{enrollmentId} and del_flag = '0'
+          and attendance_status in ('0', '未上课')
+          and attended_time is null and confirm_by is null
+          and ifnull(confirm_name, '') = ''
+    </update>
 </mapper>

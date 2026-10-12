@@ -16,6 +16,7 @@
     "pages/admin-enrollment-list/admin-enrollment-list",
     "pages/admin-enrollment-detail/admin-enrollment-detail",
     "pages/timetable/timetable",
+    "pages/teacher-single-transactions/teacher-single-transactions",
     "pages/teacher-schedule-edit/teacher-schedule-edit",
     "pages/attendance/attendance",
     "pages/material/material",
@@ -36,8 +37,17 @@
     "pages/teacher-homework/teacher-homework",
     "pages/teacher-homework-create/teacher-homework-create",
     "pages/teacher-homework-review/teacher-homework-review",
-    "pages/teacher-homework-review-detail/teacher-homework-review-detail"
+    "pages/teacher-homework-review-detail/teacher-homework-review-detail",
+    "pages/teacher-wifi-checkin/teacher-wifi-checkin",
+    "pages/admin-wifi-config/admin-wifi-config",
+    "pages/admin-checkin-review/admin-checkin-review",
+    "pages/homework-image-edit/homework-image-edit"
   ],
+  "permission": {
+    "scope.userLocation": {
+      "desc": "用于校验您连接的校区WiFi"
+    }
+  },
   "window": {
     "navigationBarTextStyle": "black",
     "navigationBarTitleText": "名远教育",

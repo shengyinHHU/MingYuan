@@ -11,6 +11,8 @@ public class EduHomeworkSubmission extends BaseEntity
     private String status; private String teacherComment; private Long reviewerId; private Date reviewTime;
     private String description;
     private String studentName; private String homeworkTitle;
+    private java.util.List<EduHomeworkFile> reviewFiles;
+    public java.util.List<EduHomeworkFile> getReviewFiles(){return reviewFiles;} public void setReviewFiles(java.util.List<EduHomeworkFile> v){reviewFiles=v;}
     public Long getSubmissionId(){return submissionId;} public void setSubmissionId(Long v){submissionId=v;}
     public Long getHomeworkId(){return homeworkId;} public void setHomeworkId(Long v){homeworkId=v;}
     public Long getEnrollmentId(){return enrollmentId;} public void setEnrollmentId(Long v){enrollmentId=v;}

@@ -1,22 +1,11 @@
 const { request } = require('../../utils/request')
-const calendar = require('../../utils/course-calendar')
 
 Page({
   data: {
     loading: false,
     loadError: '',
-    weekStart: '',
-    weekLabel: '',
-    weekDays: [],
-    hours: [],
-    pendingCourses: [],
-    stoppedCourses: [],
-    weekLessonCount: 0,
-    overlapCount: 0,
-    calendarScrollTop: 0,
-    axisOffset: 0,
+    loadSucceeded: false,
     teacherMode: false,
-    plannedLessonCount: 0,
     timetable: [],
     groupedTimetable: [],
     timetableCount: 0,
@@ -25,56 +14,32 @@ Page({
 
   onLoad() {
     this._unloaded = false
-    const roles = wx.getStorageSync('roles') || []
-    this.setData({ teacherMode: roles.includes('teacher') && !roles.includes('admin') })
-    this.refreshWeek(calendar.formatDate(new Date()))
+    if (this.redirectTeacher()) return
     this.loadTimetable()
   },
 
   onShow() {
+    if (this.redirectTeacher()) return
     if (this._scheduleDirty || this._loadedToken !== wx.getStorageSync('token')) {
       this._scheduleDirty = false
-      const roles = wx.getStorageSync('roles') || []
-      this.setData({ teacherMode: roles.includes('teacher') && !roles.includes('admin'), timetable: [], groupedTimetable: [], timetableCount: 0 })
-      this.refreshWeek(this.data.weekStart)
+      this.setData({ timetable: [], groupedTimetable: [], timetableCount: 0 })
       this.loadTimetable()
     }
   },
 
-  refreshWeek(date) {
-    if (!this.data.teacherMode) return
-    this.setData(calendar.buildWeek(this.data.timetable, date))
-  },
-  // 星期栏和课程共用一个横向容器，无需事件同步；时间轴只跟随纵向位置。
-  onVerticalScroll(e) {
-    const offset = -e.detail.scrollTop
-    if (Math.abs(offset - this.data.axisOffset) > 0.5) this.setData({ axisOffset: offset })
-  },
-  previousWeek() { this.shiftWeek(-7) },
-  nextWeek() { this.shiftWeek(7) },
-  shiftWeek(days) { this.refreshWeek(calendar.formatDate(calendar.addDays(calendar.weekStart(this.data.weekStart), days))) },
-  currentWeek() { this.refreshWeek(calendar.formatDate(new Date())) },
-  chooseDate(e) { this.refreshWeek(e.detail.value) },
-  addSchedule() {
-    if (this.data.teacherMode && this._loadedToken === wx.getStorageSync('token')) wx.navigateTo({ url: '/pages/teacher-schedule-edit/teacher-schedule-edit' })
-  },
-  showCourse(e) {
-    if (!this.data.teacherMode || this._loadedToken !== wx.getStorageSync('token')) return
-    const id = String(e.currentTarget.dataset.id)
-    const course = this.data.timetable.find(item => String(item.scheduleId) === id)
-    if (!course) return
-    const date = e.currentTarget.dataset.date
-    wx.showModal({ title: course.courseClassName || '课程详情', confirmText: '修改排课', cancelText: '关闭',
-      success: result => {
-        if (result.confirm && !this._unloaded && this._loadedToken === wx.getStorageSync('token')) {
-          wx.navigateTo({ url: `/pages/teacher-schedule-edit/teacher-schedule-edit?id=${course.scheduleId}` })
-        }
-      },
-      content: [date ? `日期：${date}` : '日期：待配置或已停用', `时间：${course.timeText || '待配置'}`,
-        `授课形式：${course.classMode === '2' ? '一对一' : '班课'}`,
-        `年级／学科：${course.subjectTag || '未配置'}`, `教室：${course.classroomName || '待配置'}`,
-        `校区：${course.campusName || '待配置'}`, `班次：${course.scheduleId}`,
-        `状态：${String(course.status) === '1' ? '已停用' : '正常'}`].join('\n') })
+  redirectTeacher() {
+    const roles = wx.getStorageSync('roles') || []
+    const teacherMode = roles.includes('teacher') && !roles.includes('admin')
+    this.setData({teacherMode})
+    if (!teacherMode) return false
+    this._loadVersion = (this._loadVersion || 0) + 1
+    this.setData({timetable:[],groupedTimetable:[],timetableCount:0,loadSucceeded:false,loading:false})
+    if (!this._redirecting) {
+      this._redirecting = true
+      wx.redirectTo({url:'/pages/teacher-single-transactions/teacher-single-transactions',
+        fail:()=>{if (!this._unloaded) this._redirecting=false}})
+    }
+    return true
   },
 
   onUnload() { this._unloaded = true; this._loadVersion = (this._loadVersion || 0) + 1 },
@@ -83,37 +48,35 @@ Page({
     this.loadTimetable().finally(() => wx.stopPullDownRefresh())
   },
 
+  retryLoad() {
+    if (!this.data.loading) return this.loadTimetable()
+  },
+
   async loadTimetable() {
+    if (this.redirectTeacher()) return
     const version = this._loadVersion = (this._loadVersion || 0) + 1
     const token = wx.getStorageSync('token')
     const current = () => !this._unloaded && version === this._loadVersion && wx.getStorageSync('token') === token
     this._loadedToken = token
-    this.setData({ loading: true, loadError: '' })
-    if (this.data.teacherMode) {
-      this.setData({ timetable: [], timetableCount: 0, showEmpty: false })
-      this.refreshWeek(this.data.weekStart)
-    }
+    this.setData({ loading: true, loadError: '', loadSucceeded: false, timetable: [], groupedTimetable: [],
+      timetableCount: 0, showEmpty: false })
     try {
-      const res = await request({ url: this.data.teacherMode ? '/miniapp/teacher/course/schedules' : '/miniapp/parent/timetable', timeout: 15000 })
+      const res = await request({ url: '/miniapp/parent/timetable', timeout: 15000 })
       if (!current()) return
       const timetable = this.decorateTimetable(res.data || [])
       this.setData({
+        loadSucceeded: true,
         timetable,
         groupedTimetable: this.groupByPeriod(timetable),
         timetableCount: timetable.length,
-        plannedLessonCount: this.data.teacherMode ? timetable.reduce((sum, item) => sum + this.buildDateList(item).length, 0) : 0,
         showEmpty: timetable.length === 0
       })
-      this.refreshWeek(this.data.weekStart)
-      if (this.data.teacherMode && !this._calendarPositioned) {
-        const info = wx.getSystemInfoSync()
-        this.setData({ calendarScrollTop: 8 * 120 * info.windowWidth / 750, axisOffset: -8 * 120 * info.windowWidth / 750 })
-        this._calendarPositioned = true
-      }
     } catch (error) {
       if (current()) {
-        this.setData({ loadError: error.message || '加载失败，请下拉重试', showEmpty: false })
-        wx.showToast({ title: error.message || '加载失败', icon: 'none' })
+        let message = '课表暂时无法加载，请稍后重试。'
+        if (error.network) message = '网络连接失败，请检查网络后重试。'
+        if (Number(error.code) === 403) message = '暂时没有查看课表的权限，请联系管理员。'
+        this.setData({ loadError: message, loadSucceeded: false, showEmpty: false })
       }
     } finally {
       if (current()) this.setData({ loading: false })
@@ -128,7 +91,7 @@ Page({
         ...item,
         viewKey: String(item.enrollmentId || item.scheduleId),
         timeText: this.buildTimeText(item),
-        placeText: item.classroomName || '',
+        placeText: item.lessonLocation || item.classroomName || '',
         subjectTag: this.joinText([item.gradeName, item.subjectName]),
         payText: item.payStatus === '已支付' ? '已支付' : '未支付',
         nextClassDate: next ? next.date : '',
@@ -173,6 +136,7 @@ Page({
 
   // 按上课模式 + 调课表生成全部上课日期
   buildDateList(item) {
+    if (item.classDate) { const date = this.parseDate(item.classDate); return date ? [date] : [] }
     const start = this.parseDate(item.startDate)
     const end = this.parseDate(item.endDate)
     if (!start || !end) return []
@@ -289,6 +253,8 @@ Page({
   async handleCancel(e) {
     if (this.data.teacherMode) return
     const { enrollmentId, courseName, studentName } = e.currentTarget.dataset || {}
+    const record = this.data.timetable.find(item => String(item.enrollmentId) === String(enrollmentId))
+    if (record && record.classDate) { wx.navigateTo({url:'/pages/enrollment/enrollment?courseType=2'}); return }
     if (!enrollmentId) {
       wx.showToast({ title: '报名信息异常', icon: 'none' })
       return
