@@ -32,15 +32,20 @@
         <text class="sheet-title">{{editForm.wifiId ? '编辑WiFi' : '新增WiFi'}}</text>
         <text class="sheet-close" bindtap="closeEdit">取消</text>
       </view>
-      <view class="form-item"><text class="form-label">WiFi名称</text><input class="form-input" data-field="ssid" value="{{editForm.ssid}}" placeholder="如 MingYuan-5G"/></view>
+      <view class="form-item">
+        <text class="form-label">WiFi名称</text>
+        <input class="form-input" data-field="ssid" value="{{editForm.ssid}}" placeholder="如 MingYuan-5G" bindinput="onField"/>
+        <text class="read-wifi" bindtap="readWifi">{{wifiReading ? '读取中…' : '读取当前WiFi'}}</text>
+      </view>
+      <view class="wifi-hint {{connectedSsid ? '' : 'warn'}}" wx:if="{{wifiReading || wifiError || connectedSsid}}">{{wifiReading ? '正在识别手机当前连接的WiFi…' : (connectedSsid ? ('已识别当前WiFi：' + connectedSsid + (connectedBssid ? '（' + connectedBssid + '）' : '')) : wifiError)}}</view>
       <view class="form-item">
         <text class="form-label">所属校区</text>
         <picker class="form-picker" range="{{campusOptions}}" value="{{editForm.campusIndex}}" bindchange="onCampus">
           <view class="picker-val">{{campusOptions[editForm.campusIndex]}}</view>
         </picker>
       </view>
-      <view class="form-item"><text class="form-label">BSSID</text><input class="form-input" data-field="bssid" value="{{editForm.bssid}}" placeholder="路由器MAC，可不填"/></view>
-      <view class="form-item"><text class="form-label">备注</text><input class="form-input" data-field="remark" value="{{editForm.remark}}" placeholder="选填"/></view>
+      <view class="form-item"><text class="form-label">BSSID</text><input class="form-input" data-field="bssid" value="{{editForm.bssid}}" placeholder="路由器MAC，可不填" bindinput="onField"/></view>
+      <view class="form-item"><text class="form-label">备注</text><input class="form-input" data-field="remark" value="{{editForm.remark}}" placeholder="选填" bindinput="onField"/></view>
       <button class="btn-primary" bindtap="save">保存</button>
     </view>
   </view>
