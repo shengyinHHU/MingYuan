@@ -1,6 +1,7 @@
 package com.ruoyi.system.service;
 
 import java.util.List;
+import java.util.Map;
 import com.ruoyi.system.domain.EduCourseSchedule;
 
 /**
@@ -26,6 +27,13 @@ public interface IEduCourseScheduleService
      * @return 课程排课集合
      */
     public List<EduCourseSchedule> selectEduCourseScheduleList(EduCourseSchedule eduCourseSchedule);
+
+    /**
+     * 数据中实际出现过的「学期-期次」组合（含导入写入的占位值），供课表维度下拉补齐。
+     *
+     * @return [{termName, periodName}]
+     */
+    public List<Map<String, Object>> selectTermPeriodPairs();
 
     /**
      * 新增课程排课
@@ -63,4 +71,17 @@ public interface IEduCourseScheduleService
      * 可视化课表：网格查询
      */
     public List<EduCourseSchedule> selectTimetableGrid(EduCourseSchedule eduCourseSchedule);
+
+    /**
+     * 可视化课表：一次性交换两个教室在指定「年份 + 学期 + 期次」下的全部排课。
+     * 只对调 classroom_id，其余字段不动；整列对调不会改变每格课程数量，因此不会产生新冲突。
+     *
+     * @param courseYear   课程年份（可空）
+     * @param termName     学期（必填）
+     * @param periodName   期次（必填）
+     * @param classroomIdA 教室 A
+     * @param classroomIdB 教室 B
+     * @return 受影响的排课条数
+     */
+    public int swapClassrooms(Long courseYear, String termName, String periodName, Long classroomIdA, Long classroomIdB);
 }

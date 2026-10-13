@@ -38,8 +38,8 @@ public class EduCourseSchedule extends BaseEntity
     @Excel(name = "课程年份")
     private Long courseYear;
 
-    /** 学期（暑假/秋季） */
-    @Excel(name = "学期", readConverterExp = "暑=假/秋季")
+    /** 学期（暑假/秋季/寒假/春季） */
+    @Excel(name = "学期")
     private String termName;
 
     /** 期次或上课日 */

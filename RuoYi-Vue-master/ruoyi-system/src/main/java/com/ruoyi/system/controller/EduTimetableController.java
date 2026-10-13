@@ -18,6 +18,7 @@ import com.ruoyi.common.enums.BusinessType;
 import com.ruoyi.common.exception.ServiceException;
 import com.ruoyi.common.utils.SecurityUtils;
 import com.ruoyi.common.utils.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
 import com.ruoyi.system.domain.EduClassroom;
 import com.ruoyi.system.domain.EduCourseSchedule;
 import com.ruoyi.system.service.IEduClassroomService;
@@ -25,6 +26,7 @@ import com.ruoyi.system.service.IEduCourseScheduleService;
 import com.ruoyi.system.service.ISysDictDataService;
 import com.ruoyi.system.service.ISysRoleService;
 import com.ruoyi.system.service.ISysUserService;
+import com.ruoyi.system.timetable.TimetableImportService;
 
 /**
  * 可视化课表 Controller（矩阵式：纵向教室 × 横向时段）
@@ -50,6 +52,9 @@ public class EduTimetableController extends BaseController
     @Autowired
     private ISysRoleService roleService;
 
+    @Autowired
+    private TimetableImportService timetableImportService;
+
     /**
      * 维度数据：返回页面初始化需要的下拉框 + 固定时段 + 校区分组教室
      * 菜单权限：system:courseschedule:list（与列表页共用同一权限标识，减少额外菜单配置）
@@ -61,8 +66,31 @@ public class EduTimetableController extends BaseController
     {
         Map<String, Object> data = new HashMap<>();
 
-        // 1. 学期字典
-        data.put("terms",       dictLabelValueList("edu_term"));
+        // 1. 学期字典 + 数据里实际出现过的学期/期次（导入未识别时写入的占位值不在字典里，必须补齐，
+        //    否则「未识别学期 / 未识别期次 / 未识别时段」的排课在课表上无法查看）
+        List<Map<String, String>> terms = dictLabelValueList("edu_term");
+        Map<String, List<String>> periodMap = new LinkedHashMap<>();
+        Set<String> knownTerms = new LinkedHashSet<>();
+        terms.forEach(m -> knownTerms.add(m.get("value")));
+        for (Map<String, Object> p : scheduleService.selectTermPeriodPairs())
+        {
+            String t = p.get("termName") == null ? null : String.valueOf(p.get("termName")).trim();
+            if (t == null || t.isEmpty()) continue;
+            List<String> ps = periodMap.computeIfAbsent(t, k -> new ArrayList<>());
+            String pv = p.get("periodName") == null ? null : String.valueOf(p.get("periodName")).trim();
+            if (pv != null && !pv.isEmpty() && !ps.contains(pv)) ps.add(pv);
+            if (knownTerms.add(t))
+            {
+                Map<String, String> m = new LinkedHashMap<>();
+                m.put("label", t);
+                m.put("value", t);
+                m.put("isDefault", "N");
+                m.put("extra", "Y");
+                terms.add(m);
+            }
+        }
+        data.put("terms", terms);
+        data.put("periodMap", periodMap);
         // 2. 期次字典
         data.put("periods",     dictLabelValueList("edu_term_period"));
         // 3. 时段字典（Excel 对齐的 6 个固定时段）
@@ -164,12 +192,13 @@ public class EduTimetableController extends BaseController
 
         List<EduCourseSchedule> rows = scheduleService.selectTimetableGrid(q);
         Map<String, Object> data = new HashMap<>();
-        // 前端用 "classroomId@timeSlot" 做 key 快速索引
-        Map<String, EduCourseSchedule> map = new LinkedHashMap<>();
+        // 前端用 "classroomId@timeSlot" 做 key 快速索引；同一格允许多条排课（冲突由前端红色感叹号提示）
+        // 教室或时段缺失的排课也能取回：缺失部分用 "-" 占位（前端分别落在「未指定教室」列 / 「未指定时段」行）
+        Map<String, List<EduCourseSchedule>> map = new LinkedHashMap<>();
         for (EduCourseSchedule s : rows) {
-            if (s.getClassroomId() != null && StringUtils.isNotEmpty(s.getTimeSlot())) {
-                map.put(s.getClassroomId() + "@" + s.getTimeSlot(), s);
-            }
+            String cid = s.getClassroomId() == null ? "-" : String.valueOf(s.getClassroomId());
+            String slot = StringUtils.isEmpty(s.getTimeSlot()) ? "-" : s.getTimeSlot();
+            map.computeIfAbsent(cid + "@" + slot, k -> new ArrayList<>()).add(s);
         }
         data.put("rows", rows);
         data.put("cellMap", map);
@@ -199,7 +228,7 @@ public class EduTimetableController extends BaseController
         checkEditablePermission(schedule, null, true);
         int rows = scheduleService.insertEduCourseSchedule(schedule);
         if (rows == 0) {
-            throw new ServiceException("新增排课失败，请检查参数或唯一性约束（同教室+同学期+同期次+同时段已排课）");
+            throw new ServiceException("新增排课失败，请检查必填参数（同教室同时段已有排课现在允许并存，会在课表上用红色感叹号提示冲突）");
         }
         return success(schedule.getScheduleId());
     }
@@ -248,6 +277,95 @@ public class EduTimetableController extends BaseController
         }
         if (allowed.isEmpty()) return success(0);
         return toAjax(scheduleService.deleteEduCourseScheduleByScheduleIds(allowed.toArray(new Long[0])));
+    }
+
+    /**
+     * 可视化课表：一次性交换两个教室在指定「年份 + 学期 + 期次」下的全部课程。
+     *
+     * 典型场景：学校原始课表里两间教室整列录反了，逐格改太慢，这里整列对调一次搞定。
+     * 只改 classroom_id（A↔B），时段/教师/课程等一律不动 —— 整列对调不改变每格课程数，
+     * 因此不会凭空产生冲突。属于批量数据操作，仅管理员或有编辑权限者可用。
+     *
+     * 请求体：{ courseYear, termName, periodName, classroomIdA, classroomIdB }
+     * 返回：{ swapped: 受影响条数, classroomIdA, classroomIdB, termName, periodName }
+     */
+    @PreAuthorize("@ss.hasPermi('system:courseschedule:edit') or @ss.hasRole('admin')")
+    @Log(title = "可视化课表-交换教室列", businessType = BusinessType.UPDATE)
+    @PostMapping("/swapClassrooms")
+    public AjaxResult swapClassrooms(@RequestBody Map<String, Object> body)
+    {
+        Long courseYear   = toLong(body.get("courseYear"));
+        String termName   = trim(body.get("termName"));
+        String periodName = trim(body.get("periodName"));
+        Long classroomIdA = toLong(body.get("classroomIdA"));
+        Long classroomIdB = toLong(body.get("classroomIdB"));
+
+        int swapped = scheduleService.swapClassrooms(courseYear, termName, periodName, classroomIdA, classroomIdB);
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("swapped", swapped);
+        data.put("courseYear", courseYear);
+        data.put("termName", termName);
+        data.put("periodName", periodName);
+        data.put("classroomIdA", classroomIdA);
+        data.put("classroomIdB", classroomIdB);
+        return success(data);
+    }
+
+    /** 兼容前端 JSON 里数字可能是 Number 或 String 的情况 */
+    private static Long toLong(Object v)
+    {
+        if (v == null) return null;
+        if (v instanceof Number) return ((Number) v).longValue();
+        String s = String.valueOf(v).trim();
+        if (s.isEmpty()) return null;
+        try { return Long.valueOf(s); } catch (NumberFormatException e) { return null; }
+    }
+
+    private static String trim(Object v)
+    {
+        return v == null ? "" : String.valueOf(v).trim();
+    }
+
+    /**
+     * 课表导入-预览：上传矩阵式课表 xlsx，解析并匹配教室/教师/年级/科目/班型，不落库
+     */
+    @PreAuthorize("@ss.hasPermi('system:courseschedule:add') or @ss.hasRole('admin')")
+    @Log(title = "可视化课表-导入预览", businessType = BusinessType.IMPORT)
+    @PostMapping("/importPreview")
+    public AjaxResult importPreview(@RequestParam("file") MultipartFile file,
+                                    @RequestParam(value = "courseYear", required = false) Long courseYear)
+    {
+        if (courseYear == null) courseYear = (long) Calendar.getInstance().get(Calendar.YEAR);
+        return success(timetableImportService.preview(file, courseYear));
+    }
+
+    /**
+     * 课表导入-确认：将预览行落库；updateSupport=true 时同教室+同学期+同期次+同时段覆盖更新
+     */
+    @PreAuthorize("@ss.hasPermi('system:courseschedule:add') or @ss.hasRole('admin')")
+    @Log(title = "可视化课表-导入", businessType = BusinessType.IMPORT)
+    @PostMapping("/importConfirm")
+    public AjaxResult importConfirm(@RequestBody Map<String, Object> body)
+    {
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) body.get("rows");
+        boolean updateSupport = Boolean.TRUE.equals(body.get("updateSupport"));
+        return success(timetableImportService.confirm(rows, updateSupport, SecurityUtils.getUsername()));
+    }
+
+    /**
+     * 课表导入-一键：上传矩阵式 xlsx，自动同步教师/教室/字典并落库（整体事务）
+     */
+    @PreAuthorize("@ss.hasPermi('system:courseschedule:add') or @ss.hasRole('admin')")
+    @Log(title = "可视化课表-一键导入", businessType = BusinessType.IMPORT)
+    @PostMapping("/importOneClick")
+    public AjaxResult importOneClick(@RequestParam("file") MultipartFile file,
+                                     @RequestParam(value = "courseYear", required = false) Long courseYear,
+                                     @RequestParam(value = "updateSupport", required = false, defaultValue = "true") boolean updateSupport)
+    {
+        if (courseYear == null) courseYear = (long) Calendar.getInstance().get(Calendar.YEAR);
+        return success(timetableImportService.oneClickImport(file, courseYear, updateSupport, SecurityUtils.getUsername()));
     }
 
     // =================================================================

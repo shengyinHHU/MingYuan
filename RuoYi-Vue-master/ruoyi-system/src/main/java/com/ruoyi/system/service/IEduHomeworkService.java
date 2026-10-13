@@ -18,6 +18,7 @@ public interface IEduHomeworkService
     List<java.util.Map<String, Object>> submissionStats(Long homeworkId);
     int review(EduHomeworkSubmission submission);
     int close(Long homeworkId);
+    int updateDeadline(Long homeworkId, String deadline);
     List<EduHomework> adminList(EduHomework query);
     int archive(Long homeworkId, boolean archive);
     int delete(Long homeworkId);

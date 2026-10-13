@@ -78,7 +78,7 @@ public class EduEnrollmentServiceImpl implements IEduEnrollmentService
         FinanceEnrollmentGuard.prepareNew(eduEnrollment);
         eduEnrollment.setCreateBy(SecurityUtils.getUsername());
         if(parentMapper.countActiveEnrollment(eduEnrollment.getScheduleId(),eduEnrollment.getParentId(),eduEnrollment.getStudentName(),eduEnrollment.getLessonAccountId())>0) throw new ServiceException("该孩子已报名此课程");
-        if(parentMapper.increaseScheduleEnrollment(eduEnrollment.getScheduleId())==0) throw new ServiceException("课程未开放或名额已满");
+        if(parentMapper.increaseScheduleEnrollment(eduEnrollment.getScheduleId())==0) throw new ServiceException("课程不可报名");
         eduEnrollment.setEnrollmentStatus("1"); eduEnrollment.setPayStatus("未支付"); eduEnrollment.setDelFlag("0"); eduEnrollment.setStatus("0");
         eduEnrollment.setCreateTime(DateUtils.getNowDate());
         int rows=eduEnrollmentMapper.insertEduEnrollment(eduEnrollment);

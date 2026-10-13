@@ -46,9 +46,25 @@ public class EduCourseScheduleServiceImpl implements IEduCourseScheduleService {
         scope(query);
         return eduCourseScheduleMapper.selectEduCourseScheduleList(query);
     }
+    @Override public List<Map<String, Object>> selectTermPeriodPairs() {
+        return eduCourseScheduleMapper.selectTermPeriodPairs();
+    }
     @Override public List<EduCourseSchedule> selectTimetableGrid(EduCourseSchedule query) {
         scope(query);
         return eduCourseScheduleMapper.selectTimetableGrid(query);
+    }
+
+    /**
+     * 一次性交换两个教室在「年份 + 学期 + 期次」下的全部排课（只对调 classroom_id）。
+     * 教师身份不允许做整列交换：会牵动其他教师的课，因此仅管理员/拥有编辑权限者可用（Controller 已拦截）。
+     */
+    @Override @Transactional(rollbackFor = Exception.class)
+    public int swapClassrooms(Long courseYear, String termName, String periodName, Long classroomIdA, Long classroomIdB) {
+        require(classroomIdA != null && classroomIdB != null, "请选择要交换的两个教室");
+        require(!Objects.equals(classroomIdA, classroomIdB), "两个教室不能相同");
+        require(!blank(termName) && !blank(periodName), "请先选择学期和期次");
+        return eduCourseScheduleMapper.swapClassroom(courseYear, termName, periodName,
+                classroomIdA, classroomIdB, SecurityUtils.getUsername());
     }
 
     @Override @Transactional(rollbackFor = Exception.class)
@@ -180,22 +196,30 @@ public class EduCourseScheduleServiceImpl implements IEduCourseScheduleService {
             require(List.of("WEEKLY", "DAILY_5_1").contains(s.getClassPattern() == null ? "" : s.getClassPattern()), "请明确上课模式");
             if ("WEEKLY".equals(s.getClassPattern())) require(ScheduleCalendar.weekday(s.getPeriodName()) > 0, "每周排课需明确周一至周日的上课星期");
         }
-        Map<String,Object> classroom = s.getClassroomId() == null ? Map.of("status","0") : db.one("SELECT status,capacity FROM edu_classroom WHERE classroom_id=?", s.getClassroomId());
+        Map<String,Object> classroom = s.getClassroomId() == null ? Map.of("status","0") : db.one("SELECT status FROM edu_classroom WHERE classroom_id=?", s.getClassroomId());
         if ("0".equals(s.getStatus())) require("0".equals(classroom.get("status")), "所选教室已停用");
         long enrolled = s.getScheduleId() == null ? 0 : db.rows("SELECT enrollment_id FROM edu_enrollment WHERE schedule_id=? AND del_flag='0' AND class_date IS NULL AND enrollment_status NOT IN('2','3','已取消') FOR UPDATE", s.getScheduleId()).size();
-        Number capacity = (Number) classroom.get("capacity");
-        if ("0".equals(s.getStatus()) && "2".equals(s.getClassMode())) require(capacity == null || capacity.longValue() > 0, "教室至少需容纳1名学员");
-        require(capacity == null || enrolled <= capacity.longValue(), "所选教室容量少于当前报名人数");
+        // 教室容量不作为排课硬约束（报名不按教室容量卡名额），仅保留一对一「最多 1 名有效学员」的校验。
         if ("2".equals(s.getClassMode())) require(enrolled <= 1, "一对一课程不能保留多名有效报名学员");
     }
     private void checkConflicts(EduCourseSchedule input) {
         long id = input.getScheduleId() == null ? -1 : input.getScheduleId();
         long duplicates = db.jdbc().queryForObject("SELECT COUNT(*) FROM edu_course_schedule WHERE schedule_id<>? AND schedule_code=?", Long.class, id, input.getScheduleCode());
         require(duplicates == 0, "排课编码已存在");
-        long cells = "2".equals(input.getClassMode()) ? 0 : db.jdbc().queryForObject("SELECT COUNT(*) FROM edu_course_schedule WHERE schedule_id<>? AND classroom_id=? AND course_year=? AND term_name=? AND period_name=? AND time_slot=? AND del_flag='0' AND class_mode<>'2'", Long.class,
-            id, input.getClassroomId(), input.getCourseYear(), input.getTermName(), input.getPeriodName(), input.getTimeSlot());
-        require(cells == 0, "该教室在同年、学期、期次、时段已有排课");
-        availability.check(input);
+        // 说明：自 2026-10-12 起，同一教室+同年+学期+期次+时段 允许存在多条排课（不再拒绝），
+        // 由可视化课表前端以红色感叹号提示冲突（数据库唯一索引 uk_course_timetable_cell 已降级为普通索引）。
+        if (!"0".equals(input.getStatus())) return;
+        SortedSet<LocalDate> dates = ScheduleCalendar.dates(ScheduleCalendar.date(input.getStartDate()), ScheduleCalendar.date(input.getEndDate()), input.getClassPattern(), input.getPeriodName(), input.getScheduleId() == null ? List.of() : parentMapper.selectScheduleAdjustments(input.getScheduleId()));
+        if (dates.isEmpty()) return;
+        // 教室维度的重复排课同样允许（前端提示冲突），这里只保留「同一教师同一时间被占用」的硬校验。
+        var candidates = db.rows("SELECT schedule_id,start_time,end_time,start_date,end_date,class_pattern,period_name,course_class_name FROM edu_course_schedule WHERE schedule_id<>? AND del_flag='0' AND status='0' AND teacher_id=? FOR UPDATE", id, input.getTeacherId());
+        for (var other : candidates) {
+            if (other.get("startTime") == null || other.get("endTime") == null) continue;
+            LocalTime start = LocalTime.parse(String.valueOf(other.get("startTime"))), end = LocalTime.parse(String.valueOf(other.get("endTime")));
+            if (!input.getStartTime().isBefore(end) || !start.isBefore(input.getEndTime())) continue;
+            var otherDates = ScheduleCalendar.dates(ScheduleCalendar.date(other.get("startDate")), ScheduleCalendar.date(other.get("endDate")), (String) other.get("classPattern"), (String) other.get("periodName"), parentMapper.selectScheduleAdjustments(Long.valueOf(String.valueOf(other.get("scheduleId")))));
+            for (LocalDate date : dates) require(!otherDates.contains(date), date + " 该教师时间已被其他排课占用");
+        }
     }
     private boolean hasAttendance(Long id) {
         return !db.rows("SELECT sign_in_id FROM edu_class_sign_in WHERE schedule_id=? FOR UPDATE", id).isEmpty()

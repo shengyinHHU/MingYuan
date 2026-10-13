@@ -1,6 +1,7 @@
 package com.ruoyi.system.service.impl;
 
 import java.util.List;
+import java.util.Map;
 import com.ruoyi.common.utils.DateUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -48,6 +49,17 @@ public class EduClassroomServiceImpl implements IEduClassroomService
     }
 
     /**
+     * 校区分类统计（教室管理页的校区分类用）
+     *
+     * @return [{campusName, roomCount}]
+     */
+    @Override
+    public List<Map<String, Object>> selectCampusStats()
+    {
+        return eduClassroomMapper.selectCampusStats();
+    }
+
+    /**
      * 新增教室信息
      *
      * @param eduClassroom 教室信息
@@ -72,10 +84,7 @@ public class EduClassroomServiceImpl implements IEduClassroomService
     {
         db.one("SELECT classroom_id FROM edu_classroom WHERE classroom_id=? FOR UPDATE",eduClassroom.getClassroomId());
         if ("1".equals(eduClassroom.getStatus())) requireNoFuture(eduClassroom.getClassroomId());
-        if (eduClassroom.getCapacity() != null) {
-            long largest = db.jdbc().queryForObject("SELECT COALESCE(MAX(enrolled_count),0) FROM edu_course_schedule WHERE classroom_id=? AND del_flag='0' AND status='0'",Long.class,eduClassroom.getClassroomId());
-            if (eduClassroom.getCapacity() < Math.max(1,largest)) throw new com.ruoyi.common.exception.ServiceException("教室容量不能小于当前课程报名人数，且至少可容纳1人");
-        }
+        // 教室容量（capacity）已随「教室精简」从 edu_classroom 移除，报名名额不限，故不再做容量校验。
         eduClassroom.setUpdateTime(DateUtils.getNowDate());
         return eduClassroomMapper.updateEduClassroom(eduClassroom);
     }

@@ -13,7 +13,10 @@ public interface EduHomeworkMapper
     List<EduHomework> selectAdminList(EduHomework query);
     int insertHomework(EduHomework homework);
     int updateHomework(EduHomework homework);
+    int updateHomeworkContent(EduHomework homework);
+    int countSubmissions(@Param("homeworkId") Long homeworkId);
     int updateStatus(@Param("homeworkId") Long homeworkId, @Param("status") String status, @Param("user") String user);
+    int updateDeadline(@Param("homeworkId") Long homeworkId, @Param("deadline") java.util.Date deadline, @Param("user") String user);
     int updateArchive(@Param("homeworkId") Long homeworkId, @Param("archiveFlag") String archiveFlag, @Param("user") String user);
     int deleteHomework(Long homeworkId);
     int insertQuestion(EduHomeworkQuestion question);
