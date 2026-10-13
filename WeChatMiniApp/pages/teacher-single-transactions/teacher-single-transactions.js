@@ -1,7 +1,7 @@
 const { request } = require('../../utils/request')
 const calendar = require('../../utils/course-calendar')
 const courseState = require('../../utils/teacher-course-state')
-const ACTIONS = { SUBMIT: '提交报名', CONFIRM: '确认接课', REJECT: '拒绝报名', REQUEST_CANCEL: '申请取消', APPROVE_CANCEL: '同意取消', REJECT_CANCEL: '拒绝取消' }
+const ACTIONS = { SUBMIT: '提交报名', CONFIRM: '确认接课', REJECT: '拒绝报名', REQUEST_CANCEL: '申请取消', APPROVE_CANCEL: '同意取消', REJECT_CANCEL: '拒绝取消',COMPLETE:'确认完成',PAYMENT_STATUS:'付款登记' }
 const TAB_KEYS = ['calendar', 'courses', 'bookings', 'records']
 
 Page({
@@ -11,7 +11,7 @@ Page({
     timetable: [], visibleCourses: [], rows: [], courseCount: 0, plannedLessonCount: 0, pendingCount: 0, pendingBadge: '',
     calendarFilterIndex: 0, calendarFilterOptions: ['全部课程', '班课', '一对一'],
     weekStart: '', weekLabel: '', weekDays: [], hours: [], pendingCourses: [], stoppedCourses: [],
-    weekLessonCount: 0, overlapCount: 0, calendarScrollTop: 0, axisOffset: 0,
+    weekLessonCount: 0, overlapCount: 0, calendarTopAnchor: '',
     focusedId: '', focusedScheduleId: '', focusedDate: '',
     showCourseSheet: false, selectedCourse: null, selectedDate: '', selectedLessons: []
   },
@@ -58,11 +58,13 @@ Page({
     this._backgroundLoading = background
     if (!background) { this.clearView(); this.setData({loading:true}) }
     try {
-      const [courses, transactions] = await Promise.all([
+      const [courses, transactions, dimensions] = await Promise.all([
         request({url:'/miniapp/teacher/course/schedules',timeout:15000}),
-        request({url:'/miniapp/teacher/course/single/transactions',timeout:15000})
+        request({url:'/miniapp/teacher/course/single/transactions',timeout:15000}),
+        request({url:'/system/courseTimetable/dimensions',timeout:15000})
       ])
       if (!this.current() || version !== this._version) return
+      this._timeSlots=(dimensions.data || {}).timeSlots || []
       this._courses = (courses.data || []).map(course => {
         const expanded = calendar.expandCourse(course)
         return {...course,classMode:String(course.classMode),modeText:String(course.classMode)==='2' ? '一对一' : '班课',timeText:this.clockText(course),placeText:course.lessonLocation || course.classroomName || '地点待配置',
@@ -73,7 +75,7 @@ Page({
       this._rows = (transactions.data || []).map(row => {
         const classDate = String(row.classDate || '').slice(0,10)
         const state = calendar.singleLessonState({},row,classDate)
-        return {...row,...state,...courseState.bookingFlags(row),classDate,timeText:this.clockText(row)}
+        return {...row,...state,...courseState.bookingFlags(row),classDate,timeText:this.clockText(row),canComplete:[true,1,'1'].includes(row.canComplete),settlementText:row.settlementMethod==='P' ? `课包 · ${row.lessonCredits || '待核对'}次额度` : `单次付费 · ${({0:'未支付',1:'已支付',2:'已退款'})[row.payStatus] || row.payStatus || '未支付'}`}
       })
       const pendingCount = courseState.pendingCount(this._rows)
       this.setData({loadSucceeded:true,refreshError:'',timetable:this._courses,courseCount:this._courses.length,
@@ -84,11 +86,6 @@ Page({
         const id = this.data.selectedCourse.scheduleId
         if (this._courses.some(course=>String(course.scheduleId)===String(id))) this.showCourse({currentTarget:{dataset:{id,date:this.data.selectedDate}}})
         else this.closeCourse()
-      }
-      if (!this._positioned) {
-        const width = wx.getSystemInfoSync().windowWidth
-        this.setData({calendarScrollTop:8*120*width/750,axisOffset:-8*120*width/750})
-        this._positioned = true
       }
     } catch (error) {
       if (this.current() && version===this._version) {
@@ -117,23 +114,21 @@ Page({
   refreshWeek(date) {
     const filter = this.data.calendarFilterIndex
     const courses = (this._courses || []).filter(course=>filter===0 || course.classMode===String(filter))
-    this.setData({...calendar.buildWeek(courses,date),visibleCourses:courses})
+    const week=calendar.buildWeek(courses,date,this._timeSlots),axisKey=JSON.stringify(week.calendarTimeline)
+    if(this._axisKey!==axisKey) { this._axisKey=axisKey; this._axisRevision=(this._axisRevision || 0)+1; week.calendarTopAnchor='calendar-top-'+this._axisRevision }
+    this.setData({...week,visibleCourses:courses})
   },
   onCalendarFilterChange(e) {
     const index = Number(e.detail.value)
     if (!this.current() || this.data.submitting || !Number.isInteger(index) || index<0 || index>2) return
     this.setData({calendarFilterIndex:index}); this.refreshWeek(this.data.weekStart)
   },
-  onVerticalScroll(e) {
-    const offset = -e.detail.scrollTop
-    if (Math.abs(offset-this.data.axisOffset)>0.5) this.setData({axisOffset:offset})
-  },
   previousWeek() { this.shiftWeek(-7) },
   nextWeek() { this.shiftWeek(7) },
   shiftWeek(days) { this.refreshWeek(calendar.formatDate(calendar.addDays(calendar.weekStart(this.data.weekStart),days))) },
   currentWeek() { this.refreshWeek(calendar.formatDate(new Date())) },
   chooseDate(e) { this.refreshWeek(e.detail.value) },
-  addSchedule() { if (this.ready()) wx.navigateTo({url:'/pages/teacher-schedule-edit/teacher-schedule-edit'}) },
+  addSchedule() { if (this.ready()) wx.navigateTo({url:'/pages/teacher-schedule-create/teacher-schedule-create'}) },
   editSchedule(e) {
     if (!this.ready()) return
     const id = String(e.currentTarget.dataset.id)
@@ -197,6 +192,17 @@ Page({
       if (!this.current()) return
       wx.showModal({title:'报名处理历史',showCancel:false,content:(res.data || []).map(row=>`${row.createTime} ${ACTIONS[row.action] || row.action} ${row.actorName || ''} ${row.reason || ''}`).join('\n') || '暂无处理历史'})
     } catch (error) { if (this.current()) wx.showToast({title:'历史记录暂时无法加载。',icon:'none'}) }
+  },
+  async complete(e) {
+    if(!this.ready())return
+    const id=e.currentTarget.dataset.id,row=this._rows.find(r=>String(r.enrollmentId)===String(id))
+    if(!row || !row.canComplete)return
+    const result=await new Promise(resolve=>wx.showModal({title:'确认本次课程完成？',content:row.settlementMethod==='P' ? `将正式消耗暂占的${row.lessonCredits}次课包额度，保留签到和消耗记录。` : '记录本次课程完成，不扣课包额度。',success:resolve,fail:()=>resolve({confirm:false})}))
+    if(!result.confirm || !this.ready())return
+    this.setData({submitting:true})
+    try{await request({url:`/miniapp/teacher/course/single/${id}/complete`,method:'POST'});if(this.current()){getCurrentPages().forEach(p=>{p._scheduleDirty=true});await this.load()}}
+    catch(error){if(this.current())wx.showToast({title:error.applicationRejected?error.message:'完成状态未确认，请刷新核对',icon:'none'})}
+    finally{if(this.current())this.setData({submitting:false})}
   },
   async attendance(e) {
     if (!this.ready()) return

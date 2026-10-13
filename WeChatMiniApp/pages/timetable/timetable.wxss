@@ -266,6 +266,7 @@ page {
 .pending-reason { color: #a66b12; }
 
 .add-schedule { margin-bottom: 18rpx; }
+.cancel-pending-label { margin-left:auto; flex-shrink:0; color:#8c5c05; font-size:23rpx; }
 
 .lesson-block.one-to-one.empty { background: #e7e9ed; border-left-color: #8c939e; color: #4b5260; margin: 0; text-align: left; box-shadow: none; }
 .lesson-block.one-to-one.pending { background: #fff0bd; border-left-color: #cc9400; color: #745600; }

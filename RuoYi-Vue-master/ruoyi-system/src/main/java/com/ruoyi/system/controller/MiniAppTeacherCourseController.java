@@ -31,6 +31,7 @@ public class MiniAppTeacherCourseController extends BaseController
     @Autowired private IEduEnrollmentService enrollmentService;
     @Autowired private IEduCourseScheduleService scheduleService;
     @Autowired private com.ruoyi.system.service.OneToOneEnrollmentService singleService;
+    @Autowired private com.ruoyi.system.service.ScheduleAvailabilityService availability;
 
     @GetMapping("/schedules")
     public AjaxResult schedules()
@@ -55,7 +56,7 @@ public class MiniAppTeacherCourseController extends BaseController
     @Log(title = "教师新增排课", businessType = BusinessType.INSERT)
     public AjaxResult add(@RequestBody com.ruoyi.system.domain.TeacherOneToOneDraft draft)
     {
-        EduCourseSchedule input = draft.toSchedule(singleService.subject(SecurityUtils.getUserId()));
+        EduCourseSchedule input = draft.toSchedule(singleService.subject(SecurityUtils.getUserId()),availability.slot(draft.timeSlot));
         fixedTeacher(input);
         scheduleService.insertEduCourseSchedule(input);
         return success(input.getScheduleId());
@@ -83,6 +84,12 @@ public class MiniAppTeacherCourseController extends BaseController
     @GetMapping("/profile")
     public AjaxResult profile() { return success(singleService.profile(SecurityUtils.getUserId())); }
 
+    @GetMapping("/availability")
+    public AjaxResult availability(@RequestParam java.time.LocalDate date,@RequestParam(required=false) Long excludeId) {
+        if (excludeId != null) ownSchedule(excludeId);
+        return success(availability.week(SecurityUtils.getUserId(),date,excludeId));
+    }
+
     @GetMapping("/single/transactions")
     public AjaxResult transactions() { return success(singleService.transactions()); }
 
@@ -93,6 +100,10 @@ public class MiniAppTeacherCourseController extends BaseController
 
     @GetMapping("/single/{id}/history")
     public AjaxResult history(@PathVariable Long id) { return success(singleService.history(id,true)); }
+
+    @PostMapping("/single/{id}/complete")
+    @Log(title="完成一对一课程",businessType=BusinessType.UPDATE)
+    public AjaxResult complete(@PathVariable Long id) { int count=singleService.complete(id); return AjaxResult.success(count == 0 ? "课程已完成" : "课程完成",count); }
 
     @GetMapping("/students")
     public TableDataInfo students(@RequestParam(required = false) Long scheduleId,

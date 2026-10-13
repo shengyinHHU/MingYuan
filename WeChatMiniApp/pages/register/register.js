@@ -11,7 +11,6 @@ Page({
   data: {
     submitting: false,
     devRole: 'parent',
-    selectMode: '',
     teachers: [],
     teacherOptions: [{ label: '请选择教师' }],
     teachersLoading: false,
@@ -19,27 +18,16 @@ Page({
     teacherIndex: 0,
     teacherLabel: '',
     devTeacherId: '',
-    parents: [],
-    parentOptions: [{ label: '请选择家长' }],
-    parentsLoading: false,
-    parentError: '',
-    parentIndex: 0,
-    parentLabel: '',
-    devParentId: '',
     devRoles
   },
 
   onLoad(options = {}) {
     this._unloaded = false
-    // 从首页「切换家长 / 切换教师」进入时携带选择标记，此时即使已有 token 也停留在本页
-    this._selectMode = options.selectTeacher === '1' ? 'teacher'
-      : (options.selectParent === '1' ? 'parent' : '')
-    if (wx.getStorageSync('token') && !this._selectMode) {
+    if (wx.getStorageSync('token') && options.selectTeacher !== '1') {
       wx.reLaunch({ url: '/pages/index/index' })
       return
     }
-    this.setData({ selectMode: this._selectMode })
-    const storedRole = this._selectMode || wx.getStorageSync('devRole') || 'parent'
+    const storedRole = options.selectTeacher === '1' ? 'teacher' : (wx.getStorageSync('devRole') || 'parent')
     this.setDevRole(storedRole)
   },
 
@@ -62,9 +50,7 @@ Page({
       }))
     })
     wx.setStorageSync('devRole', devRole)
-    // 与教师端一致：选中「家长」即加载家长列表，登录页也能直接切换家长
     if (devRole === 'teacher') this.loadTeachers()
-    if (devRole === 'parent') this.loadParents()
   },
 
   async loadTeachers() {
@@ -95,34 +81,6 @@ Page({
     }
   },
 
-  async loadParents() {
-    if (this.data.parentsLoading || this.data.submitting) return
-    this.setData({ parentsLoading: true, parentError: '' })
-    try {
-      const result = await request({ url: '/miniapp/dev/parents', timeout: 20000 })
-      if (this._unloaded) return
-      const parents = (result.data || []).map((parent) => ({
-        ...parent,
-        label: `${parent.name}（${parent.phone || parent.userName}）`
-      }))
-      const selected = parents.find((parent) => String(parent.userId) === this.data.devParentId)
-      const parentIndex = selected ? parents.indexOf(selected) + 1 : 0
-      this.setData({
-        parents,
-        parentOptions: [{ label: '请选择家长' }, ...parents],
-        parentIndex,
-        parentLabel: selected ? selected.label : '',
-        devParentId: selected ? String(selected.userId) : '',
-        parentError: parents.length ? '' : '暂无可用家长账号'
-      })
-    } catch (error) {
-      if (this._unloaded) return
-      this.setData({ parents: [], parentOptions: [{ label: '请选择家长' }], parentIndex: 0, parentLabel: '', devParentId: '', parentError: error.message || '家长列表加载失败' })
-    } finally {
-      if (!this._unloaded) this.setData({ parentsLoading: false })
-    }
-  },
-
   chooseTeacher(e) {
     if (this.data.submitting || this.data.teachersLoading) return
     const teacherIndex = Number(e.detail.value)
@@ -133,18 +91,6 @@ Page({
     const teacher = this.data.teachers[teacherIndex - 1]
     if (!teacher) return
     this.setData({ teacherIndex, teacherLabel: teacher.label, devTeacherId: String(teacher.userId) })
-  },
-
-  chooseParent(e) {
-    if (this.data.submitting || this.data.parentsLoading) return
-    const parentIndex = Number(e.detail.value)
-    if (parentIndex === 0) {
-      this.setData({ parentIndex: 0, parentLabel: '', devParentId: '' })
-      return
-    }
-    const parent = this.data.parents[parentIndex - 1]
-    if (!parent) return
-    this.setData({ parentIndex, parentLabel: parent.label, devParentId: String(parent.userId) })
   },
 
   handlePhoneLogin(e) {
@@ -164,17 +110,12 @@ Page({
       wx.showToast({ title: '请先选择教师', icon: 'none' })
       return
     }
-    if (devRole === 'parent' && this._selectMode === 'parent' && (this.data.parentsLoading || !this.data.devParentId)) {
-      wx.showToast({ title: '请先选择家长', icon: 'none' })
-      return
-    }
     const devTeacherId = devRole === 'teacher' ? this.data.devTeacherId : undefined
-    const devParentId = devRole === 'parent' ? this.data.devParentId : undefined
     let previousToken = wx.getStorageSync('token')
     this.setData({ submitting: true })
     try {
       if (phoneCode === 'mock') {
-        const cached = await devSession.restore(devRole, devTeacherId || devParentId, () =>
+        const cached = await devSession.restore(devRole, devTeacherId, () =>
           !this._unloaded && wx.getStorageSync('token') === previousToken)
         if (this._unloaded) return
         if (cached.restored) {
@@ -194,7 +135,6 @@ Page({
           phoneCode,
           devRole,
           ...(devTeacherId ? { devTeacherId } : {}),
-          ...(devParentId ? { devParentId } : {}),
           nickName: `MiniApp ${devRole}`
         }
       })
@@ -204,9 +144,6 @@ Page({
       if (this._unloaded || wx.getStorageSync('token') !== previousToken) return
       if (devRole === 'teacher' && String(infoRes.user && infoRes.user.userId) !== devTeacherId) {
         throw new Error('教师身份不匹配，请重新选择')
-      }
-      if (devRole === 'parent' && devParentId && String(infoRes.user && infoRes.user.userId) !== devParentId) {
-        throw new Error('家长身份不匹配，请重新选择')
       }
       devSession.activate(devRole, loginRes.token, infoRes, loginRes.devSessionVersion)
 

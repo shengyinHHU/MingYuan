@@ -30,6 +30,11 @@ public class MiniAppTuitionController {
     return EduTuitionController.ok(tuition.bill(id, SecurityUtils.getUserId(), false));
   }
 
+  @GetMapping("/tuition/{id}/refund-targets")
+  public AjaxResult refundTargets(@PathVariable long id) {
+    return EduTuitionController.ok(tuition.refundTargets(id, SecurityUtils.getUserId(), false));
+  }
+
   @PostMapping("/tuition/{id}/quote")
   public AjaxResult quote(
       @PathVariable long id, @RequestBody(required = false) Map<String, Object> b) {

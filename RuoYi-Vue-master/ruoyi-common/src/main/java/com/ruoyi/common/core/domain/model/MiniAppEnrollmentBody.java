@@ -6,6 +6,15 @@ package com.ruoyi.common.core.domain.model;
 public class MiniAppEnrollmentBody
 {
     private Long scheduleId;
+    private String settlementMethod;
+    private Long lessonAccountId;
+    private String studentRequestKey;
+    public String getStudentRequestKey() { return studentRequestKey; }
+    public void setStudentRequestKey(String value) { studentRequestKey=value; }
+    public String getSettlementMethod() { return settlementMethod; }
+    public void setSettlementMethod(String value) { settlementMethod=value; }
+    public Long getLessonAccountId() { return lessonAccountId; }
+    public void setLessonAccountId(Long value) { lessonAccountId=value; }
     private String classDate;
     public String getClassDate() { return classDate; }
     public void setClassDate(String value) { classDate = value; }

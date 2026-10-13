@@ -1,3 +1,4 @@
+<wxs module="calendarScroll" src="../../utils/course-calendar-scroll.wxs" />
 <view class="page">
   <view class="ui-heading">
     <view class="ui-heading-main"><view class="ui-title">我的课程</view><view class="ui-caption">{{loadSucceeded && !loading ? courseCount : '—'}} 门课程 · {{loadSucceeded && !loading ? plannedLessonCount : '—'}} 个计划课次</view></view>
@@ -9,7 +10,7 @@
   <view class="calendar-warning load-error" wx:if="{{loadError && !loading}}"><view>{{loadError}}</view><view>加载成功前无法判断空闲时段。</view><button size="mini" bindtap="retryLoad">重新加载</button></view>
   <view class="calendar-warning" wx:if="{{refreshError && !loading}}"><view>{{refreshError}}</view><view>当前显示上次加载的课表。</view><button size="mini" bindtap="retryLoad">重新加载</button></view>
   <view wx:if="{{activeTab === 'calendar' || activeTab === 'courses'}}">
-    <view class="calendar-filter"><picker range="{{calendarFilterOptions}}" value="{{calendarFilterIndex}}" bindchange="onCalendarFilterChange"><view>{{calendarFilterOptions[calendarFilterIndex]}}　⌄</view></picker><view class="calendar-help" wx:if="{{activeTab === 'calendar'}}">全天课表 · 左右滑动</view></view>
+    <view class="calendar-filter"><picker range="{{calendarFilterOptions}}" value="{{calendarFilterIndex}}" bindchange="onCalendarFilterChange"><view>{{calendarFilterOptions[calendarFilterIndex]}}　⌄</view></picker><view class="calendar-help" wx:if="{{activeTab === 'calendar'}}">左右滑动查看整周</view></view>
   </view>
   <view wx:if="{{activeTab === 'calendar'}}">
     <view class="calendar-warning" wx:if="{{calendarFilterIndex !== 0}}">当前隐藏了部分课程，空白处仍可能有课；新增课程会校验全部课程占用。</view>
@@ -36,6 +37,8 @@
       <view class="ui-row"><view class="module-card-title">{{item.studentName}}</view><view class="record-status {{item.lessonState}}">{{item.statusText}}</view></view>
       <view class="ui-time">{{item.classDate}} {{item.timeText}}</view><view class="module-meta">{{item.courseClassName}}</view><view class="module-meta">{{item.lessonLocation || '地点待配置'}}</view>
       <view class="module-meta warning" wx:if="{{item.isCancel}}">申请原因：{{item.cancelRequestReason}}</view>
+      <view class="module-meta">{{item.settlementText}}</view>
+      <view class="module-actions" wx:if="{{item.canComplete}}"><button class="decision-primary" size="mini" data-id="{{item.enrollmentId}}" bindtap="complete" disabled="{{submitting || refreshError}}">确认完成{{item.settlementMethod === 'P' ? '并消课' : ''}}</button></view>
       <view class="module-actions" wx:if="{{item.canHandle}}">
         <block wx:if="{{item.isCancel}}"><button class="decision-primary" size="mini" data-id="{{item.enrollmentId}}" data-action="APPROVE_CANCEL" bindtap="decide" disabled="{{submitting || refreshError}}">同意取消</button><button class="decision-secondary" size="mini" data-id="{{item.enrollmentId}}" data-action="REJECT_CANCEL" bindtap="decide" disabled="{{submitting || refreshError}}">拒绝取消</button></block>
         <block wx:elif="{{item.isPending}}"><button class="decision-primary" size="mini" data-id="{{item.enrollmentId}}" data-action="CONFIRM" bindtap="decide" disabled="{{submitting || refreshError}}">确认接课</button><button class="decision-secondary" size="mini" data-id="{{item.enrollmentId}}" data-action="REJECT" bindtap="decide" disabled="{{submitting || refreshError}}">拒绝报名</button></block>

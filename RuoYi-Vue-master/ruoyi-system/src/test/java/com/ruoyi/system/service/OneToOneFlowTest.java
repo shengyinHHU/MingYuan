@@ -19,10 +19,19 @@ public class OneToOneFlowTest {
     EduCourseSchedule schedule;
     OneToOneFlowTest() throws Exception {
         ScheduleCrudTest.principal(21,"teacher");
-        var draft = new TeacherOneToOneDraft(); draft.lessonLocation="校外地点"; draft.gradeName="一年级"; draft.courseClassName="数学辅导";
-        draft.startDate=LocalDate.now().plusDays(7); draft.startTime=LocalTime.of(8,0); draft.weeks=4;
-        schedule=draft.toSchedule("数学"); schedule.setScheduleId(10L); schedule.setTeacherId(21L); schedule.setDelFlag("0");
+        var draft = new TeacherOneToOneDraft(); draft.classroomId=1L; draft.gradeName="一年级"; draft.courseClassName="数学辅导";
+        draft.startDate=LocalDate.now().plusDays(7);
+        schedule=draft.toSchedule("数学",new ScheduleAvailabilityService.Slot("8:00-10:00",LocalTime.of(8,0),LocalTime.of(10,0)));
+        // 旧连续课程仍可按具体日期报名；新建参数只生成一节。
+        schedule.setEndDate(java.sql.Date.valueOf(draft.startDate.plusWeeks(3))); schedule.setScheduleId(10L); schedule.setTeacherId(21L); schedule.setDelFlag("0");
         ScheduleCrudTest.inject(service,"db",db);
+        ScheduleCrudTest.inject(service,"tuition",new com.ruoyi.system.finance.TuitionService(null,null,null,null,true) {
+            @Override public void initializeBill(long enrollment,long actor) {}
+            @Override public void closeSingleReservation(long enrollment,long teacher,String reason) {}
+        });
+        var credits=new LessonCreditService() {
+            @Override public Map<String,Object> enrollmentChild(Long parentId,Long accountId,String name,String grade,String phone,String key) {return Map.of("accountId",80L+parentId,"studentName",name);}
+        }; ScheduleCrudTest.inject(service,"credits",credits);
         var profiles = new EduTeacherProfileService();
         ScheduleCrudTest.inject(profiles,"db",db);
         ScheduleCrudTest.inject(service,"teacherProfiles",profiles);

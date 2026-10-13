@@ -82,36 +82,22 @@ public class MiniAppLoginService
 
     public String login(String loginCode, String phoneCode, String nickName, String devRole)
     {
-        return login(loginCode, phoneCode, nickName, devRole, null, null);
+        return login(loginCode, phoneCode, nickName, devRole, null);
     }
 
     public String login(String loginCode, String phoneCode, String nickName, String devRole, Long devTeacherId)
-    {
-        return login(loginCode, phoneCode, nickName, devRole, devTeacherId, null);
-    }
-
-    public String login(String loginCode, String phoneCode, String nickName, String devRole, Long devTeacherId,
-            Long devParentId)
     {
         if (devTeacherId != null && !EduRoleConstants.TEACHER.equalsIgnoreCase(StringUtils.trim(devRole)))
         {
             throw new ServiceException("教师账号参数仅适用于教师开发登录");
         }
-        if (devParentId != null && !EduRoleConstants.PARENT.equalsIgnoreCase(StringUtils.trim(devRole)))
-        {
-            throw new ServiceException("家长账号参数仅适用于家长开发登录");
-        }
         if (devTeacherId != null || EduRoleConstants.TEACHER.equalsIgnoreCase(StringUtils.trim(devRole)))
         {
             assertDevelopmentTeacherLogin();
         }
-        if (devParentId != null || EduRoleConstants.PARENT.equalsIgnoreCase(StringUtils.trim(devRole)))
-        {
-            assertDevelopmentParentLogin();
-        }
         if (mockEnabled && StringUtils.isNotBlank(devRole))
         {
-            return loginMockRole(devRole, nickName, devTeacherId, devParentId);
+            return loginMockRole(devRole, nickName, devTeacherId);
         }
 
         String openid;
@@ -144,7 +130,7 @@ public class MiniAppLoginService
         return createLoginToken(user);
     }
 
-    private String loginMockRole(String devRole, String nickName, Long devTeacherId, Long devParentId)
+    private String loginMockRole(String devRole, String nickName, Long devTeacherId)
     {
         String role = StringUtils.defaultString(devRole).trim().toLowerCase();
         SysUser user;
@@ -163,7 +149,8 @@ public class MiniAppLoginService
         }
         else if (EduRoleConstants.TEACHER.equals(role))
         {
-            user = devTeacherId == null ? findMockTeacherUser() : userService.selectUserById(devTeacherId);
+            if(devTeacherId == null) throw new ServiceException("请先选择要登录的教师");
+            user = userService.selectUserById(devTeacherId);
             if (!isEligibleTeacher(user))
             {
                 throw new ServiceException("该教师不存在、已停用或不具备独立教师身份，请刷新教师列表");
@@ -171,18 +158,7 @@ public class MiniAppLoginService
         }
         else if (EduRoleConstants.PARENT.equals(role))
         {
-            if (devParentId == null)
-            {
-                user = findOrCreateParentUser(mockPhone, nickName, "mock-openid-" + mockPhone);
-            }
-            else
-            {
-                user = userService.selectUserById(devParentId);
-                if (!isEligibleParent(user))
-                {
-                    throw new ServiceException("该家长不存在、已停用或不具备家长身份，请刷新家长列表");
-                }
-            }
+            user = findOrCreateParentUser(mockPhone, nickName, "mock-openid-" + mockPhone);
         }
         else
         {
@@ -200,54 +176,6 @@ public class MiniAppLoginService
     private void assertDevelopmentTeacherLogin()
     {
         developmentSession.getVersion();
-    }
-
-    private void assertDevelopmentParentLogin()
-    {
-        developmentSession.getVersion();
-    }
-
-    private SysUser findMockTeacherUser()
-    {
-        // Explicit configuration must not silently log in as a different teacher.
-        boolean byUsername = StringUtils.isNotBlank(mockTeacherUsername);
-        if (byUsername || StringUtils.isNotBlank(mockTeacherPhone))
-        {
-            SysUser user = byUsername
-                    ? userService.selectUserByUserName(mockTeacherUsername.trim())
-                    : findExistingTeacher(mockTeacherPhone.trim());
-            if (!isEligibleTeacher(user))
-            {
-                throw new ServiceException("配置的模拟教师不可用，请检查账号、启用状态和教师角色（WECHAT_MOCK_TEACHER_USERNAME / WECHAT_MOCK_TEACHER_PHONE）");
-            }
-            return user;
-        }
-        return findExistingTeacher(null);
-    }
-
-    private SysUser findExistingTeacher(String phone)
-    {
-        // Reuse existing users and role assignments; never create a demo teacher.
-        SysRole teacherRole = roleMapper.checkRoleKeyUnique(EduRoleConstants.TEACHER);
-        if (teacherRole == null || !UserConstants.ROLE_NORMAL.equals(teacherRole.getStatus())
-                || !UserConstants.NORMAL.equals(teacherRole.getDelFlag()))
-        {
-            return null;
-        }
-        SysUser filter = new SysUser();
-        filter.setRoleId(teacherRole.getRoleId());
-        List<SysUser> candidates = userMapper.selectAllocatedList(filter).stream()
-                .filter(user -> UserConstants.NORMAL.equals(user.getStatus()))
-                .filter(user -> phone == null || phone.equals(user.getPhonenumber()))
-                .sorted(Comparator.comparing(SysUser::getUserId))
-                .map(user -> userService.selectUserById(user.getUserId()))
-                .filter(this::isEligibleTeacher)
-                .limit(phone == null ? 1 : 2).toList();
-        if (candidates.size() > 1)
-        {
-            throw new ServiceException("该手机号对应多个可用教师，请用 WECHAT_MOCK_TEACHER_USERNAME 指定用户名");
-        }
-        return candidates.isEmpty() ? null : candidates.get(0);
     }
 
     public String developmentSessionVersion()
@@ -310,59 +238,6 @@ public class MiniAppLoginService
         // Check active role assignments directly so a deleted teacher role cannot grant login.
         return roleMapper.selectRolePermissionByUserId(user.getUserId()).stream()
                 .anyMatch(role -> EduRoleConstants.TEACHER.equals(role.getRoleKey())
-                        && UserConstants.ROLE_NORMAL.equals(role.getStatus())
-                        && UserConstants.NORMAL.equals(role.getDelFlag()));
-    }
-
-    public List<Map<String, Object>> developmentParents()
-    {
-        assertDevelopmentParentLogin();
-        List<Map<String, Object>> options = new ArrayList<>();
-        SysRole parentRole = roleMapper.checkRoleKeyUnique(EduRoleConstants.PARENT);
-        if (parentRole == null || !"0".equals(parentRole.getStatus()) || !"0".equals(parentRole.getDelFlag()))
-        {
-            return options;
-        }
-        SysUser query = new SysUser();
-        query.setRoleId(parentRole.getRoleId());
-        List<SysUser> users = new ArrayList<>(userMapper.selectAllocatedList(query));
-        // 新建账号（含联调测试账号）优先展示，方便切换。
-        users.sort(Comparator.comparing(SysUser::getUserId, Comparator.nullsLast(Comparator.<Long>reverseOrder())));
-        for (SysUser candidate : users)
-        {
-            SysUser user = userService.selectUserById(candidate.getUserId());
-            if (!isEligibleParent(user))
-            {
-                continue;
-            }
-            Map<String, Object> option = new LinkedHashMap<>();
-            option.put("userId", String.valueOf(user.getUserId()));
-            option.put("name", StringUtils.defaultIfBlank(user.getNickName(), user.getUserName()));
-            option.put("userName", user.getUserName());
-            option.put("phone", user.getPhonenumber());
-            options.add(option);
-        }
-        return options;
-    }
-
-    private boolean isEligibleParent(SysUser user)
-    {
-        if (user == null || user.isAdmin() || !"0".equals(user.getStatus())
-                || !"0".equals(user.getDelFlag()) || user.getRoles() == null)
-        {
-            return false;
-        }
-        for (SysRole role : user.getRoles())
-        {
-            // 管理员账号不得通过家长快捷入口进入。
-            if (role.isAdmin() || EduRoleConstants.ADMIN.equals(role.getRoleKey())
-                    || "administrator".equals(role.getRoleKey()))
-            {
-                return false;
-            }
-        }
-        return roleMapper.selectRolePermissionByUserId(user.getUserId()).stream()
-                .anyMatch(role -> EduRoleConstants.PARENT.equals(role.getRoleKey())
                         && UserConstants.ROLE_NORMAL.equals(role.getStatus())
                         && UserConstants.NORMAL.equals(role.getDelFlag()));
     }

@@ -23,7 +23,6 @@ Page({
     room: '',
     timeText: '',
     classDate: todayStr(),
-    maxDate: todayStr(),
     rows: [],
     locked: false,
     review: null,
@@ -44,12 +43,6 @@ Page({
     this.loadDetail()
   },
 
-  onDateChange(e) {
-    if (this.data.loading || this.data.submitting || this._unloaded) return
-    this.setData({ classDate: e.detail.value })
-    this.loadDetail()
-  },
-
   async loadDetail() {
     if (this.data.submitting || this._unloaded) return
     const { scheduleId, classDate } = this.data
@@ -67,13 +60,15 @@ Page({
       const data = detail.data || {}
       const review = data.review || {}
       const details = data.details || []
+      const reviewed = String(review.reviewStatus) === '1' || !!review.review1AdminId || !!review.review2AdminId
+      const approvedLeave = new Set((reviewed ? [] : data.approvedLeaveEnrollmentIds || []).map(String))
       let rows
       if (details.length) {
         rows = details.map((d) => this.decorateRow({
           enrollmentId: d.enrollmentId,
           studentName: d.studentName,
           sourceType: d.sourceType,
-          signStatus: d.signStatus,
+          signStatus: approvedLeave.has(String(d.enrollmentId)) ? '3' : d.signStatus,
           remark: d.remark || ''
         }, d.sourceType))
       } else {
@@ -86,7 +81,7 @@ Page({
           enrollmentId: s.enrollment_id,
           studentName: s.student_name,
           sourceType: '1',
-          signStatus: '1',
+          signStatus: approvedLeave.has(String(s.enrollment_id)) ? '3' : '1',
           remark: ''
         }, '1'))
       }
@@ -95,7 +90,7 @@ Page({
         ready: true,
         rows,
         review,
-        locked: String(review.reviewStatus) === '1',
+        locked: reviewed,
         stats: this.buildStats(rows)
       })
     } catch (error) {

@@ -71,6 +71,24 @@ public class EduTeacherProfileTest {
         assertTrue(db.writes.isEmpty());
     }
 
+    @Test void optionalTeacherExcelColumnsPreserveOldUserFieldsAndNormalizeLevel() throws Exception {
+        try(var workbook=new org.apache.poi.xssf.usermodel.XSSFWorkbook(); var bytes=new java.io.ByteArrayOutputStream()) {
+            var sheet=workbook.createSheet("用户数据");
+            var head=sheet.createRow(0); var row=sheet.createRow(1);
+            String[] names={"登录名称","用户名称","手机号码","教师授课学科","教师等级"};
+            String[] values={"teacher_import","教师全名","13900000001","化学","资深教师"};
+            for(int i=0;i<names.length;i++) {head.createCell(i).setCellValue(names[i]);row.createCell(i).setCellValue(values[i]);}
+            workbook.write(bytes);
+            var imported=new com.ruoyi.common.utils.poi.ExcelUtil<>(com.ruoyi.system.domain.EduTeacherUserImport.class).importExcel(new java.io.ByteArrayInputStream(bytes.toByteArray())).get(0);
+            assertEquals("teacher_import",imported.getUserName()); assertEquals("教师全名",imported.getNickName());
+            assertEquals("13900000001",imported.getPhonenumber()); assertEquals("化学",imported.getTeacherSubject()); assertEquals("senior",imported.getTeacherLevel());
+            assertTrue(imported.hasTeacherProfile());
+            sheet.getRow(0).removeCell(head.getCell(3)); sheet.getRow(0).removeCell(head.getCell(4));bytes.reset();workbook.write(bytes);
+            var old=new com.ruoyi.common.utils.poi.ExcelUtil<>(com.ruoyi.system.domain.EduTeacherUserImport.class).importExcel(new java.io.ByteArrayInputStream(bytes.toByteArray())).get(0);
+            assertEquals("teacher_import",old.getUserName());assertFalse(old.hasTeacherProfile());
+        }
+    }
+
     private static class MemoryDb extends ShopRepository {
         boolean available = true, teacherRole = true, subjectEnabled = true, accountExists = true;
         String subject = "化学", writeSql;

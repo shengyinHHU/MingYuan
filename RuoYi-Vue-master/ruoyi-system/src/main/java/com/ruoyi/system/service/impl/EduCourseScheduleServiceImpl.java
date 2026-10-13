@@ -24,6 +24,7 @@ public class EduCourseScheduleServiceImpl implements IEduCourseScheduleService {
     @Autowired private MiniAppParentMapper parentMapper;
     @Autowired private ShopRepository db;
     @Autowired private com.ruoyi.system.service.OneToOneEnrollmentService singleService;
+    @Autowired private com.ruoyi.system.service.ScheduleAvailabilityService availability;
 
     private boolean teacherOnly() {
         return SecurityUtils.hasRole("teacher") && !SecurityUtils.hasRole("admin") && !SecurityUtils.isAdmin();
@@ -81,6 +82,7 @@ public class EduCourseScheduleServiceImpl implements IEduCourseScheduleService {
         schedule.setEnrolledCount(0L);
         lockResources(List.of(schedule));
         validate(schedule);
+        if ("2".equals(schedule.getClassMode())) { availability.validateSingle(schedule); schedule.setLessonLocation(""); }
         checkConflicts(schedule);
         schedule.setCreateBy(SecurityUtils.getUsername());
         schedule.setCreateTime(DateUtils.getNowDate());
@@ -99,13 +101,18 @@ public class EduCourseScheduleServiceImpl implements IEduCourseScheduleService {
         requireNoActiveEnrollments(current);
         require(Objects.equals(before.getTeacherId(), current.getTeacherId()) && Objects.equals(before.getClassroomId(), current.getClassroomId()), "排课已被其他人调整，请刷新后重试");
         require(blank(input.getScheduleCode()) || input.getScheduleCode().equals(current.getScheduleCode()), "排课编码不可修改");
-        if (input.getLessonLocation() != null && "2".equals(current.getClassMode())) { input.setClassroomId(null); input.setClassMode("2"); }
         if (teacherOnly() && "2".equals(current.getClassMode())) {
             require(input.getClassMode() == null || "2".equals(input.getClassMode()), "不能把一对一改成班课");
             input.setSubjectName(current.getSubjectName());
         }
         EduCourseSchedule effective = merge(current, input);
         validate(effective);
+        if ("2".equals(effective.getClassMode()) && (singleResourcesChanged(current,effective) || !"2".equals(current.getClassMode()) || (!"0".equals(current.getStatus()) && "0".equals(effective.getStatus())))) {
+            availability.validateSingle(effective);
+            input.setLessonLocation(""); effective.setLessonLocation("");
+        }
+        if ("2".equals(current.getClassMode()) && "0".equals(current.getStatus()) && "1".equals(effective.getStatus()))
+            require(db.rows("SELECT enrollment_id FROM edu_enrollment WHERE schedule_id=? AND del_flag='0' AND enrollment_status IN ('0','1','待确认','已确认','报名成功') FOR UPDATE",current.getScheduleId()).isEmpty(),"仍有有效报名，请先处理报名后再撤回课程");
         if (hasAttendance(current.getScheduleId()) || !db.rows("SELECT enrollment_id FROM edu_enrollment WHERE schedule_id=? AND class_date IS NOT NULL FOR UPDATE", current.getScheduleId()).isEmpty()) {
             require(Objects.equals(current.getTeacherId(), effective.getTeacherId())
                 && Objects.equals(current.getClassroomId(), effective.getClassroomId())
@@ -162,13 +169,12 @@ public class EduCourseScheduleServiceImpl implements IEduCourseScheduleService {
         input.setTeacherName(name.equals("null") || name.isBlank() ? String.valueOf(teachers.get(0).get("userName")) : name);
     }
     private void lockResources(List<EduCourseSchedule> courses) {
-        TreeSet<Long> rooms = new TreeSet<>(), teachers = new TreeSet<>();
-        for (EduCourseSchedule course : courses) {
-            if (course.getClassroomId() != null) rooms.add(course.getClassroomId());
-            if (course.getTeacherId() != null) teachers.add(course.getTeacherId());
-        }
-        for (Long room : rooms) db.one("SELECT classroom_id FROM edu_classroom WHERE classroom_id=? FOR UPDATE", room);
-        for (Long teacher : teachers) db.one("SELECT user_id FROM sys_user WHERE user_id=? FOR UPDATE", teacher);
+        availability.lockResources(courses);
+    }
+    private static boolean singleResourcesChanged(EduCourseSchedule a,EduCourseSchedule b) {
+        return !Objects.equals(a.getClassroomId(),b.getClassroomId()) || !Objects.equals(a.getStartTime(),b.getStartTime()) || !Objects.equals(a.getEndTime(),b.getEndTime())
+            || !Objects.equals(ScheduleCalendar.date(a.getStartDate()),ScheduleCalendar.date(b.getStartDate())) || !Objects.equals(ScheduleCalendar.date(a.getEndDate()),ScheduleCalendar.date(b.getEndDate()))
+            || !Objects.equals(a.getClassPattern(),b.getClassPattern()) || !Objects.equals(a.getPeriodName(),b.getPeriodName()) || !Objects.equals(a.getTimeSlot(),b.getTimeSlot()) || !Objects.equals(a.getLessonLocation(),b.getLessonLocation());
     }
     private void validate(EduCourseSchedule s) {
         required(s.getScheduleCode(), 32, "排课编码"); required(s.getTermName(), 20, "学期"); required(s.getPeriodName(), 20, "期次或上课日");
@@ -193,6 +199,7 @@ public class EduCourseScheduleServiceImpl implements IEduCourseScheduleService {
         Map<String,Object> classroom = s.getClassroomId() == null ? Map.of("status","0") : db.one("SELECT status FROM edu_classroom WHERE classroom_id=?", s.getClassroomId());
         if ("0".equals(s.getStatus())) require("0".equals(classroom.get("status")), "所选教室已停用");
         long enrolled = s.getScheduleId() == null ? 0 : db.rows("SELECT enrollment_id FROM edu_enrollment WHERE schedule_id=? AND del_flag='0' AND class_date IS NULL AND enrollment_status NOT IN('2','3','已取消') FOR UPDATE", s.getScheduleId()).size();
+        // 教室容量不作为排课硬约束（报名不按教室容量卡名额），仅保留一对一「最多 1 名有效学员」的校验。
         if ("2".equals(s.getClassMode())) require(enrolled <= 1, "一对一课程不能保留多名有效报名学员");
     }
     private void checkConflicts(EduCourseSchedule input) {
@@ -221,7 +228,7 @@ public class EduCourseScheduleServiceImpl implements IEduCourseScheduleService {
     private void requireNoActiveEnrollments(EduCourseSchedule course) {
         // Check actual registrations after locking the schedule shared by enrollment transactions.
         require(db.rows("SELECT enrollment_id FROM edu_enrollment WHERE schedule_id=? AND del_flag='0'"
-            + " AND COALESCE(enrollment_status,'') NOT IN ('2','已取消') FOR UPDATE", course.getScheduleId()).isEmpty(),
+            + " AND COALESCE(enrollment_status,'') NOT IN ('2','3','已取消','已拒绝','老师已拒绝') FOR UPDATE", course.getScheduleId()).isEmpty(),
             "排课「" + course.getCourseClassName() + "」已有学员报名，禁止修改或删除。请先与学员沟通并处理报名，清空班次后再操作。");
     }
     private long referenceCount(Long id) {
