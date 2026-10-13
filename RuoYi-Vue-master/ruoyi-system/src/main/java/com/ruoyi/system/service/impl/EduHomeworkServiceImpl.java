@@ -6,6 +6,7 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.ruoyi.common.exception.ServiceException;
+import com.ruoyi.common.utils.DateUtils;
 import com.ruoyi.common.utils.SecurityUtils;
 import com.ruoyi.common.utils.StringUtils;
 import com.ruoyi.system.domain.*;
@@ -84,11 +85,32 @@ public class EduHomeworkServiceImpl implements IEduHomeworkService
         Long uid=SecurityUtils.getUserId(); Date now=new Date();
         Long scheduleTeacher=mapper.selectScheduleTeacher(body.getScheduleId());
         if(scheduleTeacher==null || (!uid.equals(scheduleTeacher) && !SecurityUtils.isAdmin(uid))) throw new ServiceException("只能为自己负责的班级创建作业");
-        if(body.getHomeworkId()!=null){EduHomework old=mapper.selectById(body.getHomeworkId()); if(old==null) throw new ServiceException("作业不存在"); if(!uid.equals(old.getTeacherId())&&!SecurityUtils.isAdmin(uid)) throw new ServiceException("只能修改自己的作业"); if(!"0".equals(old.getStatus())) throw new ServiceException("已发布作业禁止修改题目"); body.setTeacherId(old.getTeacherId()); body.setScheduleId(old.getScheduleId()); body.setUpdateBy(SecurityUtils.getUsername()); body.setUpdateTime(now); mapper.updateHomework(body); mapper.deleteQuestions(body.getHomeworkId());}
+        // 只有显式传入题目时才替换题目与总分；未传题目（小程序端不管理题目）时保持原有题目不变，避免误删
+        boolean replaceQuestions = body.getQuestions()!=null && !body.getQuestions().isEmpty();
+        boolean isUpdate = body.getHomeworkId()!=null;
+        if(isUpdate)
+        {
+            EduHomework old=mapper.selectById(body.getHomeworkId());
+            if(old==null||"2".equals(old.getDelFlag())) throw new ServiceException("作业不存在");
+            if(!uid.equals(old.getTeacherId())&&!SecurityUtils.isAdmin(uid)) throw new ServiceException("只能修改自己的作业");
+            if("1".equals(old.getArchiveFlag())) throw new ServiceException("已归档作业不能编辑");
+            boolean published="1".equals(old.getStatus())||"2".equals(old.getStatus());
+            if(published && replaceQuestions && mapper.countSubmissions(old.getHomeworkId())>0) throw new ServiceException("该作业已有家长提交，不能修改题目；可修改标题、说明、截止时间和附件");
+            body.setTeacherId(old.getTeacherId()); body.setScheduleId(old.getScheduleId()); body.setUpdateBy(SecurityUtils.getUsername()); body.setUpdateTime(now);
+            if(replaceQuestions){ mapper.updateHomework(body); mapper.deleteQuestions(body.getHomeworkId()); }
+            else { mapper.updateHomeworkContent(body); }
+        }
         else {body.setTeacherId(scheduleTeacher); body.setStatus("0"); body.setArchiveFlag("0"); body.setDelFlag("0"); body.setCreateBy(SecurityUtils.getUsername()); body.setCreateTime(now); mapper.insertHomework(body);}
-        int total=0; if(body.getQuestions()!=null) for(EduHomeworkQuestion q:body.getQuestions()){q.setHomeworkId(body.getHomeworkId()); q.setCreateBy(SecurityUtils.getUsername()); q.setCreateTime(now); mapper.insertQuestion(q); total+=q.getScore()==null?0:q.getScore();}
-        body.setTotalScore(total); body.setUpdateBy(SecurityUtils.getUsername()); body.setUpdateTime(now); mapper.updateHomework(body);
-        if(body.getHomeworkId()!=null) mapper.deleteHomeworkFiles(body.getHomeworkId());
+        if(replaceQuestions)
+        {
+            int total=0; for(EduHomeworkQuestion q:body.getQuestions()){q.setHomeworkId(body.getHomeworkId()); q.setCreateBy(SecurityUtils.getUsername()); q.setCreateTime(now); mapper.insertQuestion(q); total+=q.getScore()==null?0:q.getScore();}
+            body.setTotalScore(total); body.setUpdateBy(SecurityUtils.getUsername()); body.setUpdateTime(now); mapper.updateHomework(body);
+        }
+        else if(!isUpdate)
+        {
+            body.setTotalScore(0); body.setUpdateBy(SecurityUtils.getUsername()); body.setUpdateTime(now); mapper.updateHomework(body);
+        }
+        if(isUpdate) mapper.deleteHomeworkFiles(body.getHomeworkId());
         if(body.getFiles()!=null) for(EduHomeworkFile f:body.getFiles()){if(StringUtils.isBlank(f.getFilePath())) continue; f.setHomeworkId(body.getHomeworkId()); f.setFileType("homework"); f.setCreateBy(SecurityUtils.getUsername()); f.setCreateTime(now); mapper.insertFile(f);}
         return body.getHomeworkId();
     }
@@ -133,6 +155,18 @@ public class EduHomeworkServiceImpl implements IEduHomeworkService
     public List<Map<String,Object>> submissionStats(Long id){assertTeacher(id); return mapper.selectSubmissionStats(id,SecurityUtils.getUserId());}
     public int review(EduHomeworkSubmission s){if(s==null||s.getSubmissionId()==null) throw new ServiceException("提交记录不能为空"); EduHomeworkSubmission old=mapper.selectSubmissionById(s.getSubmissionId()); if(old==null) throw new ServiceException("提交记录不存在"); assertTeacher(old.getHomeworkId()); s.setReviewerId(SecurityUtils.getUserId()); s.setReviewTime(new Date()); s.setStatus("2"); if(s.getFinalScore()==null) s.setFinalScore((old.getAutoScore()==null?0:old.getAutoScore())+(s.getManualScore()==null?0:s.getManualScore())); int rows=mapper.reviewSubmission(s); if(s.getReviewFiles()!=null){mapper.deleteReviewFiles(s.getSubmissionId()); Date now=new Date(); for(EduHomeworkFile f:s.getReviewFiles()){if(StringUtils.isBlank(f.getFilePath())) continue; f.setHomeworkId(old.getHomeworkId()); f.setSubmissionId(s.getSubmissionId()); f.setAnswerId(null); f.setFileType("review"); f.setCreateBy(SecurityUtils.getUsername()); f.setCreateTime(now); mapper.insertFile(f);}} return rows;}
     public int close(Long id){assertTeacher(id); return mapper.updateStatus(id,"2",SecurityUtils.getUsername());}
+    @Transactional(rollbackFor=Exception.class)
+    public int updateDeadline(Long id,String deadline)
+    {
+        assertTeacher(id);
+        EduHomework homework=mapper.selectById(id);
+        if(!"1".equals(homework.getStatus())&&!"2".equals(homework.getStatus())) throw new ServiceException("仅已发布或已关闭的作业可以调整截止时间");
+        if("1".equals(homework.getArchiveFlag())) throw new ServiceException("已归档作业不能调整截止时间");
+        if(StringUtils.isBlank(deadline)) throw new ServiceException("请选择截止时间");
+        Date parsed=DateUtils.parseDate(deadline.trim());
+        if(parsed==null) throw new ServiceException("截止时间格式不正确");
+        return mapper.updateDeadline(id,parsed,SecurityUtils.getUsername());
+    }
     public List<EduHomework> adminList(EduHomework q){return mapper.selectAdminList(q);}
     public int archive(Long id,boolean archive){return mapper.updateArchive(id,archive?"1":"0",SecurityUtils.getUsername());}
     public int delete(Long id){EduHomework h=mapper.selectById(id); if(h==null) throw new ServiceException("作业不存在"); if(!"1".equals(h.getArchiveFlag())) throw new ServiceException("请先归档作业再删除"); return mapper.deleteHomework(id);}

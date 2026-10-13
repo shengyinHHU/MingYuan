@@ -51,7 +51,7 @@ public class LessonCreditMysqlTest {
         teacher=id(teachers.get(0),"userId");otherTeacher=id(teachers.get(1),"userId");
         var parents=db.rows("SELECT u.user_id FROM sys_user u WHERE u.status='0' AND u.del_flag='0' AND EXISTS(SELECT 1 FROM sys_user_role ur JOIN sys_role r ON r.role_id=ur.role_id WHERE ur.user_id=u.user_id AND r.role_key='parent' AND r.status='0' AND r.del_flag='0') ORDER BY user_id LIMIT 2");
         parent=id(parents.get(0),"userId");otherParent=id(parents.get(1),"userId");
-        var rooms=db.rows("SELECT classroom_id FROM edu_classroom WHERE status='0' AND capacity>0 ORDER BY classroom_id LIMIT 2");room=id(rooms.get(0),"classroomId");otherRoom=id(rooms.get(1),"classroomId");
+        var rooms=db.rows("SELECT classroom_id FROM edu_classroom WHERE status='0' ORDER BY classroom_id LIMIT 2");room=id(rooms.get(0),"classroomId");otherRoom=id(rooms.get(1),"classroomId");
         grade=db.one("SELECT dict_label FROM sys_dict_data WHERE dict_type='edu_grade' AND status='0' ORDER BY dict_sort LIMIT 1").get("dictLabel").toString();
         String subject=db.one("SELECT dict_label FROM sys_dict_data WHERE dict_type='edu_subject' AND status='0' ORDER BY dict_sort LIMIT 1").get("dictLabel").toString();
         ScheduleCrudTest.principal(1,"admin");tx(()->{profiles.save(teacher,subject,"senior","mysql-check");profiles.save(otherTeacher,subject,"elite","mysql-check");return null;});
@@ -78,11 +78,8 @@ public class LessonCreditMysqlTest {
         assertThrows(ServiceException.class,()->adjust(a,"GRANT",6,key));assertThrows(ServiceException.class,()->adjust(a,"WITHDRAW",6,UUID.randomUUID().toString()));
         ScheduleCrudTest.principal(teacher,"teacher");assertThrows(ServiceException.class,()->credits.accounts(""));assertThrows(ServiceException.class,()->payments.price(1L,teacher,Map.of("originalAmount","100")));
         long s=publish(teacher,room,date);
-        int originalCapacity=db.jdbc().queryForObject("SELECT capacity FROM edu_classroom WHERE classroom_id=?",Integer.class,otherRoom);
-        db.jdbc().update("UPDATE edu_classroom SET capacity=0 WHERE classroom_id=?",otherRoom);
-        assertThrows(ServiceException.class,()->publish(otherTeacher,otherRoom,date.plusDays(20)));
-        db.jdbc().update("UPDATE edu_classroom SET capacity=? WHERE classroom_id=?",originalCapacity,otherRoom);
-        assertThrows(ServiceException.class,()->publish(teacher,otherRoom,date));assertThrows(ServiceException.class,()->publish(otherTeacher,room,date));
+        // 教室容量不再限制排课（报名名额不限）；同教室同时段允许重复排课（前端红色提示），此处仅保留教师冲突的硬校验。
+        assertThrows(ServiceException.class,()->publish(teacher,otherRoom,date));
         ScheduleCrudTest.principal(teacher,"teacher");var invalid=draft(otherRoom,date.plusDays(3));invalid.setStartTime(LocalTime.of(8,1));assertThrows(ServiceException.class,()->tx(()->courses.insertEduCourseSchedule(invalid)));
         long e=enroll(parent,s,date,"学生甲",a);balances(a,5,2,0);
         assertEquals(2,id(db.one("SELECT lesson_credits FROM edu_enrollment WHERE enrollment_id=?",e),"lessonCredits"));

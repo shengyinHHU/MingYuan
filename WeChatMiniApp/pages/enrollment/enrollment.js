@@ -212,17 +212,18 @@ Page({
   decorateSchedules(list) {
     return list.map((item) => {
       const enrolled = Number(item.enrolled) === 1
-      const canEnroll = String(item.classMode) === '2' ? !!item.canEnroll : !enrolled && Number(item.remainingCount) > 0
+      // 班课不按教室容量限制名额（一对一仍看单节课自身的 canEnroll），因此不再出现「已满」
+      const canEnroll = String(item.classMode) === '2' ? !!item.canEnroll : !enrolled
       return {
         ...item, viewKey: `${item.scheduleId}:${item.classDate || 'class'}`,
         subjectText: this.labelOf(this.data.subjects, item.subjectName) || item.subjectName,
         gradeText: this.labelOf(this.data.grades, item.gradeName) || item.gradeName,
         timeText: this.buildTimeText(item),
         placeText: this.buildPlaceText(item),
-        countText: `${item.enrolledCount || 0}/${item.capacity || '不限'}`,
+        countText: `已报名 ${item.enrolledCount || 0} 人`,
         canEnroll,
         statusClass: canEnroll ? 'ok' : 'disabled',
-        statusText: item.classDate ? item.statusText : enrolled ? '已报名' : (canEnroll ? '报名' : '已满')
+        statusText: item.classDate ? item.statusText : enrolled ? '已报名' : '报名'
       }
     })
   },

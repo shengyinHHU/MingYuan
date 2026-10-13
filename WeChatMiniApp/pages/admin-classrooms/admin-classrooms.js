@@ -30,7 +30,6 @@ Page({
         classroomCode: r.classroomCode || '—',
         classroomName: r.classroomName || '—',
         campusName: r.campusName || '未分配',
-        capacity: r.capacity == null ? null : r.capacity,
         used: usedByRoom[r.classroomId] || 0
       }))
       const byCampus = {}
@@ -57,7 +56,7 @@ Page({
   openAdd() {
     this.setData({
       editVisible: true,
-      editForm: { classroomId: null, classroomCode: '', classroomName: '', campusIndex: 0, capacity: '' }
+      editForm: { classroomId: null, classroomCode: '', classroomName: '', campusIndex: 0 }
     })
   },
   openEdit(e) {
@@ -72,8 +71,7 @@ Page({
         classroomId: room.classroomId,
         classroomCode: room.classroomCode === '—' ? '' : room.classroomCode,
         classroomName: room.classroomName,
-        campusIndex: idx < 0 ? 0 : idx,
-        capacity: room.capacity == null ? '' : String(room.capacity)
+        campusIndex: idx < 0 ? 0 : idx
       }
     })
   },
@@ -91,7 +89,6 @@ Page({
       status: '0'
     }
     if (f.classroomCode.trim()) payload.classroomCode = f.classroomCode.trim()
-    if (f.capacity !== '') payload.capacity = Number(f.capacity)
     try {
       wx.showLoading({ title: '保存中' })
       if (f.classroomId) {

@@ -15,7 +15,7 @@
       <view class="room" wx:for="{{g.rooms}}" wx:key="classroomId" wx:for-item="r">
         <view class="room-main">
           <view class="room-name">{{r.classroomName}}</view>
-          <view class="room-sub">{{r.classroomCode}}　容纳 {{r.capacity != null ? r.capacity : '—'}} 人　带课 {{r.used}} 节</view>
+          <view class="room-sub">{{r.classroomCode}}　带课 {{r.used}} 节</view>
         </view>
         <view class="room-ops">
           <text class="op" data-id="{{r.classroomId}}" bindtap="openEdit">编辑</text>
@@ -39,7 +39,6 @@
           <view class="picker-val">{{campusOptions[editForm.campusIndex]}}</view>
         </picker>
       </view>
-      <view class="form-item"><text class="form-label">容纳人数</text><input class="form-input" type="number" data-field="capacity" value="{{editForm.capacity}}" placeholder="选填"/></view>
       <button class="btn-primary" bindtap="save">保存</button>
     </view>
   </view>

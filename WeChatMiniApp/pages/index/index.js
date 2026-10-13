@@ -105,6 +105,8 @@ roleProfiles.education = {
   name: '教务', tag: '教务工作台', eyebrow: '教务端', title: '线下收费与退费金额核定',
   stats: [], actions: [], agendaTitle: '教务工作说明', schedule: []
 }
+// The education tab changes the view only; it never requests a simulated identity.
+const visibleRoleOptions = [...roleOptions, { key: 'education', name: '教务', className: '' }]
 
 function normalizeRole(roleKey) {
   return roleProfiles[roleKey] ? roleKey : 'parent'
@@ -216,7 +218,7 @@ function computeNextDate(item) {
 function buildRoleState(roleKey, visibleRoles) {
   const normalizedRole = normalizeRole(roleKey)
   const profile = roleProfiles[normalizedRole]
-  const roles = visibleRoles || roleOptions
+  const roles = visibleRoles || visibleRoleOptions
   return {
     currentRole: normalizedRole,
     currentRoleName: profile.name,
@@ -249,7 +251,7 @@ Page({
     teacherDataMessage: '',
     coursePendingCount: null,
     coursePendingError: '',
-    roles: roleOptions,
+    roles: visibleRoleOptions,
     ...buildRoleState('parent')
   },
 
@@ -317,24 +319,29 @@ Page({
       if (!this._unloaded && loadVersion === this._roleLoadVersion) wx.showToast({ title: error.message || '身份核对失败，请重新登录', icon: 'none' })
       return
     }
-    const role = getRoleFromStorage(info.roles || [])
+    const authenticatedRole = getRoleFromStorage(info.roles || [])
+    const staff = (info.roles || []).some(r => ['admin', 'education'].includes(r))
+    const financeAllowed = staff && (info.permissions || []).some(p => p === '*:*:*' || p === 'system:tuition:list')
+    if (this._educationViewRequested && !financeAllowed) {
+      this._educationViewRequested = false
+      wx.showToast({ title: '请先登录管理员或已授权教务账号', icon: 'none' })
+    }
+    const role = this._educationViewRequested && financeAllowed ? 'education' : authenticatedRole
     this._teacherLoadVersion = (this._teacherLoadVersion || 0) + 1
     this.setData({ teacherDataMessage: '' })
-    if (DEV_ROLE_SWITCH_ENABLED && role !== 'education') {
+    if (DEV_ROLE_SWITCH_ENABLED && authenticatedRole !== 'education') {
       this.setData({
         roleLocked: false,
-        ...buildRoleState(role, roleOptions)
+        ...buildRoleState(role, visibleRoleOptions)
       })
     } else {
       this.setData({
         roleLocked: true,
-        ...buildRoleState(role, [{ key: role, name: roleProfiles[role].name, className: 'active' }])
+        ...buildRoleState(role, visibleRoleOptions)
       })
     }
 
     if(role==='parent' || role==='admin') { this.loadAccountPending(); this._accountTimer=setInterval(()=>this.loadAccountPending(),30000) }
-    const staff = (info.roles || []).some(r => ['admin', 'education'].includes(r))
-    const financeAllowed = staff && (info.permissions || []).some(p => p === '*:*:*' || p === 'system:tuition:list')
     const actions = this.data.quickActions.filter(a => a.route !== '/pages/admin-tuition/admin-tuition')
     if (financeAllowed) actions.push({ title: '收费财务', icon: '财', tone: 'gold', route: '/pages/admin-tuition/admin-tuition' })
     this.setData({ quickActions: actions })
@@ -486,12 +493,25 @@ Page({
   },
 
   async switchRole(e) {
-    if (this.data.roleLocked || this.data.roleSwitching) return
+    if (this.data.roleSwitching) return
 
     const role = normalizeRole(e.currentTarget.dataset.role)
     if (role === this.data.currentRole) return
+    if (role === 'education' || (this.data.currentRole === 'education' && role === 'admin' &&
+        (getApp().globalData.roles || []).includes('admin'))) {
+      this._educationViewRequested = role === 'education'
+      this.setData({ roleSwitching: true })
+      try {
+        await this.applyLoginRole()
+      } finally {
+        if (!this._unloaded) this.setData({ roleSwitching: false })
+      }
+      return
+    }
+    if (this.data.roleLocked) return
+    this._educationViewRequested = false
     if (!DEV_ROLE_SWITCH_ENABLED) {
-      this.setData(buildRoleState(role, roleOptions))
+      this.setData(buildRoleState(role, visibleRoleOptions))
       return
     }
 

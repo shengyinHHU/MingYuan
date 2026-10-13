@@ -85,7 +85,7 @@ public class ScheduleAvailabilityService {
     public Map<String,Object> week(Long teacherId,LocalDate selected,Long excludeId) {
         require(selected != null && selected.getYear() >= 2000 && selected.getYear() <= 2100,"请选择有效日期");
         LocalDate first = selected.minusDays(selected.getDayOfWeek().getValue()-1);
-        var rooms = db.rows("SELECT classroom_id,campus_name,classroom_name,capacity FROM edu_classroom WHERE status='0' AND (capacity IS NULL OR capacity>0) ORDER BY campus_name,classroom_name,classroom_id");
+        var rooms = db.rows("SELECT classroom_id,campus_name,classroom_name FROM edu_classroom WHERE status='0' ORDER BY campus_name,classroom_name,classroom_id");
         var rows = db.rows("SELECT schedule_id,teacher_id,classroom_id,start_time,end_time,start_date,end_date,class_pattern,period_name FROM edu_course_schedule WHERE status='0' AND del_flag='0' AND schedule_id<>?",excludeId == null ? -1 : excludeId);
         Map<String,SortedSet<LocalDate>> dates = new HashMap<>();
         Map<Long,List<Map<String,Object>>> changes = new HashMap<>();

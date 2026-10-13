@@ -50,7 +50,6 @@ function decorateSchedule(item) {
     course: item.courseClassName || [item.gradeName, item.subjectName, item.classType].filter(Boolean).join(' · ') || '未命名课程',
     room: item.lessonLocation || [item.campusName, item.classroomName].filter(Boolean).join(' · ') || '教室未提供',
     time: [item.periodName, time || item.timeSlot].filter(Boolean).join(' · '),
-    capacityText: item.capacity == null ? '未提供' : item.capacity,
     recruitText: label(item.recruitStatus, { 0: '招生中', 1: '停招', 2: '满班' })
   }
 }

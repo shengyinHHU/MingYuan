@@ -8,7 +8,7 @@
     <block wx:if="{{!item.collapsed}}"><view wx:for="{{item.items}}" wx:for-item="schedule" wx:key="scheduleId" class="card" bindtap="open" data-id="{{schedule.scheduleId}}">
       <view class="title">{{schedule.course}}</view><view class="ui-time">{{schedule.time}}</view><view class="muted">{{schedule.teacherName || '教师未提供'}}</view>
       <view class="muted">{{schedule.courseYear}} {{schedule.termName}} · {{schedule.room}}</view>
-      <view class="row"><text>报名 {{schedule.enrolledCount}} / {{schedule.capacityText}}</text><text>{{schedule.recruitText}} · 查看名单 ›</text></view>
+      <view class="row"><text>已报名 {{schedule.enrolledCount}} 人</text><text>{{schedule.recruitText}} · 查看名单 ›</text></view>
     </view></block>
   </view>
   <view class="empty" wx:if="{{error}}">{{error}}</view><view class="empty" wx:elif="{{!loading && !list.length}}">暂无班次</view>

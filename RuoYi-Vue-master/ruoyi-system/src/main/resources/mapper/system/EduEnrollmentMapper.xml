@@ -175,13 +175,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     </update>
 
     <update id="releaseScheduleSeat">
-        update edu_course_schedule s
-        set recruit_status = case
-                when recruit_status = '2'
-                     and greatest(ifnull(enrolled_count, 0) - 1, 0) &lt;
-                         (select ifnull(c.capacity, 999999) from edu_classroom c where c.classroom_id = s.classroom_id)
-                then '0' else recruit_status end,
-            enrolled_count = greatest(ifnull(enrolled_count, 0) - 1, 0),
+        update edu_course_schedule
+        set enrolled_count = greatest(ifnull(enrolled_count, 0) - 1, 0),
             update_by = #{updateBy}, update_time = now()
         where schedule_id = #{scheduleId}
     </update>

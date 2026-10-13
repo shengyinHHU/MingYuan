@@ -1466,10 +1466,9 @@ public class TuitionService {
         "报名状态已变化");
     db.jdbc()
         .update(
-            "UPDATE edu_course_schedule s SET recruit_status=CASE WHEN recruit_status='2' AND"
-                + " GREATEST(COALESCE(enrolled_count,0)-1,0)< (SELECT IFNULL(c.capacity,999999)"
-                + " FROM edu_classroom c WHERE c.classroom_id=s.classroom_id) THEN '0' ELSE"
-                + " recruit_status END,"
+            // 报名不按教室容量限制名额，recruit_status 不会被容量自动置为「满班」，
+            // 因此退费时也无需按容量回退 recruit_status，只递减 enrolled_count。
+            "UPDATE edu_course_schedule s SET"
                 + " enrolled_count=GREATEST(COALESCE(enrolled_count,0)-1,0),update_time=? WHERE"
                 + " schedule_id=?",
             now(),
