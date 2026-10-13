@@ -1283,10 +1283,6 @@ public class TuitionService {
     db.jdbc()
         .update(
             "UPDATE edu_course_schedule s SET"
-                + " recruit_status=CASE WHEN recruit_status='2'"
-                + " AND GREATEST(COALESCE(enrolled_count,0)-1,0)<"
-                + " (SELECT IFNULL(c.capacity,999999) FROM edu_classroom c WHERE c.classroom_id=s.classroom_id)"
-                + " THEN '0' ELSE recruit_status END,"
                 + " enrolled_count=GREATEST(COALESCE(enrolled_count,0)-1,0),update_time=? WHERE"
                 + " schedule_id=?",
             now(),

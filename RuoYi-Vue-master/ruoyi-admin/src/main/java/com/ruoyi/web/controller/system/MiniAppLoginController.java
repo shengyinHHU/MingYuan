@@ -34,12 +34,20 @@ public class MiniAppLoginController
         return AjaxResult.success(miniAppLoginService.developmentTeachers());
     }
 
+    @Anonymous
+    @GetMapping("/miniapp/dev/parents")
+    public AjaxResult parents()
+    {
+        return AjaxResult.success(miniAppLoginService.developmentParents());
+    }
+
     @PostMapping("/miniapp/login")
     public AjaxResult login(@RequestBody MiniAppLoginBody loginBody)
     {
         AjaxResult ajax = AjaxResult.success();
         String token = miniAppLoginService.login(loginBody.getLoginCode(), loginBody.getPhoneCode(),
-                loginBody.getNickName(), loginBody.getDevRole(), loginBody.getDevTeacherId());
+                loginBody.getNickName(), loginBody.getDevRole(), loginBody.getDevTeacherId(),
+                loginBody.getDevParentId());
         ajax.put(Constants.TOKEN, token);
         String developmentVersion = miniAppLoginService.loginDevelopmentSessionVersion();
         if (developmentVersion != null)

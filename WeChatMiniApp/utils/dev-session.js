@@ -31,26 +31,34 @@ async function checkBackendSession() {
   return { version, restarted }
 }
 
-function keyFor(role, teacherId, cache) {
-  return role === 'teacher' ? (teacherId ? `teacher:${teacherId}` : cache.lastTeacherKey) : role
+function keyFor(role, identityId, cache) {
+  if (role === 'teacher') return identityId ? `teacher:${identityId}` : cache.lastTeacherKey
+  if (role === 'parent') return identityId ? `parent:${identityId}` : cache.lastParentKey
+  return role
 }
 
-function validIdentity(role, info, teacherId) {
+function validIdentity(role, info, identityId) {
   const roles = info.roles || []
   const user = info.user
-  return !!user && roles.includes(role) && (role !== 'teacher' ||
-    (!roles.includes('admin') && !roles.includes('administrator') && String(user.userId) === String(teacherId)))
+  if (!user || !roles.includes(role)) return false
+  // 教师 / 家长：登录身份必须与所选账号一致，且不能是管理员账号
+  if (role === 'teacher' || role === 'parent') {
+    return !roles.includes('admin') && !roles.includes('administrator')
+      && String(user.userId) === String(identityId)
+  }
+  return true
 }
 
 function activate(role, token, info, version) {
-  const teacherId = info.user && info.user.userId
-  if (!validIdentity(role, info, teacherId)) throw new Error('登录身份不匹配，请重新选择账号')
+  const identityId = info.user && info.user.userId
+  if (!validIdentity(role, info, identityId)) throw new Error('登录身份不匹配，请重新选择账号')
   if (version) {
     const previous = readCache()
     const cache = previous.version === version ? previous : { baseUrl: app.globalData.baseUrl, version, sessions: {} }
-    const key = keyFor(role, teacherId, cache)
-    cache.sessions[key] = { token, userId: String(teacherId) }
+    const key = keyFor(role, identityId, cache)
+    cache.sessions[key] = { token, userId: String(identityId) }
     if (role === 'teacher') cache.lastTeacherKey = key
+    if (role === 'parent') cache.lastParentKey = key
     wx.setStorageSync(CACHE_KEY, cache)
     wx.setStorageSync('devSessionVersion', version)
   } else {
@@ -66,12 +74,12 @@ function activate(role, token, info, version) {
   app.globalData.userInfo = info.user || null
 }
 
-async function restore(role, teacherId, isCurrent = () => true) {
+async function restore(role, identityId, isCurrent = () => true) {
   const checked = await checkBackendSession()
   if (checked.restarted) return { restored: false, restarted: true }
   if (!isCurrent()) return { restored: false }
   const cache = readCache()
-  const key = keyFor(role, teacherId, cache)
+  const key = keyFor(role, identityId, cache)
   const saved = cache.sessions[key]
   if (!saved) return { restored: false }
   const previousToken = wx.getStorageSync('token')

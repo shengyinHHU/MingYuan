@@ -1,6 +1,7 @@
 package com.ruoyi.system.service.impl;
 
 import java.util.List;
+import java.util.Map;
 import com.ruoyi.common.utils.DateUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -42,6 +43,17 @@ public class EduClassroomServiceImpl implements IEduClassroomService
     public List<EduClassroom> selectEduClassroomList(EduClassroom eduClassroom)
     {
         return eduClassroomMapper.selectEduClassroomList(eduClassroom);
+    }
+
+    /**
+     * 校区分类统计（教室管理页的校区分类用）
+     *
+     * @return [{campusName, roomCount}]
+     */
+    @Override
+    public List<Map<String, Object>> selectCampusStats()
+    {
+        return eduClassroomMapper.selectCampusStats();
     }
 
     /**

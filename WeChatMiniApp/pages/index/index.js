@@ -480,13 +480,25 @@ Page({
     if (this.data.roleLocked || this.data.roleSwitching) return
 
     const role = normalizeRole(e.currentTarget.dataset.role)
-    if (role === this.data.currentRole) return
     if (!DEV_ROLE_SWITCH_ENABLED) {
+      if (role === this.data.currentRole) return
       this.setData(buildRoleState(role, roleOptions))
       return
     }
 
+    // 家长端：点击「家长」页签始终打开家长选择器，便于切换不同家长身份提交 / 查看作业
+    if (role === 'parent') {
+      this.openParentPicker()
+      return
+    }
+    if (role === this.data.currentRole) return
+
     await this.loginAsDevRole(role)
+  },
+
+  openParentPicker() {
+    if (this._unloaded || this.data.roleSwitching) return
+    wx.navigateTo({ url: '/pages/register/register?selectParent=1' })
   },
 
   async loginAsDevRole(role) {

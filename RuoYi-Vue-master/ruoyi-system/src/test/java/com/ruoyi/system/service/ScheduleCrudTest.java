@@ -190,7 +190,7 @@ public class ScheduleCrudTest {
             throw new AssertionError(sql);
         }
         @Override public Map<String,Object> one(String sql,Object... args) {
-            if(sql.contains("FROM edu_classroom")) { if(sql.contains("FOR UPDATE")) locks.add("room:"+args[0]); return Map.of("status","0","capacity",30); }
+            if(sql.contains("FROM edu_classroom")) { if(sql.contains("FOR UPDATE")) locks.add("room:"+args[0]); return Map.of("status","0"); }
             if(sql.contains("FOR UPDATE")) { locks.add("teacher:"+args[0]); return Map.of("userId",args[0]); }
             throw new AssertionError(sql);
         }

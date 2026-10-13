@@ -231,4 +231,32 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         </where>
         ORDER BY s.course_year, s.term_name, s.period_name, c.campus_name, c.classroom_id, s.time_slot
     </select>
+
+    <!-- 数据中实际出现过的「学期-期次」组合（含导入占位值，如 未识别学期/未识别期次） -->
+    <select id="selectTermPeriodPairs" resultType="java.util.LinkedHashMap">
+        SELECT DISTINCT term_name AS termName, period_name AS periodName
+        FROM edu_course_schedule
+        WHERE del_flag = '0' AND term_name IS NOT NULL AND term_name &lt;&gt; ''
+        ORDER BY term_name, period_name
+    </select>
+
+    <!--
+      可视化课表：一次性交换两个教室在「年份 + 学期 + 期次」下的全部排课。
+      用单条 UPDATE + CASE 完成 A<->B 对调（MySQL 按行的原值求值，不会互相覆盖），
+      因此是原子操作，不需要临时占位值，也不存在中间态。
+    -->
+    <update id="swapClassroom">
+        UPDATE edu_course_schedule
+        SET classroom_id = CASE classroom_id
+                WHEN #{classroomIdA} THEN #{classroomIdB}
+                WHEN #{classroomIdB} THEN #{classroomIdA}
+            END,
+            update_time = NOW()
+            <if test="updateBy != null and updateBy != ''">, update_by = #{updateBy}</if>
+        WHERE del_flag = '0'
+          AND classroom_id IN (#{classroomIdA}, #{classroomIdB})
+          <if test="courseYear != null">AND course_year = #{courseYear}</if>
+          <if test="termName != null and termName != ''">AND term_name = #{termName}</if>
+          <if test="periodName != null and periodName != ''">AND period_name = #{periodName}</if>
+    </update>
 </mapper>

@@ -22,9 +22,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             s.course_class_name as courseClassName,
             c.campus_name as campusName,
             c.classroom_name as classroomName,
-            c.capacity as capacity,
             ifnull(s.enrolled_count, 0) as enrolledCount,
-            greatest(ifnull(c.capacity, 999999) - ifnull(s.enrolled_count, 0), 0) as remainingCount,
             case when e.enrollment_id is null then 0 else 1 end as enrolled
         from edu_course_schedule s
         left join sys_user teacher on teacher.user_id = s.teacher_id
@@ -205,7 +203,6 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
           and s.status = '0'
           and s.recruit_status = '0'
           and c.status = '0'
-          and ifnull(s.enrolled_count, 0) <![CDATA[<]]> ifnull(c.capacity, 999999)
     </select>
 
     <select id="countActiveEnrollment" resultType="int">
@@ -222,10 +219,6 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         update edu_course_schedule s
         inner join edu_classroom c on c.classroom_id = s.classroom_id
         set s.enrolled_count = ifnull(s.enrolled_count, 0) + 1,
-            s.recruit_status = case
-                when ifnull(s.enrolled_count, 0) + 1 >= ifnull(c.capacity, 999999) then '2'
-                else s.recruit_status
-            end,
             s.update_by = 'miniapp',
             s.update_time = now()
         where s.schedule_id = #{scheduleId}
@@ -233,7 +226,6 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
           and s.status = '0'
           and s.recruit_status = '0'
           and c.status = '0'
-          and ifnull(s.enrolled_count, 0) <![CDATA[<]]> ifnull(c.capacity, 999999)
     </update>
 
     <insert id="insertParentEnrollment">

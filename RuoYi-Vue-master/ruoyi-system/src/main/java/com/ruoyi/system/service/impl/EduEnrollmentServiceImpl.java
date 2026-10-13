@@ -69,8 +69,8 @@ public class EduEnrollmentServiceImpl implements IEduEnrollmentService
         db.one("SELECT schedule_id FROM edu_course_schedule WHERE schedule_id=? FOR UPDATE",eduEnrollment.getScheduleId());
         int parents=db.jdbc().queryForObject("SELECT COUNT(DISTINCT u.user_id) FROM sys_user u JOIN sys_user_role ur ON ur.user_id=u.user_id JOIN sys_role r ON r.role_id=ur.role_id WHERE u.user_id=? AND u.status='0' AND u.del_flag='0' AND r.role_key='parent' AND r.status='0' AND r.del_flag='0'",Integer.class,eduEnrollment.getParentId());
         if(parents!=1)throw new ServiceException("必须选择正常启用的现有家长账号");
-        int capacity=db.jdbc().update("UPDATE edu_course_schedule s JOIN edu_classroom c ON c.classroom_id=s.classroom_id SET s.enrolled_count=IFNULL(s.enrolled_count,0)+1 WHERE s.schedule_id=? AND s.del_flag='0' AND s.status='0' AND s.recruit_status='0' AND c.status='0' AND IFNULL(s.enrolled_count,0)<IFNULL(c.capacity,999999)",eduEnrollment.getScheduleId());
-        if(capacity!=1)throw new ServiceException("课程不可报名或名额已满");
+        int updated=db.jdbc().update("UPDATE edu_course_schedule s JOIN edu_classroom c ON c.classroom_id=s.classroom_id SET s.enrolled_count=IFNULL(s.enrolled_count,0)+1 WHERE s.schedule_id=? AND s.del_flag='0' AND s.status='0' AND s.recruit_status='0' AND c.status='0'",eduEnrollment.getScheduleId());
+        if(updated!=1)throw new ServiceException("课程不可报名");
         eduEnrollment.setCreateBy(SecurityUtils.getUsername());eduEnrollment.setCancelTime(null);eduEnrollment.setCancelReason(null);
         eduEnrollment.setCreateTime(DateUtils.getNowDate());
         int count=eduEnrollmentMapper.insertEduEnrollment(eduEnrollment);

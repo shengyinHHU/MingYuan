@@ -10,7 +10,7 @@
     </view>
     <view class="card" bindtap="openClass"><view class="title">所属班次 ›</view>
       <block wx:if="{{schedule}}"><view>{{schedule.course}}</view><view>{{schedule.teacherName}} · {{schedule.time}}</view><view>{{schedule.room}}</view>
-        <view>{{schedule.courseYear}} {{schedule.termName}} · {{schedule.startDate}} 至 {{schedule.endDate}}</view><view>报名 {{schedule.enrolledCount}} / {{schedule.capacityText}} · {{schedule.recruitText}}</view>
+        <view>{{schedule.courseYear}} {{schedule.termName}} · {{schedule.startDate}} 至 {{schedule.endDate}}</view><view>已报名 {{schedule.enrolledCount}} 人 · {{schedule.recruitText}}</view>
       </block><view wx:else>班次 {{enrollment.scheduleId}}（排课已删除或不可用）</view>
     </view>
     <view class="card"><view class="title">上课记录</view><view class="ui-metrics"><view class="ui-metric"><view>{{enrollment.attendedLessonCount}}</view>已复核到课</view><view class="ui-metric"><view>{{enrollment.pendingLessonCount}}</view>待复核</view><view class="ui-metric"><view>{{enrollment.recordedLessonCount}}</view>录播</view><view class="ui-metric"><view>{{enrollment.leaveLessonCount}}</view>请假</view></view><view class="muted">供人工核对退款，不自动计算退款或扣课。</view>
