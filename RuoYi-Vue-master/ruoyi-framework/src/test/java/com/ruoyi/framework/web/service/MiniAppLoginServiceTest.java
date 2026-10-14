@@ -25,6 +25,8 @@ class MiniAppLoginServiceTest
     private SysRole teacherRole;
     private LoginUser issuedToken;
     private boolean developmentEnabled;
+    private SysRole parentRole;
+    private String[] profiles;
 
     @BeforeEach
     void setup() throws Exception
@@ -34,6 +36,9 @@ class MiniAppLoginServiceTest
         teacherRole.setRoleKey("teacher");
         teacherRole.setStatus("0");
         teacherRole.setDelFlag("0");
+        parentRole=new SysRole(8L);parentRole.setRoleKey("parent");parentRole.setStatus("0");parentRole.setDelFlag("0");
+        profiles=new String[]{"local"};
+        set("environment",new org.springframework.core.env.StandardEnvironment(){@Override public String[] getActiveProfiles(){return profiles;}});
         users = List.of(user(10L, "teacher_a", "0", List.of(teacherRole)));
         issuedToken = null;
         developmentEnabled = true;
@@ -70,7 +75,7 @@ class MiniAppLoginServiceTest
                     .anyMatch(r -> r.getRoleId().equals(filter.getRoleId()))).toList();
         }));
         set("roleMapper", proxy(SysRoleMapper.class, (method, args) -> switch (method) {
-            case "checkRoleKeyUnique" -> "teacher".equals(args[0]) ? teacherRole : null;
+            case "checkRoleKeyUnique" -> "teacher".equals(args[0]) ? teacherRole : "parent".equals(args[0]) ? parentRole : null;
             case "selectRolePermissionByUserId" -> users.stream().filter(u -> u.getUserId().equals(args[0]))
                     .findFirst().orElseThrow().getRoles().stream().filter(r -> "0".equals(r.getDelFlag())).toList();
             default -> throw new AssertionError("Unexpected role mapper call: " + method);
@@ -224,6 +229,38 @@ class MiniAppLoginServiceTest
     }
 
     private String login() { return service.login("mock", "mock", "Test Teacher", "teacher", 10L); }
+
+    @Test void selectedParentsIssueTheirOwnIdentitiesAndIndependentOptions() {
+        users=List.of(user(30L,"dev_referral_a","0",List.of(parentRole)),user(31L,"dev_referral_b","0",List.of(parentRole)));
+        assertEquals(2,service.developmentParents().size());
+        assertEquals("test-token",service.login("mock","mock","Parent","parent",null,30L));assertEquals(30L,issuedToken.getUserId());
+        assertEquals("test-token",service.login("mock","mock","Parent","parent",null,31L));assertEquals(31L,issuedToken.getUserId());
+    }
+    @Test void selectedParentCannotImpersonateStaffOrAnotherRole() {
+        users=List.of(user(30L,"dev_referral_a","0",List.of(parentRole,teacherRole)));
+        assertTrue(service.developmentParents().isEmpty());
+        assertThrows(ServiceException.class,()->service.login("mock","mock","Parent","parent",null,30L));
+        assertThrows(ServiceException.class,()->service.login("mock","mock","Parent","admin",null,30L));
+        assertThrows(ServiceException.class,()->service.login("mock","mock","Parent","teacher",10L,30L));
+        assertNull(issuedToken);
+    }
+    @Test void disabledDeletedMissingParentsAndRolesCannotLogin() {
+        users=List.of(user(30L,"dev_referral_a","1",List.of(parentRole)));
+        assertThrows(ServiceException.class,()->service.login("mock","mock","Parent","parent",null,30L));
+        users.get(0).setStatus("0");users.get(0).setDelFlag("2");assertTrue(service.developmentParents().isEmpty());
+        users.get(0).setDelFlag("0");parentRole.setStatus("1");assertTrue(service.developmentParents().isEmpty());
+        assertThrows(ServiceException.class,()->service.login("mock","mock","Parent","parent",null,30L));
+        assertThrows(ServiceException.class,()->service.login("mock","mock","Parent","parent",null,99L));
+        assertNull(issuedToken);
+    }
+    @Test void parentSelectionNeverWorksInProductionEvenWithAccidentalMockFlag() {
+        users=List.of(user(30L,"dev_referral_a","0",List.of(parentRole)));
+        for(String[] value:List.of(new String[]{},new String[]{"prod"},new String[]{"local","production"})){
+            profiles=value;assertThrows(ServiceException.class,service::developmentParents);assertThrows(ServiceException.class,()->service.login("mock","mock","Parent","parent",null,30L));
+        }
+        profiles=new String[]{"local"};developmentEnabled=false;assertThrows(ServiceException.class,service::developmentParents);
+        assertNull(issuedToken);
+    }
 
     private SysUser user(long id, String name, String status, List<SysRole> roles)
     {

@@ -17,12 +17,16 @@ import com.ruoyi.system.service.IEduHomeworkService;
 public class EduHomeworkServiceImpl implements IEduHomeworkService
 {
     @Autowired private EduHomeworkMapper mapper;
+    @Autowired private com.ruoyi.system.service.ParentAccountService accounts;
 
     public List<EduHomework> parentList(){return mapper.selectParentList(SecurityUtils.getUserId());}
+    public List<EduHomework> parentList(Long accountId){if(accountId==null)return parentList();accounts.ownedChild(accountId);return mapper.selectParentChildList(SecurityUtils.getUserId(),accountId);}
 
     public Map<String,Object> parentDetail(Long id,Long scheduleId)
+    { return parentDetail(id,scheduleId,null); }
+    public Map<String,Object> parentDetail(Long id,Long scheduleId,Long enrollmentId)
     {
-        EduHomework homework=mapper.selectParentDetail(id, SecurityUtils.getUserId(), scheduleId);
+        EduHomework homework=enrollmentId==null?mapper.selectParentDetail(id, SecurityUtils.getUserId(), scheduleId):mapper.selectParentEnrollmentDetail(id,SecurityUtils.getUserId(),scheduleId,enrollmentId);
         if(homework==null) throw new ServiceException("作业不存在或无权查看");
         Map<String,Object> result=new HashMap<>(); result.put("homework",homework);
         List<EduHomeworkQuestion> questions=mapper.selectQuestions(id);
@@ -42,8 +46,11 @@ public class EduHomeworkServiceImpl implements IEduHomeworkService
         EduHomework homework=mapper.selectById(body.getHomeworkId());
         if(homework==null||!"1".equals(homework.getStatus())||"1".equals(homework.getArchiveFlag())) throw new ServiceException("作业当前不可提交");
         if(homework.getDeadline()!=null && new Date().after(homework.getDeadline())) throw new ServiceException("作业已超过截止时间");
-        Long enrollmentId=mapper.selectParentEnrollment(body.getHomeworkId(),parentId);
+        Long enrollmentId=body.getEnrollmentId();
+        if(enrollmentId==null)enrollmentId=mapper.selectParentEnrollment(body.getHomeworkId(),parentId);
+        else if(mapper.selectParentEnrollmentDetail(body.getHomeworkId(),parentId,null,enrollmentId)==null)throw new ServiceException("无权为该学员提交作业");
         if(enrollmentId==null) throw new ServiceException("当前家长未报名该作业所属班级");
+        if(body.getAccountId()!=null && !accounts.childEnrollmentIds(body.getAccountId()).contains(String.valueOf(enrollmentId)))throw new ServiceException("作业报名不属于当前孩子");
         body.setEnrollmentId(enrollmentId);
         if(mapper.selectSubmissionByHomeworkEnrollment(body.getHomeworkId(),body.getEnrollmentId())!=null) throw new ServiceException("该作业已提交，不能重复提交");
         List<EduHomeworkQuestion> questions=mapper.selectQuestions(body.getHomeworkId());

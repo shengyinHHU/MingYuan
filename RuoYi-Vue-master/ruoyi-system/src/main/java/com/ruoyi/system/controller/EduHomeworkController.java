@@ -15,8 +15,9 @@ import com.ruoyi.system.service.IEduHomeworkService;
 public class EduHomeworkController extends BaseController
 {
     @Autowired private IEduHomeworkService service;
-    @PreAuthorize("@ss.hasRole('parent')") @GetMapping("/miniapp/parent/homework/list") public AjaxResult parentList(){return success(service.parentList());}
-    @PreAuthorize("@ss.hasRole('parent')") @GetMapping("/miniapp/parent/homework/{homeworkId}") public AjaxResult parentDetail(@PathVariable Long homeworkId, @RequestParam(required=false) Long scheduleId){return success(service.parentDetail(homeworkId, scheduleId));}
+    @Autowired private com.ruoyi.system.service.ParentAccountService accounts;
+    @PreAuthorize("@ss.hasRole('parent')") @GetMapping("/miniapp/parent/homework/list") public AjaxResult parentList(@RequestParam(required=false) Long accountId){return success(service.parentList(accountId));}
+    @PreAuthorize("@ss.hasRole('parent')") @GetMapping("/miniapp/parent/homework/{homeworkId}") public AjaxResult parentDetail(@PathVariable Long homeworkId, @RequestParam(required=false) Long scheduleId,@RequestParam(required=false) Long enrollmentId,@RequestParam(required=false) Long accountId){if(accountId!=null && (enrollmentId==null || !accounts.childEnrollmentIds(accountId).contains(String.valueOf(enrollmentId))))throw new com.ruoyi.common.exception.ServiceException("作业不属于当前孩子");return success(service.parentDetail(homeworkId, scheduleId,enrollmentId));}
     @PreAuthorize("@ss.hasRole('parent')") @PostMapping("/miniapp/parent/homework/submit") public AjaxResult submit(@RequestBody HomeworkSubmitBody body){return success().put("submissionId",service.submit(body));}
     @PreAuthorize("@ss.hasAnyRoles('teacher,admin')") @PostMapping("/miniapp/teacher/homework") public AjaxResult draft(@RequestBody HomeworkSaveBody body){return success().put("homeworkId",service.saveDraft(body));}
     @PreAuthorize("@ss.hasAnyRoles('teacher,admin')") @GetMapping("/miniapp/teacher/homework/{homeworkId}") public AjaxResult teacherDetail(@PathVariable Long homeworkId){return success(service.teacherDetail(homeworkId));}

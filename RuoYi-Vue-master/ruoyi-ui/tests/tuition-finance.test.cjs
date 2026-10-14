@@ -193,6 +193,7 @@ function component(name, dependencies = {}) {
   ).replace('export default', 'component =')
   const context = vm.createContext({
     component: null,
+    ReferralRewards:{},
     ...finance,
     ...dependencies,
   })
@@ -698,10 +699,11 @@ test('coupon parent query normalizes authorized parent names and search fields',
       }
     },
   })
-  instance.parentQuery.search = '家长'
+  instance.parentQuery.search = '11111111111'
   await instance.getParents()
-  assert.equal(query.search, '家长')
-  assert.equal(query.q, '家长')
+  assert.equal(query.search, '')
+  assert.equal(query.q, '')
+  assert.equal(query.parentPhone, '11111111111')
   assert.equal(instance.parents[0].userId, '9007199254740993')
   assert.equal(instance.parents[0].nickName, '家长')
 })
@@ -1240,3 +1242,11 @@ test('legacy SUCCESS preserves historical reviewer and amount semantics with or 
   assert.ok(labels.includes('教务已阅'))
   assert.ok(labels.includes('教务核定金额'))
 })
+test('coupon template form sends single or multiple subject rules and full selection as unrestricted',async()=>{
+  const saved=[];const instance=component('coupon',{addTemplate:async body=>saved.push(body)});instance.getList=async()=>{};
+  instance.form={couponName:'数学券',discountAmount:'50',minSpendAmount:'100',validFrom:'2020-01-01 00:00:00',validUntil:'2099-01-01 00:00:00',totalQuantity:10,templateStatus:'ACTIVE',subjectNames:['数学']};instance.allSubjects=false;instance.couponKind='THRESHOLD';await instance.submitTemplate();assert.deepEqual(Array.from(saved[0].subjectNames),['数学']);assert.equal(saved[0].minSpendAmount,'100.00');
+  instance.form.subjectNames=['数学','化学'];await instance.submitTemplate();assert.deepEqual(Array.from(saved[1].subjectNames),['数学','化学']);instance.allSubjects=true;instance.couponKind='NONE';await instance.submitTemplate();assert.deepEqual(Array.from(saved[2].subjectNames),[]);assert.equal(saved[2].minSpendAmount,'0.00');
+});
+test('coupon pending badge ignores response after account change or page hide',async()=>{
+  let token='admin',finish;const instance=component('coupon',{getToken:()=>token,referralCounts:()=>new Promise(r=>finish=r)});let work=instance.loadRewardCounts();token='parent';finish({data:{pending:9,anomalies:2}});await work;assert.equal(instance.rewardCounts.pending,0);work=instance.loadRewardCounts();instance._couponVisible=false;finish({data:{pending:9,anomalies:2}});await work;assert.equal(instance.rewardCounts.pending,0);
+});

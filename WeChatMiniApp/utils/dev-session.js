@@ -32,13 +32,15 @@ async function checkBackendSession() {
 }
 
 function keyFor(role, teacherId, cache) {
+  if(role==='parent')return teacherId?`parent:${teacherId}`:(cache.lastParentKey||'parent')
   return role === 'teacher' ? (teacherId ? `teacher:${teacherId}` : cache.lastTeacherKey) : role
 }
 
 function validIdentity(role, info, teacherId) {
   const roles = info.roles || []
   const user = info.user
-  return !!user && roles.includes(role) && (role !== 'teacher' ||
+  return !!user && roles.includes(role) && (role !== 'parent' ||
+    (!roles.includes('admin') && !roles.includes('administrator') && (!teacherId || String(user.userId)===String(teacherId)))) && (role !== 'teacher' ||
     (!roles.includes('admin') && !roles.includes('administrator') && String(user.userId) === String(teacherId)))
 }
 
@@ -51,6 +53,7 @@ function activate(role, token, info, version) {
     const key = keyFor(role, teacherId, cache)
     cache.sessions[key] = { token, userId: String(teacherId) }
     if (role === 'teacher') cache.lastTeacherKey = key
+    if (role === 'parent') cache.lastParentKey = key
     wx.setStorageSync(CACHE_KEY, cache)
     wx.setStorageSync('devSessionVersion', version)
   } else {

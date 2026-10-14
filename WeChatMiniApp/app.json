@@ -2,6 +2,8 @@
   "pages": [
     "pages/register/register",
     "pages/index/index",
+    "pages/parent-referral/parent-referral",
+    "pages/admin-referral/admin-referral",
     "pages/tuition-list/tuition-list",
     "pages/tuition-detail/tuition-detail",
     "pages/tuition-receipt/tuition-receipt",
@@ -45,9 +47,12 @@
     "pages/admin-checkin-review/admin-checkin-review",
     "pages/homework-image-edit/homework-image-edit",
     "pages/parent-account/parent-account",
+    "pages/parent-child-detail/parent-child-detail",
     "pages/parent-children/parent-children",
     "pages/parent-leave/parent-leave",
-    "pages/teacher-leave/teacher-leave"
+    "pages/teacher-leave/teacher-leave",
+    "pages/admin-coupon-section/admin-coupon-section",
+    "pages/admin-referral-grant/admin-referral-grant"
   ],
   "permission": {
     "scope.userLocation": {

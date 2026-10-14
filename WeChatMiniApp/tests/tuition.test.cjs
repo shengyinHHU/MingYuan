@@ -22,6 +22,19 @@ function page(name) {
 }
 const bill = { enrollmentId: '9007199254740995', billingStatus: 'OPEN', financeMode: 'MOCK', mockAllowed: true, originalAmount: '1000.00', discountAmount: '100.00', payableAmount: '900.00', receivedAmount: '0.00', refundedAmount: '0.00', netAmount: '0.00', dueAmount: '900.00', refundableAmount: '0.00', financialVersion: 2, payments: [], refunds: [], receipts: [], coupons: [] }
 function helper() { assert.ok(fs.existsSync(path.join(root, 'utils/tuition.js')), 'tuition helper is implemented'); return require('../utils/tuition') }
+
+test('child billing, receipt and refund navigation preserves scope; coupons stay parent-wide', async () => {
+  storage = new Map();const accountId='9007199254740993',routes=[]
+  env(o => o.url.endsWith('/'+bill.enrollmentId) ? ok(o,bill) : o.success({statusCode:200,data:{code:200,rows:[],total:0}}))
+  wx.navigateTo=o=>routes.push(o.url)
+  const list=page('tuition-list');list.onLoad({accountId});await list.onShow()
+  list.receipts();list.refunds();list.coupons()
+  assert.ok(routes[0].endsWith('?accountId='+accountId));assert.ok(routes[1].endsWith('?accountId='+accountId));assert.equal(routes[2],'/pages/my-coupons/my-coupons')
+  const detail=page('tuition-detail');detail.onLoad({id:bill.enrollmentId,accountId});await detail.onShow();detail.refunds();assert.ok(routes.at(-1).endsWith('&accountId='+accountId))
+  const receipt=page('tuition-receipt');receipt.onLoad({id:bill.enrollmentId,accountId});await receipt.onShow()
+  const refund=page('tuition-refund');refund.onLoad({id:bill.enrollmentId,accountId});await refund.onShow()
+  assert.ok(calls.filter(c=>!c.url.endsWith('/getInfo')).every(c=>c.data.accountId===accountId))
+})
 test('historical unknown money stays unknown and refunds use server due amount', () => {
   env(o => ok(o, {})); const t = helper()
   const history = t.bill({ billingStatus: 'HISTORY_PENDING', originalAmount: null, receivedAmount: null, dueAmount: null })
