@@ -55,6 +55,46 @@ test('admin authorized price and offline confirmation preserve decimal amount an
   const priced = calls.find(c => c.method === 'PUT'); assert.equal(priced.data.originalAmount, '1200.00'); assert.equal(priced.data.financialVersion, 2)
   await p.paymentAction({ currentTarget: { dataset: { id: '9007199254740999', action: 'confirm' } } }); const confirmed = calls.find(c => c.url.endsWith('/confirm')); assert.ok(confirmed.url.includes('9007199254740999')); assert.equal(confirmed.data.evidenceKey, 'private-key')
 })
+test('successful pricing and offline collection guide staff to the next step without confirming payment automatically', async () => {
+  storage = new Map(); let current = { ...bill, financeMode: 'REAL', mockAllowed: false }; const notices = [], sections = []
+  env(o => {
+    if (o.url.endsWith('/getInfo')) return o.success({ statusCode: 200, data: { code: 200, roles: ['admin'], permissions: ['*:*:*'] } })
+    if (o.method === 'PUT') current = { ...current, financialVersion: 3 }
+    if (o.method === 'POST') current = { ...current, payments: [{ paymentId: '91', paymentStatus: 'PENDING', amount: '900.00', channel: 'CASH' }] }
+    ok(o, current)
+  }, 'admin')
+  wx.showToast = o => notices.push(o.title); wx.pageScrollTo = o => sections.push(o.selector)
+  const p = page('admin-tuition'); p.onLoad({ id: bill.enrollmentId }); await p.onShow(); await p.savePrice()
+  assert.equal(p.data.billingStep, 2)
+  assert.ok(notices.includes('核价成功，请登记实际收款')); assert.ok(sections.includes('#collection-form'))
+  p.setData({ payerName: '测试付款人', paidTime: '2026-10-13 20:00:00', evidenceKey: 'private-test-proof' }); await p.collect()
+  assert.ok(notices.includes('已登记，请核对并确认收款')); assert.ok(sections.includes('#payment-records'))
+  assert.equal(calls.filter(c => c.method === 'POST').length, 1)
+  assert.equal(calls.some(c => c.url.endsWith('/confirm')), false)
+  assert.equal(p.data.detail.payments[0].paymentStatus, 'PENDING')
+  assert.equal(p.data.billingStep, 3)
+})
+test('billing step resumes from server state and failed pricing does not advance', async () => {
+  storage = new Map(); let current = { ...bill, billingStatus: 'PENDING_PRICE' }
+  env(o => {
+    if (o.url.endsWith('/getInfo')) return o.success({ statusCode: 200, data: { code: 200, roles: ['admin'], permissions: ['*:*:*'] } })
+    if (o.method === 'PUT') return o.success({ statusCode: 200, data: { code: 500, msg: '核价失败' } })
+    ok(o, current)
+  }, 'admin')
+  const p = page('admin-tuition'); p.onLoad({ id: bill.enrollmentId }); await p.onShow()
+  assert.equal(p.data.billingStep, 1); await p.savePrice(); assert.equal(p.data.billingStep, 1)
+  for (const [record, expected] of [
+    [bill, 2],
+    [{ ...bill, payments: [{ paymentId: '91', paymentStatus: 'PENDING' }] }, 3],
+    [{ ...bill, payments: [{ paymentId: '91', paymentStatus: 'UNKNOWN' }] }, 3],
+    [{ ...bill, payments: [{ paymentId: '91', paymentStatus: 'SUCCESS' }] }, 4],
+    [{ ...bill, billingStatus: 'HISTORY_PENDING' }, 0],
+    [{ ...bill, billingStatus: 'CLOSED' }, 0]
+  ]) {
+    current = record; await p.onShow(); assert.equal(p.data.billingStep, expected)
+  }
+  current = bill; await p.onShow(); p.editPrice(); assert.equal(p.data.billingStep, 1)
+})
 test('fee waived bill cannot produce a cash refund application', async () => {
   storage = new Map(); env(o => o.url.endsWith('/refunds') ? o.success({ statusCode: 200, data: { code: 200, rows: [], total: 0 } }) : ok(o, { ...bill, payableAmount: '0.00', refundableAmount: '0.00', payments: [{ paymentId: '9', channel: 'FREE', amount: '0.00', paymentStatus: 'SUCCESS' }] }))
   const p = page('tuition-refund'); p.onLoad({ id: bill.enrollmentId }); await p.onShow(); p.setData({ amount: '1.00', reason: '退课' }); await p.apply(); assert.equal(calls.some(c => c.method === 'POST'), false)

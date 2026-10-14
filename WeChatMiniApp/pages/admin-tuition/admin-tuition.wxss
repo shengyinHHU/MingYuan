@@ -1,1 +1,4 @@
 @import '../../utils/tuition.wxss';
+.paid-time-row { display: flex; gap: 16rpx; }
+.paid-date { flex: 1.2; min-width: 0; }
+.paid-clock { flex: 1; min-width: 0; }
