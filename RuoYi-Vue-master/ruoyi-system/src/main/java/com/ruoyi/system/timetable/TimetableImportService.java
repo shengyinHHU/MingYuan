@@ -1,6 +1,7 @@
 package com.ruoyi.system.timetable;
 
 import java.io.InputStream;
+import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.*;
 import java.util.regex.Matcher;
@@ -33,6 +34,7 @@ import com.ruoyi.system.service.IEduCourseScheduleService;
 import com.ruoyi.system.service.ISysDictDataService;
 import com.ruoyi.system.service.ISysRoleService;
 import com.ruoyi.system.service.ISysUserService;
+import com.ruoyi.system.service.ScheduleCalendar;
 
 /**
  * 课表导入：支持两种 xlsx 版式。
@@ -82,8 +84,47 @@ public class TimetableImportService
 
     // =================================================================
     // 预览：解析文件并匹配 教室/教师/年级/科目/班型/时段
+    // 同时按「每个学期各自的起止日期」标注每行将写入的日期规则（见 annotateDatePlan）
     // =================================================================
-    public Map<String, Object> preview(MultipartFile file, long courseYear)
+    /**
+     * 日期区间的兜底键：既没按「学期+期次」也没按「学期」设置时，用这个键的区间套用到全部课程。
+     * 一份课表里常有多个工作表（如「寒假排课表」「春季排课表」），且同一学期里不同期次的上课周期也不同
+     * （寒假一期/二期、春季周六/周日），所以正常走的是「按学期+期次分别设置」，这个键只用于兼容旧的「整份统一」。
+     */
+    public static final String RANGE_ALL = "*";
+
+    /** 「学期+期次」的区间键，如 `寒假|一期`。期次为空时退化为学期名。 */
+    public static String rangeKey(String termName, String periodName)
+    {
+        String term = termName == null ? "" : termName.trim();
+        String period = periodName == null ? "" : periodName.trim();
+        return period.isEmpty() ? term : term + "|" + period;
+    }
+
+    /**
+     * 取某条排课适用的日期区间，按「越具体越优先」三级回退：
+     *   ① `学期|期次`（如 `寒假|一期`，正常都用这一级）
+     *   ② `学期`（同一学期里各期次共用一个区间时的简写）
+     *   ③ {@link #RANGE_ALL}（整份课表统一一个区间，兼容旧用法）
+     * 都没设或起止不全时返回 null —— 该排课保持「待排」，不猜日期。
+     */
+    public static LocalDate[] rangeOf(Map<String, LocalDate[]> ranges, String termName, String periodName)
+    {
+        if (ranges == null || ranges.isEmpty()) return null;
+        LocalDate[] range = ranges.get(rangeKey(termName, periodName));
+        if (range == null && termName != null && !termName.trim().isEmpty()) range = ranges.get(termName.trim());
+        if (range == null) range = ranges.get(RANGE_ALL);
+        if (range == null || range[0] == null || range[1] == null) return null;
+        return range;
+    }
+
+    /** 兼容旧调用：只按学期取区间 */
+    public static LocalDate[] rangeOf(Map<String, LocalDate[]> ranges, String termName)
+    {
+        return rangeOf(ranges, termName, null);
+    }
+
+    public Map<String, Object> preview(MultipartFile file, long courseYear, Map<String, LocalDate[]> ranges)
     {
         if (file == null || file.isEmpty()) throw new ServiceException("请选择要导入的课表文件");
         String fname = StringUtils.trimToEmpty(file.getOriginalFilename()).toLowerCase();
@@ -238,27 +279,121 @@ public class TimetableImportService
 
         if (rows.isEmpty()) throw new ServiceException("未从文件中解析出任何课程。支持两种课表：①矩阵式（行=时段、列=教室 W1/B1）；②平铺表（含「排课编码/学期/期次或上课日」表头，即系统导出的课表）");
 
+        annotateDatePlan(rows, ranges);
+
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("courseYear", courseYear);
         out.put("sheets", sheetNames);
         out.put("total", rows.size());
         out.put("warnCount", rows.stream().filter(x -> StringUtils.isNotEmpty((String) x.get("warning"))).count());
+        // datedCount：既能判定递推规则、又已设置好该学期起止日期，落库会真正写入日期的行数
+        // undatedCount：其余行（学期/期次判定不出规则，或该学期还没设日期）→ 落库后保持「待排」
+        out.put("datedCount", rows.stream()
+                .filter(x -> x.get("plannedPattern") != null && Boolean.TRUE.equals(x.get("hasDateRange"))).count());
+        out.put("undatedCount", rows.stream()
+                .filter(x -> x.get("plannedPattern") == null || !Boolean.TRUE.equals(x.get("hasDateRange"))).count());
+        // 按「学期」聚合出待设置日期的工作表分组，前端据此逐行给起止日期
+        out.put("datePlans", datePlans(rows, ranges));
         out.put("rows", rows);
         return out;
+    }
+
+    /**
+     * 按「学期 + 期次」聚合出「需要设置起止日期」的分组，供前端逐个填写。
+     * <p>
+     * 同一学期里不同期次的上课周期往往不同（寒假一期/二期各自的开课结课日、春季周六/周日各自的起止周），
+     * 所以分组键用 {@link #rangeKey}（`学期|期次`）而不是只按学期；来源工作表一并列出便于核对。
+     */
+    private List<Map<String, Object>> datePlans(List<Map<String, Object>> rows, Map<String, LocalDate[]> ranges)
+    {
+        Map<String, Map<String, Object>> grouped = new LinkedHashMap<>();
+        Map<String, Set<String>> sheetsOf = new LinkedHashMap<>();
+        for (Map<String, Object> row : rows)
+        {
+            String term = str(row.get("termName"));
+            if (StringUtils.isEmpty(term)) term = PH_TERM;
+            String period = str(row.get("periodName"));
+            String key = rangeKey(term, period);
+            String termLabel = term, periodLabel = period;
+            grouped.computeIfAbsent(key, k -> {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("key", k);
+                m.put("termName", termLabel);
+                m.put("periodName", periodLabel);
+                m.put("rowCount", 0);
+                return m;
+            });
+            grouped.get(key).put("rowCount", ((int) grouped.get(key).get("rowCount")) + 1);
+            String sheet = str(row.get("sheetName"));
+            if (StringUtils.isNotEmpty(sheet)) sheetsOf.computeIfAbsent(key, k -> new LinkedHashSet<>()).add(sheet);
+        }
+        List<Map<String, Object>> plans = new ArrayList<>();
+        for (Map<String, Object> plan : grouped.values())
+        {
+            String term = (String) plan.get("termName");
+            String period = (String) plan.get("periodName");
+            LocalDate[] range = rangeOf(ranges, term, period);
+            String pattern = ScheduleCalendar.patternFor(term, period);
+            plan.put("sheetNames", new ArrayList<>(sheetsOf.getOrDefault((String) plan.get("key"), new LinkedHashSet<>())));
+            plan.put("startDate", range == null ? null : range[0].toString());
+            plan.put("endDate", range == null ? null : range[1].toString());
+            // pattern 为 null 表示该「学期+期次」判定不出上课模式（如「未识别学期」，或春秋季期次不是周一~周日），设了日期也仍是待排
+            plan.put("pattern", pattern);
+            plan.put("schedulable", pattern != null);
+            plan.put("patternNote", pattern == null ? "该学期/期次无法判定上课规则（寒假/暑假=上5休1，春季/秋季=每周固定星期且期次需为周一~周日），这些课次将保持待排"
+                    : (ScheduleCalendar.DAILY_5_1.equals(pattern) ? "上5休1" : "每周" + period));
+            plans.add(plan);
+        }
+        return plans;
+    }
+
+    /**
+     * 给预览行标注「落库后将被写入的日期规则」，让用户在确认前就能核对：
+     * 寒暑假 → 上5休1（DAILY_5_1）；春秋季 → 每周固定星期（WEEKLY，星期取期次/上课日）。
+     * <p>
+     * plannedPattern 只由「学期 + 期次」决定，与是否已设置起止日期无关 ——
+     * 预览时用户往往还没填日期，但递推规则本身已经可以确定，先展示出来才便于核对；
+     * 真正能否写入日期由 hasDateRange 表示（该「学期+期次」是否已设置起止日期）。
+     */
+    private void annotateDatePlan(List<Map<String, Object>> rows, Map<String, LocalDate[]> ranges)
+    {
+        for (Map<String, Object> row : rows)
+        {
+            String term = str(row.get("termName"));
+            String period = str(row.get("periodName"));
+            String pattern = ScheduleCalendar.patternFor(term, period);
+            LocalDate[] range = rangeOf(ranges, term, period);
+            row.put("plannedPattern", pattern);
+            row.put("hasDateRange", range != null);
+            row.put("plannedStartDate", range == null ? null : range[0].toString());
+            row.put("plannedEndDate", range == null ? null : range[1].toString());
+            if (pattern == null)
+            {
+                row.put("datePlanNote", ScheduleCalendar.patternForTerm(term) == null
+                        ? "学期无法判定上课规则（寒假/暑假=上5休1，春季/秋季=每周固定星期），保持待排"
+                        : "期次/上课日需为周一至周日才能按每周递推");
+            }
+            else if (range == null)
+            {
+                row.put("datePlanNote", "尚未为该「学期+期次」设置起止日期，落库后保持待排");
+            }
+        }
     }
 
     /**
      * 一键导入：解析 + 同步主数据 + 落库（整体事务）
      */
     @Transactional(rollbackFor = Exception.class)
-    public Map<String, Object> oneClickImport(MultipartFile file, long courseYear, boolean updateSupport, String username)
+    public Map<String, Object> oneClickImport(MultipartFile file, long courseYear, boolean updateSupport, String username,
+                                              Map<String, LocalDate[]> ranges)
     {
-        Map<String, Object> pv = preview(file, courseYear);
+        Map<String, Object> pv = preview(file, courseYear, ranges);
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> rows = (List<Map<String, Object>>) pv.get("rows");
-        Map<String, Object> res = confirm(rows, updateSupport, username);
+        Map<String, Object> res = confirm(rows, updateSupport, username, ranges);
         res.put("sheets", pv.get("sheets"));
         res.put("total", pv.get("total"));
+        res.put("datePlans", pv.get("datePlans"));
         return res;
     }
 
@@ -444,11 +579,14 @@ public class TimetableImportService
     // 确认落库（整体事务：任一条失败则全部回滚）
     // =================================================================
     @Transactional(rollbackFor = Exception.class)
-    public Map<String, Object> confirm(List<Map<String, Object>> rows, boolean updateSupport, String username)
+    public Map<String, Object> confirm(List<Map<String, Object>> rows, boolean updateSupport, String username,
+                                       Map<String, LocalDate[]> ranges)
     {
         if (rows == null || rows.isEmpty()) throw new ServiceException("没有可导入的数据");
         Map<String, Object> syncStat = syncMasterData(rows, username);
-        int inserted = 0, updated = 0, skipped = 0, incomplete = 0;
+        int inserted = 0, updated = 0, skipped = 0, incomplete = 0, dated = 0, undated = 0;
+        // 哪些学期没能写入日期（没设起止日期 / 学期·期次判定不出规则），导入后提示用户去补
+        Set<String> undatedTerms = new LinkedHashSet<>();
         List<String> skipMsgs = new ArrayList<>();
         long seq = System.currentTimeMillis();
         for (Map<String, Object> r : rows)
@@ -498,6 +636,27 @@ public class TimetableImportService
             if (StringUtils.isNotEmpty(st)) s.setStartTime(LocalTime.parse(st));
             if (StringUtils.isNotEmpty(et)) s.setEndTime(LocalTime.parse(et));
 
+            // 日期规则：寒暑假「上5休1」、春秋季「每周固定星期」（星期取期次/上课日）。
+            // 起止日期按「该行所属的 学期+期次」各自取（寒假一期/二期、春季周六/周日 的上课周期都不同）；
+            // 没设日期、或学期/期次判定不出规则时保持「待排」不猜日期，并记下是哪个「学期/期次」漏了。
+            LocalDate[] range = rangeOf(ranges, s.getTermName(), s.getPeriodName());
+            String datePattern = range == null ? null
+                    : ScheduleCalendar.patternFor(s.getTermName(), s.getPeriodName());
+            if (datePattern != null)
+            {
+                s.setStartDate(java.sql.Date.valueOf(range[0]));
+                s.setEndDate(java.sql.Date.valueOf(range[1]));
+                s.setClassPattern(datePattern);
+                dated++;
+            }
+            else
+            {
+                // 没写日期：可能是该「学期+期次」未设置起止日期，也可能是学期/期次判定不出递推规则
+                undated++;
+                undatedTerms.add(StringUtils.isEmpty(s.getTermName()) ? PH_TERM
+                        : rangeKey(s.getTermName(), s.getPeriodName()).replace("|", " / "));
+            }
+
             // 教室未知时不做「已存在」匹配：否则会按 学期+期次+时段 命中别人的格子
             EduCourseSchedule exist = classroomId == null ? null : findExisting(s);
             if (exist != null)
@@ -538,6 +697,9 @@ public class TimetableImportService
         out.put("updated", updated);
         out.put("skipped", skipped);
         out.put("incomplete", incomplete);
+        out.put("dated", dated);
+        out.put("undated", undated);
+        out.put("undatedTerms", new ArrayList<>(undatedTerms));
         out.put("skipMsgs", skipMsgs);
         out.put("sync", syncStat);
 

@@ -1,5 +1,6 @@
 package com.ruoyi.system.controller;
 
+import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -21,11 +22,15 @@ import com.ruoyi.common.utils.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 import com.ruoyi.system.domain.EduClassroom;
 import com.ruoyi.system.domain.EduCourseSchedule;
+import com.ruoyi.system.domain.EduScheduleAdjustment;
 import com.ruoyi.system.service.IEduClassroomService;
 import com.ruoyi.system.service.IEduCourseScheduleService;
+import com.ruoyi.system.service.IEduScheduleAdjustmentService;
 import com.ruoyi.system.service.ISysDictDataService;
 import com.ruoyi.system.service.ISysRoleService;
 import com.ruoyi.system.service.ISysUserService;
+import com.ruoyi.system.service.ScheduleAvailabilityService;
+import com.ruoyi.system.service.ScheduleCalendar;
 import com.ruoyi.system.timetable.TimetableImportService;
 
 /**
@@ -54,6 +59,12 @@ public class EduTimetableController extends BaseController
 
     @Autowired
     private TimetableImportService timetableImportService;
+
+    @Autowired
+    private ScheduleAvailabilityService availability;
+
+    @Autowired
+    private IEduScheduleAdjustmentService adjustmentService;
 
     /**
      * 维度数据：返回页面初始化需要的下拉框 + 固定时段 + 校区分组教室
@@ -328,20 +339,28 @@ public class EduTimetableController extends BaseController
     }
 
     /**
-     * 课表导入-预览：上传矩阵式课表 xlsx，解析并匹配教室/教师/年级/科目/班型，不落库
+     * 课表导入-预览：上传矩阵式课表 xlsx，解析并匹配教室/教师/年级/科目/班型，不落库。
+     * <p>
+     * 一份课表常含多个工作表（如「寒假排课表」「春季排课表」），每个工作表的上课起止日期不同，
+     * 因此日期按「学期」分别设置，通过 dateRanges 传入（JSON 数组，见 parseDateRanges）。
+     * 不传日期也能预览：此时返回 datePlans，由前端逐学期补填后再确认导入。
      */
     @PreAuthorize("@ss.hasPermi('system:courseschedule:add') or @ss.hasRole('admin')")
     @Log(title = "可视化课表-导入预览", businessType = BusinessType.IMPORT)
     @PostMapping("/importPreview")
     public AjaxResult importPreview(@RequestParam("file") MultipartFile file,
-                                    @RequestParam(value = "courseYear", required = false) Long courseYear)
+                                    @RequestParam(value = "courseYear", required = false) Long courseYear,
+                                    @RequestParam(value = "dateRanges", required = false) String dateRanges,
+                                    @RequestParam(value = "startDate", required = false) String startDate,
+                                    @RequestParam(value = "endDate", required = false) String endDate)
     {
         if (courseYear == null) courseYear = (long) Calendar.getInstance().get(Calendar.YEAR);
-        return success(timetableImportService.preview(file, courseYear));
+        return success(timetableImportService.preview(file, courseYear, parseDateRanges(dateRanges, startDate, endDate)));
     }
 
     /**
-     * 课表导入-确认：将预览行落库；updateSupport=true 时同教室+同学期+同期次+同时段覆盖更新
+     * 课表导入-确认：将预览行落库；updateSupport=true 时同教室+同学期+同期次+同时段覆盖更新。
+     * dateRanges 形如 [{ termName: "寒假", startDate: "2027-01-20", endDate: "2027-02-05" }, ...]
      */
     @PreAuthorize("@ss.hasPermi('system:courseschedule:add') or @ss.hasRole('admin')")
     @Log(title = "可视化课表-导入", businessType = BusinessType.IMPORT)
@@ -351,21 +370,256 @@ public class EduTimetableController extends BaseController
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> rows = (List<Map<String, Object>>) body.get("rows");
         boolean updateSupport = Boolean.TRUE.equals(body.get("updateSupport"));
-        return success(timetableImportService.confirm(rows, updateSupport, SecurityUtils.getUsername()));
+        Map<String, LocalDate[]> ranges = parseDateRanges(body.get("dateRanges"), body.get("startDate"), body.get("endDate"));
+        return success(timetableImportService.confirm(rows, updateSupport, SecurityUtils.getUsername(), ranges));
     }
 
     /**
-     * 课表导入-一键：上传矩阵式 xlsx，自动同步教师/教室/字典并落库（整体事务）
+     * 课表导入-一键：上传矩阵式 xlsx，自动同步教师/教室/字典并落库（整体事务）。
+     * 日期同样按学期分别设置（dateRanges），未设置日期的学期落库后保持「待排」。
      */
     @PreAuthorize("@ss.hasPermi('system:courseschedule:add') or @ss.hasRole('admin')")
     @Log(title = "可视化课表-一键导入", businessType = BusinessType.IMPORT)
     @PostMapping("/importOneClick")
     public AjaxResult importOneClick(@RequestParam("file") MultipartFile file,
                                      @RequestParam(value = "courseYear", required = false) Long courseYear,
-                                     @RequestParam(value = "updateSupport", required = false, defaultValue = "true") boolean updateSupport)
+                                     @RequestParam(value = "updateSupport", required = false, defaultValue = "true") boolean updateSupport,
+                                     @RequestParam(value = "dateRanges", required = false) String dateRanges,
+                                     @RequestParam(value = "startDate", required = false) String startDate,
+                                     @RequestParam(value = "endDate", required = false) String endDate)
     {
         if (courseYear == null) courseYear = (long) Calendar.getInstance().get(Calendar.YEAR);
-        return success(timetableImportService.oneClickImport(file, courseYear, updateSupport, SecurityUtils.getUsername()));
+        return success(timetableImportService.oneClickImport(file, courseYear, updateSupport, SecurityUtils.getUsername(),
+                parseDateRanges(dateRanges, startDate, endDate)));
+    }
+
+    /**
+     * 课次展开：把一条排课按「起始/结课日期 + 上课模式」展开成一个个具体上课日。
+     *
+     * 这是"课表 → 具体日期"的落地视图，用于法定节假日冲课时逐日核对。
+     * 返回的每一项都带 status：
+     *   NORMAL    正常上课
+     *   CANCELLED 已停课（调课记录 adjusted_date 为空，不占用、不顺延）
+     *   MOVED     已调到别的日期（adjustedDate 给出新日期）
+     * 已停课的课次同样会列出，方便前端提供「恢复」入口。
+     */
+    @PreAuthorize("@ss.hasPermi('system:courseschedule:list') or @ss.hasAnyRoles('admin,teacher')")
+    @GetMapping("/{scheduleId}/occurrences")
+    public AjaxResult occurrences(@PathVariable Long scheduleId)
+    {
+        EduCourseSchedule s = scheduleService.selectEduCourseScheduleByScheduleId(scheduleId);
+        if (s == null) throw new ServiceException("排课不存在");
+
+        LocalDate start = ScheduleCalendar.date(s.getStartDate());
+        LocalDate end   = ScheduleCalendar.date(s.getEndDate());
+
+        // 调课记录按原日期索引（同一课次只会有一条，由 Service 保证）
+        Map<String, Map<String, Object>> adjusted = new HashMap<>();
+        for (Map<String, Object> a : availability.adjustments(scheduleId, false))
+        {
+            LocalDate original = ScheduleCalendar.date(a.get("originalDate"));
+            if (original != null) adjusted.put(original.toString(), a);
+        }
+
+        // 原始课次（不叠加调课），保证停课日仍然出现在列表里
+        SortedSet<LocalDate> base = ScheduleCalendar.dates(start, end, s.getClassPattern(), s.getPeriodName(), List.of());
+        List<Map<String, Object>> items = new ArrayList<>();
+        int cancelled = 0;
+        for (LocalDate d : base)
+        {
+            Map<String, Object> a = adjusted.get(d.toString());
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("date", d.toString());
+            item.put("weekday", "周" + "一二三四五六日".charAt(d.getDayOfWeek().getValue() - 1));
+            if (a == null)
+            {
+                item.put("status", "NORMAL");
+                item.put("reason", null);
+                item.put("adjustmentId", null);
+            }
+            else
+            {
+                LocalDate moved = ScheduleCalendar.date(a.get("adjustedDate"));
+                boolean isCancelled = a.get("adjustedDate") == null;
+                if (isCancelled) cancelled++;
+                item.put("status", isCancelled ? "CANCELLED" : "MOVED");
+                item.put("adjustedDate", moved == null ? null : moved.toString());
+                item.put("reason", a.get("reason"));
+                item.put("adjustmentId", toLong(a.get("adjustmentId")));
+            }
+            items.add(item);
+        }
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("scheduleId", scheduleId);
+        data.put("startDate", start == null ? null : start.toString());
+        data.put("endDate", end == null ? null : end.toString());
+        data.put("classPattern", s.getClassPattern());
+        data.put("periodName", s.getPeriodName());
+        data.put("total", items.size());
+        data.put("cancelledCount", cancelled);
+        data.put("pending", start == null || end == null);
+        if (start == null || end == null) data.put("message", "该排课尚未配置开课/结课日期，无法展开具体课次，请先在课表导入时填写日期或编辑该排课补充日期");
+        data.put("items", items);
+        return success(data);
+    }
+
+    /**
+     * 停课（取消某一天的课次，不顺延）。
+     *
+     * 解决法定节假日冲课：写入一条 edu_schedule_adjustment，adjusted_date 留空表示停课。
+     * 停课后该日期不再被占用，也不顺延到后面的日期——这正是"取消而非顺延"的语义。
+     *
+     * 请求体：{ date: "yyyy-MM-dd", reason: "国庆节" }
+     */
+    @PreAuthorize("@ss.hasPermi('system:courseschedule:edit') or @ss.hasAnyRoles('admin,teacher')")
+    @Log(title = "可视化课表-停课", businessType = BusinessType.UPDATE)
+    @PostMapping("/{scheduleId}/occurrences/cancel")
+    public AjaxResult cancelOccurrence(@PathVariable Long scheduleId, @RequestBody Map<String, Object> body)
+    {
+        EduCourseSchedule s = scheduleService.selectEduCourseScheduleByScheduleId(scheduleId);
+        if (s == null) throw new ServiceException("排课不存在");
+        checkScheduleEditPermission(s);
+
+        LocalDate date = toDate(body.get("date"));
+        if (date == null) throw new ServiceException("请选择要取消的课次日期");
+        String reason = body.get("reason") == null ? null : String.valueOf(body.get("reason")).trim();
+        if (StringUtils.isEmpty(reason)) reason = "停课（法定节假日冲课）";
+
+        EduScheduleAdjustment adj = new EduScheduleAdjustment();
+        adj.setScheduleId(scheduleId);
+        adj.setOriginalDate(java.sql.Date.valueOf(date));
+        adj.setAdjustedDate(null); // 停课：不占用新日期、不顺延
+        adj.setReason(reason);
+        adj.setCreateBy(SecurityUtils.getUsername());
+        // Service 会校验该日期确实是本课程的有效课次，并做重叠/一对一报名保护
+        adjustmentService.insertEduScheduleAdjustment(adj);
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("scheduleId", scheduleId);
+        data.put("date", date.toString());
+        data.put("status", "CANCELLED");
+        data.put("reason", reason);
+        return success(data);
+    }
+
+    /**
+     * 恢复课次：删除该日期的调课/停课记录，让这一天重新正常上课。
+     *
+     * 请求体：{ date: "yyyy-MM-dd" }
+     */
+    @PreAuthorize("@ss.hasPermi('system:courseschedule:edit') or @ss.hasAnyRoles('admin,teacher')")
+    @Log(title = "可视化课表-恢复课次", businessType = BusinessType.UPDATE)
+    @PostMapping("/{scheduleId}/occurrences/restore")
+    public AjaxResult restoreOccurrence(@PathVariable Long scheduleId, @RequestBody Map<String, Object> body)
+    {
+        EduCourseSchedule s = scheduleService.selectEduCourseScheduleByScheduleId(scheduleId);
+        if (s == null) throw new ServiceException("排课不存在");
+        checkScheduleEditPermission(s);
+
+        LocalDate date = toDate(body.get("date"));
+        if (date == null) throw new ServiceException("请选择要恢复的课次日期");
+
+        List<Long> ids = new ArrayList<>();
+        for (Map<String, Object> a : availability.adjustments(scheduleId, false))
+        {
+            LocalDate original = ScheduleCalendar.date(a.get("originalDate"));
+            // 注意：ShopRepository.rows 会把 *Id 列转成字符串，这里统一用 toLong 兼容
+            Long adjustmentId = toLong(a.get("adjustmentId"));
+            if (date.equals(original) && adjustmentId != null) ids.add(adjustmentId);
+        }
+        if (ids.isEmpty()) throw new ServiceException("该课次没有停课/调课记录，无需恢复");
+        // Service 内部会加锁、校验并做一对一按日期报名保护
+        adjustmentService.deleteEduScheduleAdjustmentByIds(ids.toArray(new Long[0]));
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("scheduleId", scheduleId);
+        data.put("date", date.toString());
+        data.put("status", "NORMAL");
+        return success(data);
+    }
+
+    /**
+     * 调课/停课权限：admin 放行；teacher 仅能调整本人负责的排课（与排课编辑口径一致）
+     */
+    private void checkScheduleEditPermission(EduCourseSchedule s)
+    {
+        if (SecurityUtils.isAdmin() || SecurityUtils.hasRole("admin")) return;
+        if (SecurityUtils.hasPermi(Constants.ALL_PERMISSION)) return;
+        if (!SecurityUtils.hasRole("teacher")) throw new ServiceException("当前用户不具备调课权限");
+        if (!Objects.equals(s.getTeacherId(), SecurityUtils.getUserId())) throw new ServiceException("教师仅能调整本人负责的排课");
+    }
+
+    /**
+     * 解析「按学期+期次分别设置」的起止日期。
+     * <p>
+     * 支持两种传参：
+     * ① dateRanges —— JSON 数组字符串（multipart 表单）或 List&lt;Map&gt;（JSON 请求体），
+     *    元素形如 { "termName": "寒假", "periodName": "一期", "startDate": "2027-01-20", "endDate": "2027-02-05" }；
+     *    periodName 可省略（省略即该学期全部期次共用一个区间，兼容旧的前端）；
+     * ② 兼容更旧的 startDate/endDate 单区间 —— 套用到文件里全部课程（兜底键 {@code RANGE_ALL}）。
+     * <p>
+     * 每项要么起止都填、要么都不填；只填一个或结课早于开课直接拒绝，避免落库出半截日期。
+     */
+    private static Map<String, LocalDate[]> parseDateRanges(Object dateRanges, Object legacyStart, Object legacyEnd)
+    {
+        Map<String, LocalDate[]> out = new LinkedHashMap<>();
+        List<?> list = null;
+        if (dateRanges instanceof String s)
+        {
+            if (StringUtils.isNotEmpty(s.trim()))
+            {
+                try { list = com.alibaba.fastjson2.JSON.parseArray(s, Map.class); }
+                catch (RuntimeException e) { throw new ServiceException("按学期设置的日期格式不正确：" + e.getMessage()); }
+            }
+        }
+        else if (dateRanges instanceof List<?> l)
+        {
+            list = l;
+        }
+        if (list != null)
+        {
+            for (Object o : list)
+            {
+                if (!(o instanceof Map<?, ?> m)) continue;
+                String term = m.get("termName") == null ? "" : String.valueOf(m.get("termName")).trim();
+                if (term.isEmpty()) continue;
+                String period = m.get("periodName") == null ? "" : String.valueOf(m.get("periodName")).trim();
+                String label = period.isEmpty() ? "学期「" + term + "」" : "「" + term + " / " + period + "」";
+                LocalDate[] range = requireRange(m.get("startDate"), m.get("endDate"), label);
+                if (range != null) out.put(TimetableImportService.rangeKey(term, period), range);
+            }
+        }
+        // 兼容旧的整份统一区间
+        if (out.isEmpty())
+        {
+            LocalDate[] range = requireRange(legacyStart, legacyEnd, "上课日期");
+            if (range != null) out.put(TimetableImportService.RANGE_ALL, range);
+        }
+        return out;
+    }
+
+    /**
+     * 校验一对起止日期：都为空返回 null（该学期保持待排）；只填一个或顺序颠倒直接拒绝。
+     */
+    private static LocalDate[] requireRange(Object startDate, Object endDate, String label)
+    {
+        LocalDate from = toDate(startDate), to = toDate(endDate);
+        if (from == null && to == null) return null;
+        if (from == null || to == null) throw new ServiceException(label + "的起始日期与结课日期需同时填写，或同时留空");
+        if (from.isAfter(to)) throw new ServiceException(label + "的结课日期不能早于起始日期");
+        return new LocalDate[] { from, to };
+    }
+
+    /** 兼容 yyyy-MM-dd 字符串 / Date / 时间戳；非法值返回 null */
+    private static LocalDate toDate(Object v)
+    {
+        if (v == null) return null;
+        if (v instanceof java.util.Date d) return d.toInstant().atZone(java.time.ZoneId.of("Asia/Shanghai")).toLocalDate();
+        String s = String.valueOf(v).trim();
+        if (s.isEmpty()) return null;
+        try { return LocalDate.parse(s.length() > 10 ? s.substring(0, 10) : s); }
+        catch (RuntimeException e) { return null; }
     }
 
     // =================================================================

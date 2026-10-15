@@ -64,6 +64,21 @@ page {
   margin-top: 28rpx;
 }
 
+.account-toolbar {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16rpx;
+}
+
+.logout-button {
+  margin: 0;
+  color: #0f4f9a;
+  background: #fff;
+  border-radius: 999rpx;
+}
+
 .role-switch {
   position: relative;
   z-index: 1;

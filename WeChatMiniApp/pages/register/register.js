@@ -1,5 +1,6 @@
 const { request } = require('../../utils/request')
 const devSession = require('../../utils/dev-session')
+const access = require('../../utils/access')
 
 const devRoles = [
   { key: 'parent', name: '家长', className: 'active' },
@@ -10,6 +11,10 @@ const devRoles = [
 Page({
   data: {
     submitting: false,
+    phone: '', verificationCode: '', codeSending: false, cooldown: 0,
+    configLoading: true, phoneLoginEnabled: false, developmentCodeMode: false, developmentCode: '', codePhone: '',
+    developmentLoginEnabled: false, showDevelopment: false,
+    username: '', password: '', captchaEnabled: false, captchaImage: '', code: '', uuid: '', loginError: '',
     devRole: 'parent',
     teachers: [],
     teacherOptions: [{ label: '请选择教师' }],
@@ -34,13 +39,98 @@ Page({
       wx.reLaunch({ url: '/pages/index/index' })
       return
     }
-    const storedRole = options.selectTeacher === '1' ? 'teacher' : options.selectParent === '1' ? 'parent' : (wx.getStorageSync('devRole') || 'parent')
-    if(options.selectParent==='1' && (wx.getStorageSync('roles')||[]).includes('parent'))this.setData({devParentId:String((wx.getStorageSync('userInfo')||{}).userId||'')})
-    this.setDevRole(storedRole)
+    this.loadPhoneConfig()
+  },
+
+  async loadPhoneConfig() {
+    this.setData({ configLoading: true })
+    try {
+      const res = await request({ url: '/miniapp/auth/config', timeout: 10000 })
+      if (!this._unloaded) this.setData({ phoneLoginEnabled: res.data.phoneLoginEnabled === true, developmentCodeMode: res.data.developmentCodeMode === true, loginError: '' })
+    } catch (e) { if (!this._unloaded) this.setData({ phoneLoginEnabled: false, loginError: '登录服务未就绪，请检查后端是否已更新并启动' }) }
+    finally { if (!this._unloaded) this.setData({ configLoading: false }) }
+  },
+  phoneInput(e) {
+    if (this.data.submitting || this.data.codeSending) return
+    const phone = String(e.detail.value || '').trim()
+    if (phone !== this.data.phone) { clearInterval(this._codeTimer); this.setData({ phone, verificationCode: '', developmentCode: '', codePhone: '', cooldown: 0 }) }
+  },
+  verificationInput(e) { if (!this.data.submitting) this.setData({ verificationCode: e.detail.value }) },
+  async sendCode() {
+    if (this._unloaded || this.data.codeSending || this.data.submitting || this.data.cooldown || !this.data.phoneLoginEnabled) return
+    const phone = this.data.phone.trim()
+    if (!/^1[3-9][0-9]{9}$/.test(phone)) { this.setData({ loginError: '请输入有效的11位手机号' }); return }
+    this.setData({ codeSending: true, loginError: '', developmentCode: '' })
+    try {
+      const res = await request({ url: '/miniapp/auth/code', method: 'POST', data: { phone } })
+      if (this._unloaded || this.data.phone !== phone) return
+      this.setData({ codePhone: phone, cooldown: Number(res.data.resendAfter) || 60, developmentCode: this.data.developmentCodeMode ? res.data.developmentCode || '' : '' })
+      clearInterval(this._codeTimer)
+      this._codeTimer = setInterval(() => {
+        if (this._unloaded) { clearInterval(this._codeTimer); return }
+        const cooldown = Math.max(0, this.data.cooldown - 1); this.setData({ cooldown })
+        if (!cooldown) clearInterval(this._codeTimer)
+      }, 1000)
+    } catch (e) { if (!this._unloaded && this.data.phone === phone) this.setData({ loginError: e.message || '验证码获取失败，请重试' }) }
+    finally { if (!this._unloaded) this.setData({ codeSending: false }) }
+  },
+  async handlePhoneCodeLogin() {
+    if (this._unloaded || this.data.submitting || this.data.codeSending || !this.data.phoneLoginEnabled) return
+    const phone = this.data.phone.trim(), code = this.data.verificationCode.trim(), previousToken = wx.getStorageSync('token')
+    if (!/^1[3-9][0-9]{9}$/.test(phone) || !/^[0-9]{6}$/.test(code)) { this.setData({ loginError: '请填写手机号和6位验证码' }); return }
+    this.setData({ submitting: true, loginError: '' })
+    try {
+      const login = await request({ url: '/miniapp/auth/login', method: 'POST', data: { phone, code } })
+      if (this._unloaded || wx.getStorageSync('token') !== previousToken) return
+      const info = await request({ url: '/getInfo', header: { Authorization: 'Bearer ' + login.token } })
+      if (this._unloaded || wx.getStorageSync('token') !== previousToken) return
+      this.activateAccount(login.token, info)
+      this.setData({ verificationCode: '', developmentCode: '' }); wx.reLaunch({ url: '/pages/index/index' })
+    } catch (e) { if (!this._unloaded) this.setData({ loginError: e.message || '登录失败，请重新获取验证码' }) }
+    finally { if (!this._unloaded) this.setData({ submitting: false }) }
+  },
+
+  async loadLoginConfig(role, options = {}) {
+    if (!access.developmentTool()) return
+    try {
+      const res = await request({ url: '/miniapp/dev/session', timeout: 10000 })
+      if (!this._unloaded && res.data && res.data.version) {
+        this.setData({ developmentLoginEnabled: true, showDevelopment: options.selectTeacher === '1' || options.selectParent === '1' })
+        this.setDevRole(role)
+      }
+    } catch (_) { /* Normal deployments do not expose development login. */ }
+  },
+  toggleDevelopment() { if (!this.data.submitting && this.data.developmentLoginEnabled) this.setData({ showDevelopment: !this.data.showDevelopment }) },
+  accountInput(e) { const key = e.currentTarget.dataset.field; if (!this.data.submitting && ['username', 'password', 'code'].includes(key)) this.setData({ [key]: e.detail.value }) },
+  async loadCaptcha() {
+    try { const res = await request({ url: '/captchaImage' }); if (!this._unloaded) this.setData({ captchaEnabled: res.captchaEnabled !== false, captchaImage: res.img ? 'data:image/gif;base64,' + res.img : '', uuid: res.uuid || '', code: '' }) }
+    catch (_) { if (!this._unloaded) this.setData({ loginError: '登录服务连接失败，请检查后端后重试' }) }
+  },
+  activateAccount(token, info) {
+    if (!info.user || !access.options(info.roles || []).length) throw new Error('账号尚未分配小程序角色，请联系管理员')
+    wx.setStorageSync('token', token); wx.setStorageSync('roles', info.roles || []); wx.setStorageSync('userInfo', info.user)
+    wx.removeStorageSync('devSessionVersion')
+    Object.assign(getApp().globalData, { token, roles: info.roles || [], permissions: info.permissions || [], userInfo: info.user })
+  },
+  async handleAccountLogin() {
+    if (this._unloaded || this.data.submitting) return
+    if (!this.data.username.trim() || !this.data.password) { this.setData({ loginError: '请填写账号和密码' }); return }
+    this.setData({ submitting: true, loginError: '' })
+    const previousToken = wx.getStorageSync('token')
+    try {
+      const login = await request({ url: '/login', method: 'POST', data: { username: this.data.username.trim(), password: this.data.password, code: this.data.code, uuid: this.data.uuid } })
+      if (this._unloaded || wx.getStorageSync('token') !== previousToken) return
+      const info = await request({ url: '/getInfo', header: { Authorization: 'Bearer ' + login.token } })
+      if (this._unloaded || wx.getStorageSync('token') !== previousToken) return
+      this.activateAccount(login.token, info)
+      this.setData({ password: '', code: '' }); wx.reLaunch({ url: '/pages/index/index' })
+    } catch (e) { if (!this._unloaded) { this.setData({ loginError: e.message || '登录失败' }); this.loadCaptcha() } }
+    finally { if (!this._unloaded) this.setData({ submitting: false }) }
   },
 
   onUnload() {
     this._unloaded = true
+    clearInterval(this._codeTimer)
   },
 
   chooseDevRole(e) {
@@ -125,16 +215,18 @@ Page({
   handlePhoneLogin(e) {
     if (this.data.submitting) return
     const phoneCode = e.detail && e.detail.code
-    this.loginWithWechat(phoneCode || 'mock', this.data.devRole)
+    if (!phoneCode) { wx.showToast({ title: '请先授权手机号', icon: 'none' }); return }
+    this.loginWithWechat(phoneCode)
   },
 
   handleDevLogin() {
-    if (this.data.submitting) return
+    if (this.data.submitting || !this.data.developmentLoginEnabled || !this.data.showDevelopment) return
     this.loginWithWechat('mock', this.data.devRole)
   },
 
   async loginWithWechat(phoneCode, devRole) {
     if (this._unloaded || this.data.submitting) return
+    if (phoneCode === 'mock' && !this.data.developmentLoginEnabled) return
     if (devRole === 'teacher' && (this.data.teachersLoading || !this.data.devTeacherId)) {
       wx.showToast({ title: '请先选择教师', icon: 'none' })
       return
@@ -164,10 +256,10 @@ Page({
         data: {
           loginCode,
           phoneCode,
-          devRole,
+          ...(phoneCode === 'mock' ? { devRole } : {}),
           ...(devTeacherId ? { devTeacherId } : {}),
           ...(devParentId ? { devParentId } : {}),
-          nickName: `MiniApp ${devRole}`
+          nickName: devRole ? `MiniApp ${devRole}` : '微信用户'
         }
       })
       if (this._unloaded || wx.getStorageSync('token') !== previousToken) return
@@ -178,7 +270,8 @@ Page({
         throw new Error('教师身份不匹配，请重新选择')
       }
       if(devParentId && String(infoRes.user && infoRes.user.userId)!==devParentId)throw new Error('家长身份不匹配，请重新选择')
-      devSession.activate(devRole, loginRes.token, infoRes, loginRes.devSessionVersion)
+      if (phoneCode === 'mock') devSession.activate(devRole, loginRes.token, infoRes, loginRes.devSessionVersion)
+      else this.activateAccount(loginRes.token, infoRes)
 
       wx.reLaunch({ url: '/pages/index/index' })
     } catch (error) {

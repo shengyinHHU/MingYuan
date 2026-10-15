@@ -69,7 +69,7 @@ wechat:
   miniapp:
     appid: ${WECHAT_APPID:}
     secret: ${WECHAT_SECRET:}
-    mock-enabled: ${WECHAT_MOCK_ENABLED:true}
+    mock-enabled: ${WECHAT_MOCK_ENABLED:false}
     mock-phone: 13800000000
     mock-admin-username: admin
     mock-teacher-username: ${WECHAT_MOCK_TEACHER_USERNAME:}
