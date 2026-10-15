@@ -36,6 +36,7 @@ Page({
     this._unloaded = false
     this.setData({
       scheduleId: Number(query.scheduleId),
+      classDate: /^\d{4}-\d{2}-\d{2}$/.test(query.classDate || '') ? query.classDate : todayStr(),
       course: decodeURIComponent(query.course || ''),
       room: decodeURIComponent(query.room || ''),
       timeText: decodeURIComponent(query.time || '')
@@ -60,7 +61,7 @@ Page({
       const data = detail.data || {}
       const review = data.review || {}
       const details = data.details || []
-      const reviewed = String(review.reviewStatus) === '1' || !!review.review1AdminId || !!review.review2AdminId
+      const reviewed = data.locked != null ? data.locked : (String(review.reviewStatus) === '1' || (String(review.reviewStatus)!=='2' && (!!review.review1AdminId || !!review.review2AdminId)))
       const approvedLeave = new Set((reviewed ? [] : data.approvedLeaveEnrollmentIds || []).map(String))
       let rows
       if (details.length) {
@@ -212,6 +213,7 @@ Page({
         data: {
           scheduleId,
           classDate,
+          reviewVersion: this.data.review?.reviewVersion || 0,
           details: rows.map((r) => ({
             enrollmentId: r.enrollmentId,
             studentName: r.studentName,

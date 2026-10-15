@@ -39,6 +39,15 @@ public class EduClassSignIn extends BaseEntity
 
     /** 复核状态（0待复核 1复核完成） */
     private String reviewStatus;
+    private String reviewReason;
+    private Long reviewVersion;
+    private java.util.List<java.util.Map<String,Object>> corrections;
+    public java.util.List<java.util.Map<String,Object>> getCorrections() { return corrections; }
+    public void setCorrections(java.util.List<java.util.Map<String,Object>> value) { corrections=value; }
+    public String getReviewReason() { return reviewReason; }
+    public void setReviewReason(String value) { reviewReason=value; }
+    public Long getReviewVersion() { return reviewVersion; }
+    public void setReviewVersion(Long value) { reviewVersion=value; }
 
     /** 第1位确认管理员用户ID */
     private Long review1AdminId;

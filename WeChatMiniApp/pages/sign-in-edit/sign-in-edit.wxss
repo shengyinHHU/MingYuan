@@ -4,6 +4,7 @@
   background: #f4f6fa;
   padding-bottom: 180rpx;
 }
+.detail-reload { margin:12rpx 28rpx; text-align:right; color:#58719b; font-size:24rpx; }
 
 .header {
   padding: 40rpx 32rpx 20rpx;

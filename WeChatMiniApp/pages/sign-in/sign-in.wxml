@@ -22,6 +22,7 @@
         </view>
       </view>
       <view class="card-action" data-id="{{item.scheduleId}}" bindtap="openSign">签到</view>
+      <view class="correction" wx:for="{{item.corrections}}" wx:for-item="correction" wx:key="classDate" data-id="{{item.scheduleId}}" data-date="{{correction.classDate}}" bindtap="openSign"><view>{{correction.classDate}} · 需更正 ›</view><view class="correction-reason">{{correction.reviewReason}}</view></view>
     </view>
   </view>
 
