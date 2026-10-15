@@ -51,6 +51,7 @@
         </div>
 
         <div v-if="cardEditable(sch)" class="card-actions" @click.stop>
+          <i class="el-icon-date" title="课次（按日期展开，可停课 / 恢复）" @click="$emit('occurrences', sch)"></i>
           <i class="el-icon-edit" title="编辑（可改教室/时段，保存后课程移动到新位置）" @click="$emit('edit', sch)"></i>
           <i class="el-icon-delete" title="删除" @click="$emit('remove', sch)"></i>
         </div>

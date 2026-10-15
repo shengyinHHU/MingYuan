@@ -367,6 +367,29 @@
   background: #fce4e4 !important;
 }
 
+/* ===== 导入弹窗：按学期（工作表）分别设置上课起止日期 ===== */
+.imp-range-block {
+  margin: 0 0 10px 90px;
+  padding: 10px 12px 4px;
+  background: #f7f9fc;
+  border: 1px solid #e4e9f2;
+  border-radius: 4px;
+}
+.imp-range-head {
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: #303133;
+}
+.imp-range-sub {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: normal;
+  color: #8993a4;
+}
+.imp-range-table ::v-deep .el-table__cell {
+  padding: 4px 0;
+}
+
 /* ===== 交换教室列 弹窗 ===== */
 .swap-scope {
   display: flex;
@@ -426,3 +449,34 @@
   line-height: 1.6;
 }
 .swap-warn b { color: #d46b08; }
+
+/* ===== 课次（按具体日期）弹窗：停课 / 恢复 ===== */
+.occ-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.occ-head .occ-title { font-size: 14px; font-weight: 600; color: #303133; margin-left: 4px; }
+.occ-head .occ-tip { font-size: 12px; color: #909399; margin-left: 6px; }
+.occ-head .occ-tip b { color: #409eff; }
+
+.occ-sum {
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #606266;
+}
+.occ-sum .occ-sum-tip { font-size: 12px; color: #909399; margin-left: 6px; }
+
+/* 已停课的课次整行置灰，和正常课次区分开 */
+::v-deep .el-table .occ-row-cancelled td {
+  background: #f4f4f5 !important;
+  color: #a8abb2 !important;
+}
+::v-deep .el-table .occ-row-cancelled:hover > td {
+  background: #ebebeb !important;
+}

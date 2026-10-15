@@ -89,3 +89,29 @@ export function swapTimetableClassrooms(data) {
     data
   })
 }
+
+// 课次展开：把一条排课按起止日期+上课模式展开成具体上课日（含已停课课次）
+export function getTimetableOccurrences(scheduleId) {
+  return request({
+    url: '/system/courseTimetable/' + scheduleId + '/occurrences',
+    method: 'get'
+  })
+}
+
+// 停课：取消某一天的课次（不顺延），用于法定节假日冲课
+export function cancelTimetableOccurrence(scheduleId, data) {
+  return request({
+    url: '/system/courseTimetable/' + scheduleId + '/occurrences/cancel',
+    method: 'post',
+    data
+  })
+}
+
+// 恢复课次：删除该日期的停课/调课记录，让这一天重新正常上课
+export function restoreTimetableOccurrence(scheduleId, data) {
+  return request({
+    url: '/system/courseTimetable/' + scheduleId + '/occurrences/restore',
+    method: 'post',
+    data
+  })
+}
