@@ -20,11 +20,14 @@ import com.ruoyi.system.shop.ShopRepository;
 /** 若依与小程序共用排课 CRUD；归属、人数与历史约束由后端维护。 */
 @Service
 public class EduCourseScheduleServiceImpl implements IEduCourseScheduleService {
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(EduCourseScheduleServiceImpl.class);
+
     @Autowired private EduCourseScheduleMapper eduCourseScheduleMapper;
     @Autowired private MiniAppParentMapper parentMapper;
     @Autowired private ShopRepository db;
     @Autowired private com.ruoyi.system.service.OneToOneEnrollmentService singleService;
     @Autowired private com.ruoyi.system.service.ScheduleAvailabilityService availability;
+    @Autowired private com.ruoyi.system.service.ISysConfigService configService;
 
     private boolean teacherOnly() {
         return SecurityUtils.hasRole("teacher") && !SecurityUtils.hasRole("admin") && !SecurityUtils.isAdmin();
@@ -98,7 +101,7 @@ public class EduCourseScheduleServiceImpl implements IEduCourseScheduleService {
         lockResources(List.of(before, input));
         EduCourseSchedule current = eduCourseScheduleMapper.lockSchedule(input.getScheduleId());
         own(current);
-        requireNoActiveEnrollments(current);
+        requireNoActiveEnrollments(current, true);
         require(Objects.equals(before.getTeacherId(), current.getTeacherId()) && Objects.equals(before.getClassroomId(), current.getClassroomId()), "排课已被其他人调整，请刷新后重试");
         require(blank(input.getScheduleCode()) || input.getScheduleCode().equals(current.getScheduleCode()), "排课编码不可修改");
         if (teacherOnly() && "2".equals(current.getClassMode())) {
@@ -212,24 +215,118 @@ public class EduCourseScheduleServiceImpl implements IEduCourseScheduleService {
         SortedSet<LocalDate> dates = ScheduleCalendar.dates(ScheduleCalendar.date(input.getStartDate()), ScheduleCalendar.date(input.getEndDate()), input.getClassPattern(), input.getPeriodName(), input.getScheduleId() == null ? List.of() : parentMapper.selectScheduleAdjustments(input.getScheduleId()));
         if (dates.isEmpty()) return;
         // 教室维度的重复排课同样允许（前端提示冲突），这里只保留「同一教师同一时间被占用」的硬校验。
-        var candidates = db.rows("SELECT schedule_id,start_time,end_time,start_date,end_date,class_pattern,period_name,course_class_name FROM edu_course_schedule WHERE schedule_id<>? AND del_flag='0' AND status='0' AND teacher_id=? FOR UPDATE", id, input.getTeacherId());
+        // 带上教师姓名与教室名，冲突时才能直接说清是哪位老师的哪门课。
+        var candidates = db.rows("SELECT s.schedule_id,s.teacher_name,s.start_time,s.end_time,s.start_date,s.end_date,"
+            + "s.class_pattern,s.period_name,s.course_class_name,c.classroom_name,c.campus_name "
+            + "FROM edu_course_schedule s LEFT JOIN edu_classroom c ON c.classroom_id=s.classroom_id "
+            + "WHERE s.schedule_id<>? AND s.del_flag='0' AND s.status='0' AND s.teacher_id=? FOR UPDATE", id, input.getTeacherId());
         for (var other : candidates) {
             if (other.get("startTime") == null || other.get("endTime") == null) continue;
             LocalTime start = LocalTime.parse(String.valueOf(other.get("startTime"))), end = LocalTime.parse(String.valueOf(other.get("endTime")));
             if (!input.getStartTime().isBefore(end) || !start.isBefore(input.getEndTime())) continue;
             var otherDates = ScheduleCalendar.dates(ScheduleCalendar.date(other.get("startDate")), ScheduleCalendar.date(other.get("endDate")), (String) other.get("classPattern"), (String) other.get("periodName"), parentMapper.selectScheduleAdjustments(Long.valueOf(String.valueOf(other.get("scheduleId")))));
-            for (LocalDate date : dates) require(!otherDates.contains(date), date + " 该教师时间已被其他排课占用");
+            // 逐个日期比对，命中即用「最早的一天 + 冲突总天数」报错，便于用户直接定位到课表上哪一格
+            List<LocalDate> conflictDates = dates.stream().filter(otherDates::contains).toList();
+            if (conflictDates.isEmpty()) continue;
+            LocalDate first = conflictDates.get(0);
+            String message = conflictMessage(input, other, first, conflictDates.size());
+            // ⚠️ 测试开关：导入时若因「同姓教师被 matchTeacher 子串匹配并成一个账号」而误报冲突，
+            // 打开开关可只记告警不阻断，方便先把课表导进来核对；生产环境请改回 false。
+            if (allowTeacherConflict()) { log.warn("【测试开关已开启】忽略教师时间冲突：{}", message); continue; }
+            throw new ServiceException(message);
         }
+    }
+
+    /** 测试开关：sys_config `edu.schedule.allowTeacherConflict` = true 时，教师时间冲突只记告警不阻断（默认关闭）。 */
+    private boolean allowTeacherConflict() {
+        try {
+            String value = configService.selectConfigByKey("edu.schedule.allowTeacherConflict");
+            return value != null && "true".equalsIgnoreCase(value.trim());
+        } catch (Exception e) {
+            log.warn("读取参数 edu.schedule.allowTeacherConflict 失败，按关闭处理：{}", e.getMessage());
+            return false;
+        }
+    }
+
+    /** 拼装教师时间冲突的报错文案：点名教师、冲突日期（含星期）、已被占用的课程与教室，以及本次要排的课程。 */
+    private static String conflictMessage(EduCourseSchedule input, Map<String,Object> other, LocalDate first, int days) {
+        String teacher = blank(input.getTeacherName()) ? text(other.get("teacherName")) : input.getTeacherName();
+        if (blank(teacher)) teacher = "该教师";
+        StringBuilder msg = new StringBuilder("教师「").append(teacher).append("」")
+            .append(first).append("（").append(weekdayText(first)).append("）")
+            .append("已被排课「").append(text(other.get("courseClassName"))).append("」占用")
+            .append("（").append(hhmm(other.get("startTime"))).append("-").append(hhmm(other.get("endTime")));
+        String room = roomText(other);
+        if (!room.isEmpty()) msg.append("，").append(room);
+        msg.append("）");
+        if (days > 1) msg.append("，共 ").append(days).append(" 天冲突");
+        String mine = text(input.getCourseClassName());
+        msg.append("，与本课程").append(blank(mine) ? "" : "「" + mine + "」").append("时间冲突。请调整时间或改由其他教师上课");
+        return msg.toString();
+    }
+
+    /** 「周一」~「周日」 */
+    private static String weekdayText(LocalDate date) {
+        return "周" + "一二三四五六日".charAt(date.getDayOfWeek().getValue() - 1);
+    }
+
+    /** LocalTime / java.sql.Time / 字符串 → "HH:mm"；解析不出原样返回 */
+    private static String hhmm(Object value) {
+        if (value == null) return "";
+        try { return LocalTime.parse(String.valueOf(value)).format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")); }
+        catch (RuntimeException e) { String s = String.valueOf(value); return s.length() >= 5 ? s.substring(0, 5) : s; }
+    }
+
+    /** 「万达·W1」之类；教室缺失返回空串 */
+    private static String roomText(Map<String,Object> row) {
+        String name = text(row.get("classroomName"));
+        if (blank(name)) return "";
+        String campus = text(row.get("campusName"));
+        return "教室 " + (blank(campus) ? name : campus + "·" + name);
+    }
+
+    private static String text(Object value) {
+        if (value == null) return "";
+        String s = String.valueOf(value).trim();
+        return "null".equals(s) ? "" : s;
     }
     private boolean hasAttendance(Long id) {
         return !db.rows("SELECT sign_in_id FROM edu_class_sign_in WHERE schedule_id=? FOR UPDATE", id).isEmpty()
             || !db.rows("SELECT attendance_id FROM edu_attendance WHERE schedule_id=? AND attendance_status='1' FOR UPDATE", id).isEmpty();
     }
+    /**
+     * 报名保护：已有有效报名的排课禁止被修改/删除，避免改课把学员的班次改没了。
+     * <p>
+     * ⚠️ 测试开关：`sys_config.edu.schedule.allowUpdateEnrolled = true` 时，**只对「修改排课」放行**
+     * （课表导入/覆盖更新会走这里），删除排课仍然一律拦截。
+     * 用途：现有课表上已有学员报名，导致无法用新文件覆盖更新、无法验证导入日期。
+     * 验证完请把该参数改回 false（系统管理 → 参数设置），否则有改动学员班次的风险。
+     */
     private void requireNoActiveEnrollments(EduCourseSchedule course) {
+        requireNoActiveEnrollments(course, false);
+    }
+
+    private void requireNoActiveEnrollments(EduCourseSchedule course, boolean forUpdate) {
+        if (forUpdate && allowUpdateEnrolled()) {
+            log.warn("【测试开关已开启】跳过报名保护，允许覆盖更新已有报名的排课：{} {}（schedule_id={}）",
+                    course.getCourseClassName(), course.getTeacherName(), course.getScheduleId());
+            return;
+        }
         // Check actual registrations after locking the schedule shared by enrollment transactions.
         require(db.rows("SELECT enrollment_id FROM edu_enrollment WHERE schedule_id=? AND del_flag='0'"
             + " AND COALESCE(enrollment_status,'') NOT IN ('2','3','已取消','已拒绝','老师已拒绝') FOR UPDATE", course.getScheduleId()).isEmpty(),
             "排课「" + course.getCourseClassName() + "」已有学员报名，禁止修改或删除。请先与学员沟通并处理报名，清空班次后再操作。");
+    }
+
+    /** 测试开关：sys_config `edu.schedule.allowUpdateEnrolled` = true 时，允许覆盖更新已有报名的排课（默认关闭）。 */
+    private boolean allowUpdateEnrolled() {
+        try {
+            String value = configService.selectConfigByKey("edu.schedule.allowUpdateEnrolled");
+            return value != null && "true".equalsIgnoreCase(value.trim());
+        } catch (Exception e) {
+            log.warn("读取参数 edu.schedule.allowUpdateEnrolled 失败，按关闭处理：{}", e.getMessage());
+            return false;
+        }
     }
     private long referenceCount(Long id) {
         // 包含无外键但引用 schedule_id 的历史表，例如签到、调课和作业。
