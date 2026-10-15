@@ -71,8 +71,11 @@ public class ClassLeaveMysqlTest extends LessonCreditMysqlTest {
         assertEquals(2L,db.jdbc().queryForObject("SELECT COUNT(*) FROM edu_class_sign_in WHERE schedule_id=? AND class_date=?",Long.class,course,date.toString()));
         sign.setDetails(List.of(d,d));assertThrows(ServiceException.class,()->tx(()->signs.submitSignIn(sign,"teacher-test")));sign.setDetails(List.of(d,d2));
         var review=new MiniAppSignReviewBody();review.setScheduleId(course);review.setClassDate(date.toString());
+        review.setReviewVersion(1L);principal(1,"admin");
         tx(()->signs.review(review,1L,"管理员甲"));assertEquals(Set.of(),signs.selectDetail(course,date.toString()).get("approvedLeaveEnrollmentIds"));
+        principal(teacher,"teacher");
         assertThrows(ServiceException.class,()->tx(()->signs.submitSignIn(sign,"teacher-test")));
+        principal(2,"admin");
         tx(()->signs.review(review,2L,"管理员乙"));assertThrows(ServiceException.class,()->tx(()->signs.submitSignIn(sign,"teacher-test")));
         assertEquals("1",db.one("SELECT review_status FROM edu_class_sign_in WHERE schedule_id=? AND class_date=?",course,date.toString()).get("reviewStatus"));
         // 审核可晚于上课时间，但绝不覆盖已复核考勤。

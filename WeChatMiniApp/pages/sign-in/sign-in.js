@@ -46,16 +46,17 @@ Page({
       signed,
       lastDateText: signed ? String(item.lastSignDate).slice(0, 10) : '未签到',
       actualText: signed ? `${item.actualCount || 0}/${item.totalCount || 0}人` : '',
-      reviewText: reviewed ? '已复核' : (signed ? '待复核' : ''),
+      reviewText: reviewed ? '已复核' : (String(item.reviewStatus)==='2' ? '需更正' : signed ? '待复核' : ''),
       reviewClass: reviewed ? 'done' : (signed ? 'pending' : ''),
       room: [item.campusName, item.classroomName].filter(Boolean).join(' · ')
     }
   },
 
   openSign(e) {
-    const { id } = e.currentTarget.dataset
+    const { id, date } = e.currentTarget.dataset
     const item = this.data.list.find((row) => String(row.scheduleId) === String(id))
     if (!item) return
-    wx.navigateTo({ url: `/pages/sign-in-edit/sign-in-edit?scheduleId=${encodeURIComponent(id)}&course=${encodeURIComponent(item.course)}&room=${encodeURIComponent(item.room)}&time=${encodeURIComponent(item.timeSlot || '')}` })
+    if(date && !(item.corrections || []).some(c => c.classDate === date))return
+    wx.navigateTo({ url: `/pages/sign-in-edit/sign-in-edit?scheduleId=${encodeURIComponent(id)}${date ? '&classDate='+encodeURIComponent(date) : ''}&course=${encodeURIComponent(item.course)}&room=${encodeURIComponent(item.room)}&time=${encodeURIComponent(item.timeSlot || '')}` })
   }
 })
