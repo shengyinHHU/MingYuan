@@ -9,6 +9,8 @@ payment:
   mode: mock
 wechat:
   miniapp:
+    # Local/test codes only. Production must use a configured real SMS sender.
+    phone-code-mode: development
     mock-enabled: true
     # Teacher login requires an explicit devTeacherId selected from enabled teachers.
     # Legacy environment fields are retained for configuration compatibility only.

@@ -2,10 +2,7 @@ const { request } = require('../../utils/request')
 const devSession = require('../../utils/dev-session')
 const courseState = require('../../utils/teacher-course-state')
 const childContext = require('../../utils/child-context')
-
-// Development only: role tabs request a matching backend token.
-// Set this to false before production release.
-const DEV_ROLE_SWITCH_ENABLED = true
+const access = require('../../utils/access')
 
 const roleProfiles = {
   parent: {
@@ -93,19 +90,11 @@ const roleProfiles = {
   }
 }
 
-const roleOptions = Object.keys(roleProfiles).map((key) => ({
-  key,
-  name: roleProfiles[key].name,
-  className: ''
-}))
-
 // Education is a real authenticated role, never a development login option.
 roleProfiles.education = {
-  name: '教务', tag: '教务工作台', eyebrow: '教务端', title: '线下收费与退费金额核定',
-  stats: [], actions: [], agendaTitle: '教务工作说明', schedule: []
+  name: '教务', tag: '全校区教务管理', eyebrow: '教务端', title: '教学协调、收费与退费初审',
+  stats: [], actions: roleProfiles.admin.actions.filter(a => ['教室管理', '学生档案', '收费财务'].includes(a.title)), agendaTitle: '教务工作说明', schedule: []
 }
-// The education tab changes the view only; it never requests a simulated identity.
-const visibleRoleOptions = [...roleOptions, { key: 'education', name: '教务', className: '' }]
 
 function normalizeRole(roleKey) {
   return roleProfiles[roleKey] ? roleKey : 'parent'
@@ -218,7 +207,7 @@ function computeNextDate(item) {
 function buildRoleState(roleKey, visibleRoles) {
   const normalizedRole = normalizeRole(roleKey)
   const profile = roleProfiles[normalizedRole]
-  const roles = visibleRoles || visibleRoleOptions
+  const roles = visibleRoles || []
   return {
     currentRole: normalizedRole,
     currentRoleName: profile.name,
@@ -236,24 +225,21 @@ function buildRoleState(roleKey, visibleRoles) {
   }
 }
 
-function getRoleFromStorage(roles = wx.getStorageSync('roles') || []) {
-  if (roles.includes('admin')) return 'admin'
-  if (roles.includes('education')) return 'education'
-  if (roles.includes('teacher')) return 'teacher'
-  return 'parent'
-}
+function getRoleFromStorage(roles = wx.getStorageSync('roles') || []) { return access.selected(roles) }
 
 Page({
   data: {
     logoUrl: '/images/logo.png',
-    roleLocked: false,
+    roleLocked: true,
+    developmentLoginEnabled: false,
     roleSwitching: false,
     teacherDataMessage: '',
     coursePendingCount: null,
     coursePendingError: '',
     parentChildren: [], currentChild: null, childLoading:false, childError:'', showChildPicker:false, parentScheduleError:'',
-    roles: visibleRoleOptions,
-    ...buildRoleState('parent')
+    roles: [],
+    ...buildRoleState('parent', []),
+    quickActions: [], stats: [], schedule: []
   },
 
   onLoad() {
@@ -292,7 +278,7 @@ Page({
       return
     }
 
-    if (DEV_ROLE_SWITCH_ENABLED && wx.getStorageSync('devSessionVersion')) {
+    if (wx.getStorageSync('devSessionVersion')) {
       try {
         const checked = await devSession.checkBackendSession()
         if (this._unloaded || loadVersion !== this._roleLoadVersion) return
@@ -308,7 +294,7 @@ Page({
       }
     }
     // Only getInfo grants the finance entry; cached roles and role tabs cannot do so.
-    this.setData({ quickActions: this.data.quickActions.filter(a => a.route !== '/pages/admin-tuition/admin-tuition') })
+    this.setData({ quickActions: [], stats: [], schedule: [], roles: [] })
     let info
     try {
       info = await request({ url: '/getInfo' })
@@ -320,32 +306,21 @@ Page({
       if (!this._unloaded && loadVersion === this._roleLoadVersion) wx.showToast({ title: error.message || '身份核对失败，请重新登录', icon: 'none' })
       return
     }
-    const authenticatedRole = getRoleFromStorage(info.roles || [])
-    const staff = (info.roles || []).some(r => ['admin', 'education'].includes(r))
-    const financeAllowed = staff && (info.permissions || []).some(p => p === '*:*:*' || p === 'system:tuition:list')
-    if (this._educationViewRequested && !financeAllowed) {
-      this._educationViewRequested = false
-      wx.showToast({ title: '请先登录管理员或已授权教务账号', icon: 'none' })
+    wx.setStorageSync('roles', info.roles || [])
+    if (info.user) wx.setStorageSync('userInfo', info.user)
+    const workspaces = access.options(info.roles || [])
+    if (!workspaces.length) {
+      this.setData({ roles: [], quickActions: [], stats: [], schedule: [], roleLocked: true, currentRole: '', currentRoleName: '', title: '此账号尚未分配小程序角色', tag: '请联系管理员授权' })
+      return
     }
-    const role = this._educationViewRequested && financeAllowed ? 'education' : authenticatedRole
+    const role = getRoleFromStorage(info.roles || [])
+    const financeAllowed = access.staff() && access.can('system:tuition:list')
     this._teacherLoadVersion = (this._teacherLoadVersion || 0) + 1
-    this.setData({ teacherDataMessage: '',currentChild:null,parentChildren:[],childLoading:false,childError:'',showChildPicker:false,parentScheduleError:'' })
-    if (DEV_ROLE_SWITCH_ENABLED && authenticatedRole !== 'education') {
-      this.setData({
-        roleLocked: false,
-        ...buildRoleState(role, visibleRoleOptions)
-      })
-    } else {
-      this.setData({
-        roleLocked: true,
-        ...buildRoleState(role, visibleRoleOptions)
-      })
-    }
-
+    this.setData({ teacherDataMessage: '',currentChild:null,parentChildren:[],childLoading:false,childError:'',showChildPicker:false,parentScheduleError:'', roleLocked: workspaces.length < 2, developmentLoginEnabled: access.developmentTool() && !!wx.getStorageSync('devSessionVersion'), ...buildRoleState(role, workspaces) })
     if(role==='parent' || role==='admin') { this.loadAccountPending();if(role==='admin')this.loadReferralPending();this._accountTimer=setInterval(()=>{this.loadAccountPending();if(this.data.currentRole==='admin')this.loadReferralPending()},30000) }
     const actions = this.data.quickActions.filter(a => a.route !== '/pages/admin-tuition/admin-tuition')
-    if (financeAllowed) actions.push({ title: '收费财务', icon: '财', tone: 'gold', route: '/pages/admin-tuition/admin-tuition' })
-    this.setData({ quickActions: actions })
+    if (financeAllowed && ['admin', 'education'].includes(role)) actions.push({ title: '收费财务', icon: '财', tone: 'gold', route: '/pages/admin-tuition/admin-tuition' })
+    this.setData({ quickActions: access.actions(actions, role) })
 
     if (role === 'parent') {
       await this.loadParentTag()
@@ -526,92 +501,30 @@ Page({
   addChild(){if(this.data.currentRole==='parent'&&!this.data.roleSwitching&&!this.data.childLoading){this.setData({showChildPicker:false});wx.navigateTo({url:'/pages/parent-account/parent-account?create=1&returnHome=1'})}},
 
   async switchRole(e) {
-    if (this.data.roleSwitching) return
-
-    const role = normalizeRole(e.currentTarget.dataset.role)
-    if (role === this.data.currentRole) return
-    if (role === 'education' || (this.data.currentRole === 'education' && role === 'admin' &&
-        (getApp().globalData.roles || []).includes('admin'))) {
-      this._educationViewRequested = role === 'education'
-      this.setData({ roleSwitching: true })
-      try {
-        await this.applyLoginRole()
-      } finally {
-        if (!this._unloaded) this.setData({ roleSwitching: false })
-      }
-      return
+    if (this._unloaded || this.data.roleSwitching) return
+    const role = e.currentTarget.dataset.role
+    if (!access.options().some(item => item.key === role)) {
+      wx.showToast({ title: '当前账号未获此身份授权', icon: 'none' }); return
     }
-    if (this.data.roleLocked) return
-    this._educationViewRequested = false
-    if (!DEV_ROLE_SWITCH_ENABLED) {
-      this.setData(buildRoleState(role, visibleRoleOptions))
-      return
-    }
-
-    await this.loginAsDevRole(role)
-  },
-
-  async loginAsDevRole(role) {
-    if (!roleOptions.some(option => option.key === role)) return
-    const previousToken = wx.getStorageSync('token')
-    const backendRole = role
-    this.stopCoursePendingRefresh()
-    this.stopAccountRefresh()
-    this.setCoursePending(null)
-    this.setData({ roleSwitching: true })
+    this.setData({ roleSwitching: true, quickActions: [], stats: [], schedule: [] })
     try {
-      const cached = await devSession.restore(backendRole, undefined, () =>
-        !this._unloaded && wx.getStorageSync('token') === previousToken)
-      if (this._unloaded) return
-      if (cached.restarted) {
-        wx.reLaunch({ url: '/pages/register/register' })
-        return
-      }
-      if (cached.restored) {
-        await this.applyLoginRole()
-        return
-      }
-      if (wx.getStorageSync('token') !== previousToken) return
-      if (role === 'teacher') {
-        this.switchTeacher()
-        return
-      }
-      const loginCode = await this.getWxLoginCode()
-      if (this._unloaded || wx.getStorageSync('token') !== previousToken) return
-      const loginRes = await request({
-        url: '/miniapp/login',
-        method: 'POST',
-        data: {
-          loginCode,
-          phoneCode: 'mock',
-          devRole: backendRole,
-          nickName: `MiniApp ${backendRole}`
-        }
-      })
-      if (this._unloaded || wx.getStorageSync('token') !== previousToken) return
-
-      const infoRes = await request({ url: '/getInfo', header: { Authorization: `Bearer ${loginRes.token}` } })
-      if (this._unloaded || wx.getStorageSync('token') !== previousToken) return
-      devSession.activate(backendRole, loginRes.token, infoRes, loginRes.devSessionVersion)
-
-      this.applyLoginRole()
-      wx.showToast({ title: `${roleProfiles[role].name}已登录`, icon: 'none' })
-    } catch (error) {
-      if (!this._unloaded) {
-        wx.showToast({ title: error.message || '切换失败', icon: 'none' })
-        this.applyLoginRole()
-      }
-    } finally {
-      if (!this._unloaded) this.setData({ roleSwitching: false })
-    }
+      await this.applyLoginRole()
+      if (!this._unloaded && this.data.roles.some(item => item.key === role) && access.select(role)) await this.applyLoginRole()
+    } finally { if (!this._unloaded) this.setData({ roleSwitching: false }) }
+  },
+  logout() {
+    this.stopCoursePendingRefresh(); this.stopAccountRefresh()
+    ;['token', 'roles', 'userInfo', 'devSessionVersion'].forEach(k => wx.removeStorageSync(k))
+    Object.assign(getApp().globalData, { token: '', roles: [], permissions: [], userInfo: null })
+    wx.reLaunch({ url: '/pages/register/register' })
   },
 
   switchTeacher() {
-    if (!this._unloaded) wx.navigateTo({ url: '/pages/register/register?selectTeacher=1' })
+    if (!this._unloaded && this.data.developmentLoginEnabled) wx.navigateTo({ url: '/pages/register/register?selectTeacher=1' })
   },
 
   switchParent() {
-    if(!this._unloaded && !this.data.roleSwitching && this.data.currentRole==='parent')wx.navigateTo({url:'/pages/register/register?selectParent=1'})
+    if(!this._unloaded && this.data.developmentLoginEnabled && !this.data.roleSwitching && this.data.currentRole==='parent')wx.navigateTo({url:'/pages/register/register?selectParent=1'})
   },
 
   getWxLoginCode() {
@@ -637,6 +550,7 @@ Page({
     const route = e.currentTarget.dataset.route
     const title = e.currentTarget.dataset.title
     const disabled = e.currentTarget.dataset.disabled
+    if (this._unloaded || this.data.roleSwitching || !access.actions(this.data.quickActions, this.data.currentRole).some(a => a.route === route && a.title === title)) return
     if (disabled) {
       wx.showToast({
         title: `${title}已暂时关闭`,

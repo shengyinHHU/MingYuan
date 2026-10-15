@@ -13,11 +13,15 @@ public class MiniAppDevelopmentSession
 
     @Value("${wechat.miniapp.mock-enabled:false}")
     private boolean mockEnabled;
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.core.env.Environment environment;
 
-    /** 模拟环境（mock-enabled=true）即开放角色免密切换，不再要求 local profile，方便任意方式启动后端调试。 */
+    /** Explicit local/test profiles are required; a mock flag never enables production shortcuts. */
     public boolean isEnabled()
     {
-        return mockEnabled;
+        var profiles = java.util.Arrays.asList(environment.getActiveProfiles());
+        return mockEnabled && (profiles.contains("local") || profiles.contains("test"))
+                && !profiles.contains("prod") && !profiles.contains("production");
     }
 
     public String getVersion()

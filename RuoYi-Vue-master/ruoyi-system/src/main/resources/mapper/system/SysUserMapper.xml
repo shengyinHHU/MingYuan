@@ -4,6 +4,10 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.ruoyi.system.mapper.SysUserMapper">
 
+    <select id="selectUserIdsByPhone" parameterType="String" resultType="Long">
+        SELECT user_id FROM sys_user WHERE phonenumber = #{phonenumber} AND del_flag = '0' ORDER BY user_id
+    </select>
+
     <resultMap type="SysUser" id="SysUserResult">
         <id     property="userId"        column="user_id"         />
         <result property="deptId"        column="dept_id"         />
@@ -237,4 +241,4 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         </foreach> 
  	</delete>
 	
-</mapper> 
+</mapper>

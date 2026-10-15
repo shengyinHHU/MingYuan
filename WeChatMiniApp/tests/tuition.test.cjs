@@ -222,18 +222,18 @@ test('homepage real education role never becomes devRole or parent requests and 
   const p = page('index'); await p.applyLoginRole()
   assert.equal(p.data.currentRole, 'education'); assert.equal(p.data.roleLocked, true); assert.ok(p.data.quickActions.some(a => a.route === '/pages/admin-tuition/admin-tuition'))
   assert.equal(calls.some(c => c.url.includes('/miniapp/parent')), false)
-  await p.loginAsDevRole('education'); assert.equal(calls.some(c => c.data.devRole === 'education'), false)
+  assert.equal(p.loginAsDevRole, undefined); assert.equal(calls.some(c => c.data.devRole === 'education'), false)
   permissions = []; await p.applyLoginRole(); assert.equal(p.data.quickActions.some(a => a.route === '/pages/admin-tuition/admin-tuition'), false)
 })
 
-test('education tab remains visible but refuses unauthorized users without a new login', async () => {
+test('unassigned education tab stays hidden and forged switch cannot request another login', async () => {
   for (const [role, permissions] of [['parent', ['*:*:*']], ['teacher', ['*:*:*']], ['admin', []]]) {
     storage = new Map(); env(o => o.url.endsWith('/getInfo') ? o.success({ statusCode: 200, data: { code: 200, roles: [role], permissions } }) : ok(o, []), role)
     const notices = []; wx.showToast = o => notices.push(o.title)
     const p = page('index'); p.onLoad()
     try {
       await p.applyLoginRole()
-      assert.deepEqual(p.data.roles.map(r => r.name), ['家长', '教师', '管理员', '教务'])
+      assert.deepEqual(p.data.roles.map(r => r.key), [role])
       await p.switchRole({ currentTarget: { dataset: { role: 'education' } } })
       assert.equal(p.data.currentRole, role)
       assert.equal(p.data.quickActions.some(a => a.route === '/pages/admin-tuition/admin-tuition'), false)
@@ -245,7 +245,7 @@ test('education tab remains visible but refuses unauthorized users without a new
 })
 
 test('admin education view preserves identity, survives refresh and checks revoked authority', async () => {
-  storage = new Map(); let roles = ['admin'], permissions = ['*:*:*']
+  storage = new Map(); let roles = ['admin', 'education'], permissions = ['*:*:*']
   env(o => o.url.endsWith('/getInfo') ? o.success({ statusCode: 200, data: { code: 200, roles, permissions } }) : ok(o, []), 'admin')
   const p = page('index'); p.onLoad()
   try {
@@ -253,7 +253,7 @@ test('admin education view preserves identity, survives refresh and checks revok
     assert.equal(p.data.currentRole, 'education'); assert.equal(p.data.currentRoleName, '教务')
     assert.ok(p.data.roles.some(r => r.key === 'education' && r.className === 'active'))
     assert.ok(p.data.quickActions.some(a => a.route === '/pages/admin-tuition/admin-tuition'))
-    assert.deepEqual(app.globalData.roles, ['admin']); assert.equal(wx.getStorageSync('token'), 'jwt')
+    assert.deepEqual(app.globalData.roles, ['admin', 'education']); assert.equal(wx.getStorageSync('token'), 'jwt')
     await p.applyLoginRole(); assert.equal(p.data.currentRole, 'education')
     await p.switchRole({ currentTarget: { dataset: { role: 'admin' } } }); assert.equal(p.data.currentRole, 'admin')
     assert.equal(calls.some(c => c.url.endsWith('/miniapp/login')), false)

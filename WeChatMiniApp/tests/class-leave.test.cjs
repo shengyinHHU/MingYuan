@@ -4,9 +4,9 @@ function harness(name,request,role='parent',extra={}) {
   const storage={token:'session',roles:[role]},notices=[]
   const wx={getStorageSync:k=>storage[k],showToast:o=>notices.push(o),showModal:o=>o.success({confirm:true,content:'拒绝原因'}),stopPullDownRefresh(){},...extra}
   const module={exports:{}}
-  vm.runInNewContext(fs.readFileSync(path.join(root,'utils/class-leave.js'),'utf8'),{module,require:id=>id.endsWith('child-context')?require('./helpers/child-context.cjs')(wx):{request},wx,console})
+  vm.runInNewContext(fs.readFileSync(path.join(root,'utils/class-leave.js'),'utf8'),{module,require:id=>id.endsWith('access')?require('./helpers/access.cjs')(wx):id.endsWith('child-context')?require('./helpers/child-context.cjs')(wx):{request},wx,console})
   let definition
-  vm.runInNewContext(fs.readFileSync(path.join(root,'pages',name,name+'.js'),'utf8'),{Page:p=>definition=p,require:id=>id.endsWith('child-context')?require('./helpers/child-context.cjs')(wx):id.endsWith('class-leave')?module.exports:id.endsWith('teacher-course-state')?require('../utils/teacher-course-state'):{request},wx,console,setTimeout:fn=>fn(),setInterval,clearInterval})
+  vm.runInNewContext(fs.readFileSync(path.join(root,'pages',name,name+'.js'),'utf8'),{Page:p=>definition=p,require:id=>id.endsWith('access')?require('./helpers/access.cjs')(wx):id.endsWith('child-context')?require('./helpers/child-context.cjs')(wx):id.endsWith('class-leave')?module.exports:id.endsWith('teacher-course-state')?require('../utils/teacher-course-state'):{request},wx,console,setTimeout:fn=>fn(),setInterval,clearInterval})
   const p={...definition,data:structuredClone(definition.data),_alive:true,_visible:true,_token:'session',_loadedToken:'session'}
   p.setData=u=>Object.assign(p.data,u)
   return {p,storage,notices}

@@ -5,7 +5,9 @@
       <view class="tag" bindtap="openChildren">{{tag}}<text wx:if="{{currentRole === 'parent'}}"> ›</text></view>
     </view>
 
-    <view class="role-switch">
+    <view class="account-toolbar"><button class="logout-button" size="mini" bindtap="logout">退出登录</button></view>
+
+    <view class="role-switch" wx:if="{{roles.length > 1}}">
       <view
         class="role-chip {{item.className}}"
         wx:for="{{roles}}"
@@ -29,8 +31,6 @@
         <view class="child-load-retry" wx:if="{{childError}}" bindtap="loadParentTag">重新加载孩子资料</view>
       </block>
       <view class="title" wx:else>{{title}}</view>
-      <view class="teacher-switch" wx:if="{{currentRole === 'teacher'}}" bindtap="switchTeacher">切换教师</view>
-      <view class="teacher-switch" wx:if="{{currentRole === 'parent' && !roleLocked}}" bindtap="switchParent">切换家长</view>
     </view>
 
     <view class="stats {{currentRole === 'teacher' ? 'stats-teacher' : ''}}">

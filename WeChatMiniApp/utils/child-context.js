@@ -2,10 +2,11 @@
 let revision = 0
 function owner() {
   const roles = wx.getStorageSync('roles') || []
-  if (!roles.includes('parent') || roles.some(r => ['admin','teacher','education'].includes(r))) return ''
+  if (!roles.includes('parent')) return ''
   const app = typeof getApp === 'function' ? getApp() : null
   const user = app && app.globalData && app.globalData.userInfo || wx.getStorageSync('userInfo') || {}
   const id = user.userId
+  if (roles.some(r => ['admin','teacher','education'].includes(r)) && wx.getStorageSync('miniappWorkspace:'+id) !== 'parent') return ''
   return id == null ? '' : `${app && app.globalData && app.globalData.baseUrl || ''}:${id}`
 }
 function id() { const key=owner();const value=key && wx.getStorageSync('parentChild:'+key);return value && /^[1-9]\d*$/.test(String(value.accountId)) ? String(value.accountId) : '' }
@@ -40,7 +41,7 @@ function page(definition,settings={}) {
   const result={...definition}
   const load=definition.onLoad,show=definition.onShow
   result.onLoad=function(options={}){
-    this._parentScope=options.unlinked==='1';this._childManaged=!!owner()&&!this._parentScope&&!(wx.getStorageSync('roles')||[]).includes('teacher')
+    this._parentScope=options.unlinked==='1';this._childManaged=!!owner()&&!this._parentScope
     if(this._childManaged || this._parentScope&&owner()){
       this._childTicket=snapshot();const original=this.setData.bind(this)
       if(this._parentScope)this._parentScopeTicket=this._childTicket
