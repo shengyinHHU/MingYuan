@@ -14,6 +14,10 @@ import com.ruoyi.system.shop.ShopRepository;
 public class LessonCreditService {
     @Autowired private ShopRepository db;
     private static final ZoneId ZONE=ZoneId.of("Asia/Shanghai");
+    // 当前资料只来自学生档案。账户旧资料列仅保存创建请求，供幂等重试核对。
+    static final String CHILD_JOIN=" JOIN edu_student st ON st.student_id=a.student_id AND st.parent_id=a.parent_id AND st.del_flag='0' ";
+    private static final String GRADE_LABEL="(SELECT d.dict_label FROM sys_dict_data d WHERE d.dict_type='edu_grade' AND d.dict_value=st.grade_code ORDER BY d.status,d.dict_code LIMIT 1)";
+    static final String CHILD_FIELDS="a.account_id,a.parent_id,a.student_id,st.student_name,"+GRADE_LABEL+" AS grade_name,st.student_phone AS contact_phone,a.remaining_credits,a.reserved_credits,a.consumed_credits,a.remaining_credits-a.reserved_credits AS available_credits,a.request_key,a.create_by,a.create_time,a.update_by,a.update_time";
     public static void admin() { check(SecurityUtils.isAdmin() || SecurityUtils.hasRole("admin"),"只有管理员可以管理交易和课次"); }
     public static class AccountDraft { public Long parentId; public String studentName; public String gradeName; public String contactPhone; public String requestKey; }
     public static class Adjustment { public String action; public Integer quantity; public String reason; public String requestKey; }
@@ -23,11 +27,12 @@ public class LessonCreditService {
     }
     public List<Map<String,Object>> accounts(String keyword) {
         admin(); String like=like(keyword);
-        return db.rows("SELECT a.*,a.remaining_credits-a.reserved_credits AS available_credits,u.user_name AS parent_name,u.phonenumber AS parent_phone FROM edu_student_lesson_account a JOIN sys_user u ON u.user_id=a.parent_id WHERE a.student_name LIKE ? OR a.contact_phone LIKE ? OR u.user_name LIKE ? OR u.phonenumber LIKE ? ORDER BY a.account_id DESC LIMIT 100",like,like,like,like);
+        return db.rows("SELECT "+CHILD_FIELDS+",u.user_name AS parent_name,u.phonenumber AS parent_phone FROM edu_student_lesson_account a"+CHILD_JOIN+" JOIN sys_user u ON u.user_id=a.parent_id WHERE st.student_name LIKE ? OR st.student_phone LIKE ? OR u.user_name LIKE ? OR u.phonenumber LIKE ? ORDER BY a.account_id DESC LIMIT 100",like,like,like,like);
     }
     public List<Map<String,Object>> mine() {
         parent();
-        return db.rows("SELECT account_id,student_name,grade_name,contact_phone,remaining_credits,reserved_credits,consumed_credits,remaining_credits-reserved_credits AS available_credits FROM edu_student_lesson_account WHERE parent_id=? ORDER BY account_id",SecurityUtils.getUserId());
+        var children=db.rows("SELECT "+CHILD_FIELDS+" FROM edu_student_lesson_account a"+CHILD_JOIN+" WHERE a.parent_id=? ORDER BY a.account_id",SecurityUtils.getUserId());
+        children.forEach(child->child.remove("requestKey"));return children;
     }
     @Transactional(rollbackFor=Exception.class)
     public long create(AccountDraft body) {
@@ -66,7 +71,12 @@ public class LessonCreditService {
             var draft=new AccountDraft(); draft.parentId=parentId; draft.studentName=name; draft.gradeName=grade; draft.contactPhone=phone; draft.requestKey=requestKey;
             accountId=createChild(draft,"CHILD:");
         }
-        return db.one("SELECT * FROM edu_student_lesson_account WHERE account_id=? AND parent_id=? FOR UPDATE",accountId,parentId);
+        return currentProfile(db.one("SELECT * FROM edu_student_lesson_account WHERE account_id=? AND parent_id=? FOR UPDATE",accountId,parentId));
+    }
+    /** 先锁账户再锁所属学生；后续报名快照和课包校验均使用同一份当前资料。 */
+    private Map<String,Object> currentProfile(Map<String,Object> account) {
+        var student=db.one("SELECT st.student_name,st.student_phone AS contact_phone,"+GRADE_LABEL+" AS grade_name FROM edu_student st WHERE st.student_id=? AND st.parent_id=? AND st.del_flag='0' FOR UPDATE",account.get("studentId"),account.get("parentId"));
+        account.putAll(student);return account;
     }
     @Transactional(rollbackFor=Exception.class)
     public void editChild(Long accountId,AccountDraft body,boolean administrator) {
@@ -80,13 +90,10 @@ public class LessonCreditService {
         String name=text(body.studentName,30,"学生姓名"),grade=text(body.gradeName,20,"年级");
         check(body.contactPhone == null || body.contactPhone.matches("[0-9]{0,11}"),"联系电话最多11位数字");
         check(!db.rows("SELECT dict_code FROM sys_dict_data WHERE dict_type='edu_grade' AND dict_label=? AND status='0'",grade).isEmpty(),"请选择有效年级");
-        var values=new LinkedHashMap<String,Object>(); values.put("student_name",name); values.put("grade_name",grade); values.put("contact_phone",body.contactPhone);
-        values.put("update_by",SecurityUtils.getUsername()); values.put("update_time",LocalDateTime.now(ZONE));
         var student=new LinkedHashMap<String,Object>();student.put("student_name",name);student.put("student_phone",body.contactPhone);student.put("grade_code",gradeCode(grade));student.put("update_by",SecurityUtils.getUsername());student.put("update_time",LocalDateTime.now(ZONE));
         db.one("SELECT student_id FROM edu_student WHERE student_id=? AND parent_id=? AND del_flag='0' FOR UPDATE",account.get("studentId"),owner);
         db.update("edu_student","student_id",id(account.get("studentId")),student);
-        // These old account columns remain a compatibility snapshot for existing selectors.
-        db.update("edu_student_lesson_account","account_id",accountId,values);
+        // 不同步改写账户创建快照，也不回写既有报名、考勤或收据。
     }
     @Transactional(rollbackFor=Exception.class)
     public void deleteChild(Long accountId,boolean administrator) {
@@ -115,6 +122,7 @@ public class LessonCreditService {
         check(accountId != null,"请选择孩子的课包账户");
         var account=db.one("SELECT * FROM edu_student_lesson_account WHERE account_id=? FOR UPDATE",accountId);
         check(parentId.equals(id(account.get("parentId"))),"课包不属于当前家长");
+        currentProfile(account);
         check(Objects.equals(studentName,account.get("studentName")),"学生姓名须与所选课包账户一致");
         check(number(account,"remainingCredits")-number(account,"reservedCredits")>=required,"可用课次不足，请联系管理员发放课次或选择单次付费");
         return account;
