@@ -19,7 +19,7 @@ function harness(name, roles = ['parent'], permissions = ['*:*:*'], custom) {
   }
   let definition
   function load(file) {
-    if (file.endsWith('/utils/request.js')) return { request }
+    if (file === path.join(root, 'utils', 'request.js')) return { request }
     if (cache.has(file)) return cache.get(file)
     const module = { exports: {} }
     vm.runInNewContext(fs.readFileSync(file, 'utf8'), {
@@ -34,6 +34,23 @@ function harness(name, roles = ['parent'], permissions = ['*:*:*'], custom) {
   return { p, wx, app, state, store, calls, navigations, notices }
 }
 const click = role => ({ currentTarget: { dataset: { role } } })
+
+test('student attendance badge rejects late responses after switching workspace with the same token', async () => {
+  const finishes = []; let delayed = false
+  const h = harness('index', ['admin', 'parent'], ['*:*:*'], o => {
+    if (o.url === '/miniapp/admin/sign/list') return delayed
+      ? new Promise(resolve => { finishes.push(resolve) })
+      : { data: [{ scheduleId: '1', classDate: '2030-10-15', reviewStatus: '0' }, { scheduleId: '1', classDate: '2030-10-15', reviewStatus: '0' }, { scheduleId: '2', classDate: '2030-10-15', reviewStatus: '2' }] }
+  })
+  h.p.onLoad(); h.p._visible = true; await h.p.applyLoginRole(); await Promise.resolve()
+  assert.equal(h.p.data.quickActions.find(a => a.key === 'studentSignReview').badgeText, '1')
+  delayed = true; const pending = h.p.loadSignReviewPending(); assert.equal(finishes.length, 1)
+  await h.p.switchRole(click('parent')); finishes.forEach(finish => finish({ data: [{ scheduleId: '9', classDate: '2030-10-15', reviewStatus: '0' }] })); await pending
+  assert.equal(h.store.get('token'), 'original-token')
+  assert.equal(h.p.data.currentRole, 'parent')
+  assert.equal(h.p.data.quickActions.some(a => a.key === 'studentSignReview'), false)
+  h.p.onUnload()
+})
 test('each assigned role sees only its own workspace; education confirms tuition without coupon management', async () => {
   for (const role of ['parent', 'teacher', 'education', 'admin']) {
     const h = harness('index', [role]); h.p.onLoad(); await h.p.applyLoginRole()

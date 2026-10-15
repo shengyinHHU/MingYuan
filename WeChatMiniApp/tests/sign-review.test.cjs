@@ -2,15 +2,15 @@ const test=require('node:test'),assert=require('node:assert/strict'),fs=require(
 const root=path.join(__dirname,'..'),plain=x=>JSON.parse(JSON.stringify(x))
 function harness(name,request,role='admin',extra={}){
  const storage={token:'admin-session',roles:[role]},notices=[],routes=[]
- const wx={getStorageSync:k=>storage[k],showToast:o=>notices.push(o),showModal:o=>o.success({confirm:true,content:'请核对出勤'}),navigateTo:o=>routes.push(o.url),stopPullDownRefresh(){},...extra}
+ const wx={getStorageSync:k=>storage[k],setStorageSync:(k,v)=>storage[k]=v,showToast:o=>notices.push(o),showModal:o=>o.success({confirm:true,content:'请核对出勤'}),navigateTo:o=>routes.push(o.url),stopPullDownRefresh(){},...extra}
  const module={exports:{}};vm.runInNewContext(fs.readFileSync(path.join(root,'utils/sign-review.js'),'utf8'),{module,wx,Set})
- let definition;vm.runInNewContext(fs.readFileSync(path.join(root,'pages',name,name+'.js'),'utf8'),{Page:p=>definition=p,wx,getApp:()=>({globalData:{baseUrl:'http://localhost'}}),require:id=>id.endsWith('/sign-review')?module.exports:id.endsWith('/teacher-course-state')?require('../utils/teacher-course-state'):id.endsWith('/child-context')?require('./helpers/child-context.cjs')(wx):{request},console,setInterval,clearInterval})
+ let definition;vm.runInNewContext(fs.readFileSync(path.join(root,'pages',name,name+'.js'),'utf8'),{Page:p=>definition=p,wx,getApp:()=>({globalData:{baseUrl:'http://localhost'}}),require:id=>id.endsWith('/sign-review')?module.exports:id.endsWith('/teacher-course-state')?require('../utils/teacher-course-state'):id.endsWith('/access')?require('./helpers/access.cjs')(wx):id.endsWith('/child-context')?require('./helpers/child-context.cjs')(wx):{request},console,setInterval,clearInterval})
  const p={...definition,data:structuredClone(definition.data),_visible:true,_token:'admin-session'};p.setData=o=>Object.assign(p.data,o);return {p,storage,notices,routes,state:module.exports}
 }
 const row={scheduleId:'9',classDate:'2030-10-15',courseClassName:'化学',reviewStatus:'0',totalCount:5,actualCount:4}
 const detail={details:[{signInId:'7',studentName:'学生甲',signStatus:'1',sourceType:'1'}],review:{reviewStatus:'0',reviewVersion:3,totalCount:1,actualCount:1,history:[]}}
 test('student attendance entry differs from teacher WiFi review and opens the existing registered page',()=>{
- const {p}=harness('index',()=>Promise.resolve({data:[]}));const admin=p.data.roles.find(r=>r.key==='admin');assert.ok(admin)
+ const {p}=harness('index',()=>Promise.resolve({data:[]}));assert.equal(p.data.roles.length,0)
  const source=fs.readFileSync(path.join(root,'pages/index/index.js'),'utf8');assert.match(source,/title:'学生出勤'.*route:'\/pages\/sign-review\/sign-review'/);assert.match(source,/title: '打卡复核'.*admin-checkin-review/)
  assert.ok(JSON.parse(fs.readFileSync(path.join(root,'app.json'),'utf8')).pages.includes('pages/sign-review/sign-review'))
 })
