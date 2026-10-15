@@ -54,7 +54,6 @@ const roleProfiles = {
       { key: 'teacherLeave', title: '请假审核', icon: '假', tone: 'violet', route: '/pages/teacher-leave/teacher-leave' },
       { title: '班级学员', icon: '班', tone: 'green', route: '/pages/teacher-students/teacher-students' },
       { title: 'WiFi打卡', icon: '卡', tone: 'red', route: '/pages/teacher-wifi-checkin/teacher-wifi-checkin' },
-      { title: '资料商城', icon: '资', tone: 'indigo', route: '/pages/material/material' },
       { title: '我的资料', icon: '料', tone: 'green', route: '/pages/material-upload/material-upload' },
       { title: '作业管理', icon: '作', tone: 'violet', route: '/pages/teacher-homework/teacher-homework' }
     ],
