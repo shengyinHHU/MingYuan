@@ -94,10 +94,9 @@ public class ClassLeaveService {
     public List<Map<String,Object>> options(Long accountId) {
         role(false);
         var rows = db.rows("SELECT e.enrollment_id,e.schedule_id,e.student_id,e.lesson_account_id,e.student_name,"
-            + "COALESCE(st.student_name,a.student_name,e.student_name) AS child_name,s.course_class_name,s.teacher_name "
+            + "COALESCE(st.student_name,e.student_name) AS child_name,s.course_class_name,s.teacher_name "
             + "FROM edu_enrollment e JOIN edu_course_schedule s ON s.schedule_id=e.schedule_id "
             + "LEFT JOIN edu_student st ON st.student_id=e.student_id AND st.parent_id=e.parent_id "
-            + "LEFT JOIN edu_student_lesson_account a ON a.account_id=e.lesson_account_id AND a.parent_id=e.parent_id "
             + "WHERE e.parent_id=? AND e.del_flag='0' AND e.status='0' AND e.enrollment_status IN ('1','报名成功','已确认') "
             + "AND e.class_date IS NULL AND s.del_flag='0' AND s.status='0' AND COALESCE(s.class_mode,'1')<>'2' ORDER BY e.enrollment_id",
             SecurityUtils.getUserId());

@@ -66,9 +66,13 @@ public class ChildCenterMysqlTest extends LessonCreditMysqlTest {
         var history=(List<Map<String,Object>>)personal.records(parent,false,"history",1,false,a,false).get("rows");assertTrue(history.stream().noneMatch(x->"SHOP".equals(x.get("source"))));
         // Profile edits must not rewrite financial or attendance snapshots or household referral links.
         String bindings=db.rows("SELECT * FROM edu_referral_binding WHERE invitee_id=? OR referrer_id=?",parent,parent).toString();
+        var paymentBefore=db.one("SELECT * FROM edu_tuition_payment WHERE payment_id=?",pending.get("paymentId"));
+        var receiptBefore=db.rows("SELECT * FROM edu_tuition_receipt WHERE payment_id=?",pending.get("paymentId"));assertFalse(receiptBefore.isEmpty());
         var draft=new LessonCreditService.AccountDraft();draft.studentName="当前新姓名";draft.gradeName=grade;draft.contactPhone="";tx(()->{credits.editChild(a,draft,false);return null;});
         assertEquals("当前新姓名",personal.ownedChild(a).get("studentName"));assertEquals("同名学生",db.one("SELECT student_name FROM edu_enrollment WHERE enrollment_id=?",ea).get("studentName"));assertEquals("同名学生",db.one("SELECT student_name FROM edu_class_sign_in WHERE enrollment_id=?",ea).get("studentName"));
         assertEquals(bindings,db.rows("SELECT * FROM edu_referral_binding WHERE invitee_id=? OR referrer_id=?",parent,parent).toString());
+        assertEquals(paymentBefore,db.one("SELECT * FROM edu_tuition_payment WHERE payment_id=?",pending.get("paymentId")));
+        assertEquals(receiptBefore,db.rows("SELECT * FROM edu_tuition_receipt WHERE payment_id=?",pending.get("paymentId")));
         assertThrows(Exception.class,()->tx(()->{credits.deleteChild(a,false);return null;}));
         ScheduleCrudTest.principal(otherParent,"parent");assertThrows(Exception.class,()->personal.childDetail(a));ScheduleCrudTest.principal(teacher,"teacher");assertThrows(Exception.class,()->personal.childDetail(a));
         System.out.println("PASS: child center same-name sibling isolation, course/finance/homework/attendance scope, parent actionable vs progress counts, senior allowance holds, protected profile snapshots/history and parent-owned referrals");
