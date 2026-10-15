@@ -1,9 +1,11 @@
+const childContext = require('../../utils/child-context')
 const { request } = require('../../utils/request')
 const {requestKey}=require('../../utils/personal-account')
 
-Page({
+Page(childContext.page({
   data: {
     loading: false,
+    scopeAccountId:'',
     submitting: false,
     schedules: [],
     teacherGroups: [], teacherOptions: [], selectedTeacherKeys: [], selectedTeachers: [],
@@ -30,6 +32,7 @@ Page({
   },
 
   onLoad(options = {}) {
+    if(options.accountId)this.setData({scopeAccountId:String(options.accountId),selectedChildId:String(options.accountId),newChild:false})
     this._token = wx.getStorageSync('token')
     this._unloaded = false
     if (options.courseType === '2') this.setData({ courseTypeIndex: 1 })
@@ -88,7 +91,7 @@ Page({
       const res=await request({url:'/miniapp/parent/lesson-accounts'})
       if(!this.current() || version!==this._accountVersion) return
       const accounts=res.data || [],index=accounts.findIndex(a=>String(a.accountId)===String(this.data.selectedChildId))
-      this.setData({lessonAccounts:accounts,lessonAccountOptions:accounts.map(a=>`${a.studentName} · ${a.gradeName} · 可用${a.availableCredits}次 · #${a.accountId}`).concat('＋ 添加孩子信息'),lessonAccountIndex:index>=0?index:accounts.length,childMissing:!!this.data.selectedChildId && index<0})
+      this.setData({lessonAccounts:accounts,lessonAccountOptions:accounts.map(a=>`${a.studentName} · ${a.gradeName} · 可用额度 ${a.availableCredits} · #${a.accountId}`).concat('＋ 添加孩子信息'),lessonAccountIndex:index>=0?index:accounts.length,childMissing:!!this.data.selectedChildId && index<0})
       if(index>=0)this.setData({'form.studentName':accounts[index].studentName})
     } catch(error) { if(this.current() && version===this._accountVersion) this.setData({accountsError:'孩子资料暂时无法查询，请重试'}) }
     finally { if(this.current() && version===this._accountVersion) this.setData({accountsLoading:false}) }
@@ -100,7 +103,7 @@ Page({
     this.setData({settlementMethod:method})
   },
   chooseLessonAccount(e) {
-    if(this.data.submitting) return
+    if(this.data.submitting || this.data.scopeAccountId) return
     const index=Number(e.detail.value),account=this.data.lessonAccounts[index]
     if(index<0 || index>this.data.lessonAccounts.length)return
     this.setData({lessonAccountIndex:index,selectedChildId:account?account.accountId:null,newChild:!account,childMissing:false,'form.studentName':account?account.studentName:'','form.studentRequestKey':requestKey()})
@@ -190,7 +193,7 @@ Page({
   clearTeachers() { this.setData({ selectedTeacherKeys: [], teacherKeyword: '' }); this.applyFilters() },
 
   async loadEnrollments() {
-    const res = await request({ url: '/miniapp/parent/enrollments' })
+    const res = await request({ url: '/miniapp/parent/enrollments',...(this.data.scopeAccountId?{data:{accountId:this.data.scopeAccountId}}:{}) })
     if (!this.current()) return
     this._allEnrollments = this.decorateEnrollments(res.data || [])
     this.applyEnrollmentFilter()
@@ -247,7 +250,7 @@ Page({
     return hit ? hit.dictLabel : ''
   },
 
-  openTuition(e) { wx.navigateTo({url:`/pages/tuition-detail/tuition-detail?id=${encodeURIComponent(String(e.currentTarget.dataset.id))}`}) },
+  openTuition(e) { wx.navigateTo({url:`/pages/tuition-detail/tuition-detail?id=${encodeURIComponent(String(e.currentTarget.dataset.id))}${this.data.scopeAccountId?'&accountId='+encodeURIComponent(this.data.scopeAccountId):''}`}) },
 
   buildPlaceText(item) {
     if (item.lessonLocation) return item.lessonLocation
@@ -291,12 +294,13 @@ Page({
       return
     }
     const userInfo = wx.getStorageSync('userInfo') || {}
+    const selected=this.data.scopeAccountId?this.data.lessonAccounts.find(a=>String(a.accountId)===this.data.scopeAccountId):this.data.lessonAccounts[0]
     this.setData({
       selectedSchedule: schedule,
-      settlementMethod:'C',lessonAccountIndex:this.data.lessonAccounts.length?0:this.data.lessonAccounts.length,selectedChildId:this.data.lessonAccounts.length?this.data.lessonAccounts[0].accountId:null,newChild:!this.data.lessonAccounts.length,childMissing:false,
+      settlementMethod:'C',lessonAccountIndex:selected?this.data.lessonAccounts.indexOf(selected):this.data.lessonAccounts.length,selectedChildId:this.data.scopeAccountId||(selected?selected.accountId:null),newChild:!this.data.scopeAccountId&&!selected,childMissing:!!this.data.scopeAccountId&&!selected,
       showSheet: true,
       form: {
-        studentName: this.data.lessonAccounts.length?this.data.lessonAccounts[0].studentName:'',
+        studentName:selected?selected.studentName:'',
         studentRequestKey:requestKey(),
         contactPhone: userInfo.phonenumber || ''
       }
@@ -371,4 +375,4 @@ Page({
       if(this.current())this.setData({ submitting: false })
     }
   }
-})
+}, {route:'/pages/enrollment/enrollment',detail:false}))

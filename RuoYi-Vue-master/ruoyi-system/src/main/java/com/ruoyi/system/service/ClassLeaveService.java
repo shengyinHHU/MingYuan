@@ -24,11 +24,13 @@ public class ClassLeaveService {
 
     public static class Apply {
         public Long enrollmentId;
+        public Long accountId;
         public String classDate;
         public String reason;
         public Integer version;
     }
     public static class Decision {
+        public Long accountId;
         public String action;
         public String reason;
         public Integer version;
@@ -88,7 +90,8 @@ public class ClassLeaveService {
             scheduleId,classDate).isEmpty();
     }
 
-    public List<Map<String,Object>> options() {
+    public List<Map<String,Object>> options() { return options(null); }
+    public List<Map<String,Object>> options(Long accountId) {
         role(false);
         var rows = db.rows("SELECT e.enrollment_id,e.schedule_id,e.student_id,e.lesson_account_id,e.student_name,"
             + "COALESCE(st.student_name,a.student_name,e.student_name) AS child_name,s.course_class_name,s.teacher_name "
@@ -98,6 +101,7 @@ public class ClassLeaveService {
             + "WHERE e.parent_id=? AND e.del_flag='0' AND e.status='0' AND e.enrollment_status IN ('1','报名成功','已确认') "
             + "AND e.class_date IS NULL AND s.del_flag='0' AND s.status='0' AND COALESCE(s.class_mode,'1')<>'2' ORDER BY e.enrollment_id",
             SecurityUtils.getUserId());
+        if(accountId!=null){ownedAccount(accountId);rows=rows.stream().filter(e->accountId.equals(id(e.get("lessonAccountId")))).toList();}
         rows.forEach(e -> e.put("childKey",childKey(e)));
         return rows;
     }
@@ -121,11 +125,14 @@ public class ClassLeaveService {
         }
         return result;
     }
-    public Map<String,Object> list(boolean teacher, String state, int pageNum) {
+    public Map<String,Object> list(boolean teacher, String state, int pageNum) { return list(teacher,state,pageNum,null); }
+    public Map<String,Object> list(boolean teacher,String state,int pageNum,Long accountId) {
         role(teacher);
         require(state == null || state.isEmpty() || Set.of("PENDING","APPROVED","REJECTED","WITHDRAWN").contains(state),"请假状态无效");
         require(pageNum>0 && pageNum<=100000,"页码无效");
+        if(accountId!=null){require(!teacher,"教师列表不接受孩子筛选");ownedAccount(accountId);}
         String scope = teacher ? "s.teacher_id=?" : "l.parent_id=?";
+        if(accountId!=null)scope+=" AND EXISTS(SELECT 1 FROM edu_enrollment e WHERE e.enrollment_id=l.enrollment_id AND e.parent_id=l.parent_id AND e.lesson_account_id="+accountId+")";
         String where = " FROM edu_class_leave_request l JOIN edu_course_schedule s ON s.schedule_id=l.schedule_id WHERE " + scope;
         List<Object> args = new ArrayList<>(); args.add(SecurityUtils.getUserId());
         if (state != null && !state.isEmpty()) { where += " AND l.state=?"; args.add(state); }
@@ -141,6 +148,7 @@ public class ClassLeaveService {
         return db.one("SELECT l.*,s.teacher_name FROM edu_class_leave_request l JOIN edu_course_schedule s ON s.schedule_id=l.schedule_id WHERE l.leave_id=? AND "
             +(teacher ? "s.teacher_id=?" : "l.parent_id=?"),leaveId,SecurityUtils.getUserId());
     }
+    private void ownedAccount(Long accountId){require(accountId>0,"请选择孩子");db.one("SELECT account_id FROM edu_student_lesson_account WHERE account_id=? AND parent_id=?",accountId,SecurityUtils.getUserId());}
     private String event(String action, String reason, int version) {
         try { return JSON.writeValueAsString(Map.of("action",action,"reason",reason,"version",version,
             "actorId",String.valueOf(SecurityUtils.getUserId()),"actorName",SecurityUtils.getUsername(),
@@ -152,6 +160,7 @@ public class ClassLeaveService {
         role(false); require(body != null,"请填写申请");
         LocalDate d = date(body.classDate); String reason = text(body.reason,true);
         var preview = enrollment(body.enrollmentId,false);
+        if(body.accountId!=null){ownedAccount(body.accountId);require(body.accountId.equals(id(preview.get("lessonAccountId"))),"该报名不属于当前孩子");}
         // 与报名取消、排课/调课、点名及复核共用排课锁；其后才锁报名和申请。
         var s = schedules.lockSchedule(id(preview.get("scheduleId")));
         var e = enrollment(body.enrollmentId,true); active(e); occurrence(s,d,true);

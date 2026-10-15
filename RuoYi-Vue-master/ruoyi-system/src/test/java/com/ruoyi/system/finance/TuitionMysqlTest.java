@@ -108,6 +108,11 @@ class TuitionMysqlTest {
             "INSERT INTO sys_user_role SELECT 5,role_id FROM sys_role WHERE role_key='education'");
     runMigration("20261012_tuition_session_unified.sql");
     runMigration("20261012_tuition_session_unified.sql");
+    db.jdbc().execute("ALTER TABLE sys_user ADD phonenumber varchar(11) DEFAULT ''");
+    db.jdbc().execute("UPDATE sys_user SET phonenumber=CASE user_id WHEN 2 THEN '11111111111' WHEN 3 THEN '22222222222' ELSE '' END");
+    db.jdbc().execute("CREATE TABLE sys_dict_data(dict_code bigint AUTO_INCREMENT PRIMARY KEY,dict_type varchar(100),dict_label varchar(100),dict_value varchar(100),dict_sort int,status char(1))");
+    db.jdbc().execute("INSERT INTO sys_dict_data(dict_type,dict_label,dict_value,dict_sort,status) VALUES('edu_subject','数学','math',1,'0'),('edu_subject','化学','chemistry',2,'0')");
+    runMigration("20261014_coupon_subject_scope.sql");runMigration("20261014_coupon_subject_scope.sql");
     privateRoot = Files.createTempDirectory("codex-tuition-finance-test-");
     new com.ruoyi.common.config.RuoYiConfig().setProfile(privateRoot.resolve("public").toString());
     storage = new FinancePrivateStorage(privateRoot.resolve("private").toString());
@@ -914,7 +919,7 @@ class TuitionMysqlTest {
     var rows = (List<Map<String, Object>>) page.get("rows");
     assertEquals("家长B", rows.get(0).get("parentName"));
     assertEquals(
-        Set.of("parentId", "parentName", "userName", "matchedChildren"), rows.get(0).keySet());
+        Set.of("parentId", "parentName", "userName", "parentPhone", "matchedChildren"), rows.get(0).keySet());
     var children = (List<Map<String, Object>>) rows.get(0).get("matchedChildren");
     assertEquals(2, children.size());
     assertEquals("孩子丙", children.get(0).get("studentName"));
@@ -1986,4 +1991,68 @@ class TuitionMysqlTest {
     assertEquals(1, applied);
     assertEquals("1000.00", call(s, "bill", id, 1L, true).get("refundableAmount"));
   }
+  @Test
+  void subjectScopeFiltersAvailableCouponsAndRejectsForgedUse() throws Exception {
+    var c=new CouponService(db); long enrollment=fresh();
+    var tuition=(TuitionService)service("TuitionService"); tuition.price(enrollment,1,priceBody("MOCK"));
+    var body=new HashMap<>(templateBody(10));body.put("subjectNames",List.of("化学"));
+    var template=c.saveTemplate(1,null,body);long tid=lid(template,"templateId");
+    c.issue(tid,1,Map.of("parentIds",List.of(2),"reason","学科验证","idempotencyKey","SUBJECT-"+tid));
+    long coupon=lid(db.one("SELECT * FROM edu_user_coupon WHERE template_id=?",tid),"userCouponId");
+    var bill=tuition.bill(enrollment,2,false);
+    assertTrue(c.available(bill).stream().noneMatch(x->strId(x,"userCouponId").equals(String.valueOf(coupon))));
+    assertEquals(0L,c.grants(2,false,Map.of("enrollmentId",String.valueOf(enrollment),"templateId",String.valueOf(tid))).get("total"));
+    assertThrows(Exception.class,()->c.discount(coupon,bill,true));
+    var pay=new HashMap<>(payBody(1,"SUBJECT-PAY-"+enrollment));pay.put("userCouponId",coupon);pay.put("expectedPayableAmount","900.00");
+    assertThrows(Exception.class,()->tuition.createPayment(enrollment,1,true,pay));
+    assertEquals("AVAILABLE",db.one("SELECT coupon_status FROM edu_user_coupon WHERE user_coupon_id=?",coupon).get("couponStatus"));
+    assertThrows(Exception.class,()->c.saveTemplate(1,tid,Map.of("subjectNames",List.of("数学"))));
+    c.saveTemplate(1,tid,Map.of("templateStatus","PAUSED"));
+  }
+  private static String strId(Map<String,Object> row,String field){return String.valueOf(row.get(field));}
+
+  @Test
+  void multiSubjectAndUnrestrictedCouponsKeepOrdinaryCompatibility() throws Exception {
+    var c=new CouponService(db);long enrollment=fresh();var tuition=(TuitionService)service("TuitionService");tuition.price(enrollment,1,priceBody("MOCK"));var bill=tuition.bill(enrollment,2,false);
+    for(var scope:List.of(List.of("数学"),List.of("数学","化学"),List.<String>of())){
+      var body=new HashMap<>(templateBody(10));body.put("subjectNames",scope);
+      var template=c.saveTemplate(1,null,body);long tid=lid(template,"templateId");
+      var grant=Map.<String,Object>of("parentIds",List.of(2),"reason","兼容验证","idempotencyKey","SCOPES-"+tid);
+      var first=c.issue(tid,1,grant);assertEquals(first,c.issue(tid,1,grant));
+      long coupon=lid(db.one("SELECT * FROM edu_user_coupon WHERE template_id=?",tid),"userCouponId");
+      assertEquals(new java.math.BigDecimal("100.00"),c.discount(coupon,bill,false));
+      assertTrue(c.available(bill).stream().anyMatch(x->strId(x,"userCouponId").equals(String.valueOf(coupon))));
+      assertEquals(1L,c.grants(2,false,Map.of("enrollmentId",String.valueOf(enrollment),"templateId",String.valueOf(tid))).get("total"));
+      assertThrows(Exception.class,()->c.issue(tid,1,Map.of("parentIds",List.of(2),"reason","重复拒绝","idempotencyKey","DUP-"+tid)));
+    }
+  }
+
+  @Test
+  void invalidSubjectsAndContradictoryCourseScopeCannotBeSaved() throws Exception {
+    var c=new CouponService(db);var body=new HashMap<>(templateBody(10));body.put("subjectNames",List.of("无效学科"));assertThrows(Exception.class,()->c.saveTemplate(1,null,body));
+    body.put("subjectNames",List.of("化学"));body.put("scopeScheduleId",1);assertThrows(Exception.class,()->c.saveTemplate(1,null,body));
+    body.put("subjectNames",List.of("数学","化学","数学"));var saved=c.saveTemplate(1,null,body);assertEquals(List.of("化学","数学"),saved.get("subjectNames"));
+    assertThrows(Exception.class,()->c.options(2));assertFalse(((List<?>)c.options(1).get("subjects")).isEmpty());
+  }
+
+  @Test
+  void previewRuleHashRejectsChangedRulesButAllowsStockIncrementsAndRetry() throws Exception {
+    var c=new CouponService(db);var template=c.saveTemplate(1,null,templateBody(10));long tid=lid(template,"templateId");
+    var grant=new HashMap<String,Object>(Map.of("parentIds",List.of(2),"reason","规则预览","idempotencyKey","HASH-"+tid,"templateRulesHash",template.get("templateRulesHash")));
+    var updated=c.saveTemplate(1,tid,Map.of("subjectNames",List.of("数学")));
+    assertThrows(Exception.class,()->c.issue(tid,1,grant));assertEquals(0,db.jdbc().queryForObject("SELECT issued_quantity FROM edu_coupon_template WHERE template_id=?",Integer.class,tid));
+    grant.put("templateRulesHash",updated.get("templateRulesHash"));var first=c.issue(tid,1,grant);assertEquals(first,c.issue(tid,1,grant));
+    grant.put("parentIds",List.of(3));grant.put("idempotencyKey","HASH-SECOND-"+tid);c.issue(tid,1,grant);
+    assertEquals(2,db.jdbc().queryForObject("SELECT issued_quantity FROM edu_coupon_template WHERE template_id=?",Integer.class,tid));
+  }
+
+  @Test
+  void phoneSearchFindsParentsWithoutChangingLegacyNameAndOwnershipFilters() throws Exception {
+    var c=new CouponService(db);assertEquals(1L,c.parents(1,Map.of("parentPhone","11111111111")).get("total"));assertEquals(1L,c.parents(1,Map.of("parentPhone","222")).get("total"));
+    assertEquals(1L,c.parents(1,Map.of("q","其他家长")).get("total"));assertThrows(Exception.class,()->c.parents(1,Map.of("parentPhone","11%")));
+    var t=c.saveTemplate(1,null,templateBody(5));long tid=lid(t,"templateId");c.issue(tid,1,Map.of("parentIds",List.of(2,3),"reason","手机号验证","idempotencyKey","PHONE-"+tid));
+    assertEquals(1L,c.grants(1,true,Map.of("templateId",String.valueOf(tid),"parentPhone","111")).get("total"));
+    assertEquals(1L,c.grants(2,false,Map.of("templateId",String.valueOf(tid),"parentId","3","parentPhone","222")).get("total"));
+  }
+
 }

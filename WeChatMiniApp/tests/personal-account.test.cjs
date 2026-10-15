@@ -5,8 +5,10 @@ function harness(name,request,role='parent',options={}) {
   const wx={getStorageSync:k=>storage[k],showToast:o=>notices.push(o),showModal:o=>o.success({confirm:true,content:'核对'}),stopPullDownRefresh(){},...options.wx}
   const module={exports:{}}
   vm.runInNewContext(fs.readFileSync(path.join(root,'utils/personal-account.js'),'utf8'),{module,require:()=>({request}),wx,getCurrentPages:()=>pages,console})
+  const childModule={exports:{}}
+  vm.runInNewContext(fs.readFileSync(path.join(root,'utils/child-account.js'),'utf8'),{module:childModule,require:id=>id.endsWith('child-context')?require('./helpers/child-context.cjs')(wx):id.endsWith('personal-account')?module.exports:{request},wx,console})
   let definition
-  vm.runInNewContext(fs.readFileSync(path.join(root,'pages',name,name+'.js'),'utf8'),{Page:p=>definition=p,require:id=>id.endsWith('/personal-account')?module.exports:id.endsWith('/dev-session')?{}:id.endsWith('/teacher-course-state')?require('../utils/teacher-course-state'):{request},wx,getCurrentPages:()=>pages,console,setInterval,clearInterval})
+  vm.runInNewContext(fs.readFileSync(path.join(root,'pages',name,name+'.js'),'utf8'),{Page:p=>definition=p,require:id=>id.endsWith('child-context')?require('./helpers/child-context.cjs')(wx):id.endsWith('/child-account')?childModule.exports:id.endsWith('/personal-account')?module.exports:id.endsWith('/dev-session')?{}:id.endsWith('/teacher-course-state')?require('../utils/teacher-course-state'):{request},wx,getCurrentPages:()=>pages,console,setInterval,clearInterval})
   const p={...definition,data:structuredClone(definition.data),_alive:true,_unloaded:false,_visible:true,_token:'session'}
   p.setData=updates=>{for(const [key,value] of Object.entries(updates)){const parts=key.split('.');let target=p.data;while(parts.length>1)target=target[parts.shift()];target[parts[0]]=value}}
   return {p,storage,notices}

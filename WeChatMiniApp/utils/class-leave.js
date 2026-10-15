@@ -1,16 +1,17 @@
 const { request } = require('./request')
+const childContext=require('./child-context')
 const STATES = { PENDING: '待审核', APPROVED: '已通过', REJECTED: '已拒绝', WITHDRAWN: '已撤回' }
 const ACTIONS = { SUBMIT: '提交申请', WITHDRAW: '撤回申请', APPROVE: '同意请假', REJECT: '拒绝请假' }
 const plain = value => value == null ? '' : String(value)
 function page(teacher) {
   const role = teacher ? 'teacher' : 'parent'
   const base = `/miniapp/${role}/leave`
-  return {
+  const definition = {
     data: { teacher, loading: false, submitting: false, error: '', rows: [], total: 0, pageNum: 1,
       state: teacher ? 'PENDING' : '', pendingCount: 0, pendingBadge: '', showForm: false, reason: '', options: [],
       children: [], courses: [], lessons: [], childIndex: -1, courseIndex: -1, lessonIndex: -1,
       lessonsLoading: false, lessonError: '', historyId: '', history: [], historyLoading: false },
-    onLoad() { this._alive = true; this._visible = true; this._token = wx.getStorageSync('token'); this.load() },
+    onLoad(options={}) {this.accountId=!teacher&&options.accountId?String(options.accountId):''; this._alive = true; this._visible = true; this._token = wx.getStorageSync('token'); this.load() },
     onShow() {
       this._visible = true
       if (!this.current()) { this.clearIdentity(); return }
@@ -27,8 +28,8 @@ function page(teacher) {
       const v = this._version = (this._version || 0) + 1
       this.setData({ loading: true, error: '' })
       try {
-        const [a,b] = await Promise.all([request({ url: base, data: { state: this.data.state, pageNum: this.data.pageNum } }),
-          teacher ? Promise.resolve({ data: [] }) : request({ url: base + '/options' })])
+        const [a,b] = await Promise.all([request({ url: base, data: { state: this.data.state, pageNum: this.data.pageNum,...(this.accountId?{accountId:this.accountId}:{}) } }),
+          teacher ? Promise.resolve({ data: [] }) : request({ url: base + '/options',...(this.accountId?{data:{accountId:this.accountId}}:{}) })])
         if (!this.current() || v !== this._version) return
         const d = a.data || {}, options = b.data || [], seen = new Set(), children = []
         options.forEach(o => { if (!seen.has(o.childKey)) { seen.add(o.childKey); children.push({ key: o.childKey, label: o.childName + (o.childKey.startsWith('E:') ? `（旧报名 #${o.enrollmentId}）` : '') }) } })
@@ -41,7 +42,7 @@ function page(teacher) {
       } catch (e) { if (this.current() && v === this._version) this.setData({ error: e.message || '加载失败，请重试', rows: [], options: [], children: [] }) }
       finally { if (this.current() && v === this._version) this.setData({ loading: false }) }
     },
-    openForm() { if (!teacher && this.current() && !this.data.loading && !this.data.submitting) this.setData({ showForm: true, reason: '', childIndex: -1, courseIndex: -1, lessonIndex: -1, courses: [], lessons: [], lessonError: '' }) },
+    openForm() { if (!teacher && this.current() && !this.data.loading && !this.data.submitting) {this.setData({ showForm: true, reason: '', childIndex: -1, courseIndex: -1, lessonIndex: -1, courses: [], lessons: [], lessonError: '' });if(this.accountId&&this.data.children.length===1)this.chooseChild({detail:{value:0}})} },
     closeForm() { if (!this.data.submitting) { this._lessonVersion = (this._lessonVersion || 0) + 1; this.setData({ showForm: false, lessonsLoading: false }) } },
     chooseChild(e) {
       if (!this.current() || this.data.submitting || this.data.loading) return
@@ -70,7 +71,7 @@ function page(teacher) {
       if (!course || !lesson || !reason || reason.length > 255) { wx.showToast({ title: '请选择孩子、班课及课次，填写原因', icon: 'none' }); return }
       this.setData({ submitting: true })
       try {
-        await request({ url: base, method: 'POST', data: { enrollmentId: course.enrollmentId, classDate: lesson.classDate, reason, version: lesson.version } })
+        await request({ url: base, method: 'POST', data: { enrollmentId: course.enrollmentId, classDate: lesson.classDate, reason, version: lesson.version,...(this.accountId?{accountId:this.accountId}:{}) } })
         if (!this.current()) return
         this.setData({ showForm: false }); wx.showToast({ title: '请假申请已提交', icon: 'success' }); await this.load()
       } catch (e) { if (this.current()) wx.showToast({ title: e.message || '提交结果未确认，请保留表单重试', icon: 'none' }) }
@@ -108,5 +109,6 @@ function page(teacher) {
     previous() { if (this.data.pageNum > 1 && !this.data.loading && !this.data.submitting) { this.setData({ pageNum: this.data.pageNum-1 }); this.load() } },
     next() { if (this.data.pageNum*30 < this.data.total && !this.data.loading && !this.data.submitting) { this.setData({ pageNum: this.data.pageNum+1 }); this.load() } }
   }
+  return teacher?definition:childContext.page(definition,{route:'/pages/parent-leave/parent-leave'})
 }
 module.exports = { page }

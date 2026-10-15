@@ -8,6 +8,9 @@ public class MiniAppEnrollmentBody
     private Long scheduleId;
     private String settlementMethod;
     private Long lessonAccountId;
+    private Long accountId;
+    public Long getAccountId(){return accountId;}
+    public void setAccountId(Long value){accountId=value;}
     private String studentRequestKey;
     public String getStudentRequestKey() { return studentRequestKey; }
     public void setStudentRequestKey(String value) { studentRequestKey=value; }

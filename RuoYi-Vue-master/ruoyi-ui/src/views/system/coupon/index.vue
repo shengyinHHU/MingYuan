@@ -1,7 +1,7 @@
 <template>
-  <div class="app-container">
+  <div class="app-container"><h2>优惠券管理</h2>
     <el-alert
-      title="现金抵扣券仅用于课程；每模板每家长一张，每批最多100人，单批成功或失败。全选超过100人时分批发放。已发模板规则冻结，暂停只停止新发放。"
+      title="现金抵扣券仅用于课程；普通发放每模板每家长一张；推荐奖励按推荐记录分别计算，每批最多100人，单批成功或失败。全选超过100人时分批发放。已发模板规则冻结，暂停只停止新发放。"
       type="info"
       :closable="false"
       class="mb8"
@@ -62,8 +62,9 @@
             <template slot-scope="s">{{ money(s.row.minSpendAmount) }}</template>
           </el-table-column>
           <el-table-column label="课程范围" width="130">
-            <template slot-scope="s">{{ s.row.scopeScheduleId || '全部课程' }}</template>
+            <template slot-scope="s">{{ courseName(s.row.scopeScheduleId) }}</template>
           </el-table-column>
+          <el-table-column label="适用学科" min-width="160"><template slot-scope="s">{{subjectText(s.row)}}</template></el-table-column>
           <el-table-column label="有效时间" width="180">
             <template slot-scope="s">
               {{ s.row.validFrom }}
@@ -133,11 +134,11 @@
       </el-tab-pane>
       <el-tab-pane label="发放记录" name="grants">
         <el-form :inline="true" :model="grantQuery" size="small">
-          <el-form-item label="模板ID">
-            <el-input v-model="grantQuery.templateId" clearable />
+          <el-form-item label="券名称">
+            <el-input v-model="grantQuery.couponName" clearable />
           </el-form-item>
-          <el-form-item label="家长ID">
-            <el-input v-model="grantQuery.parentId" clearable />
+          <el-form-item label="家长手机号">
+            <el-input v-model="grantQuery.parentPhone" clearable />
           </el-form-item>
           <el-form-item label="状态">
             <el-select v-model="grantQuery.couponStatus" clearable>
@@ -171,7 +172,7 @@
             <template slot-scope="s">
               {{ s.row.parentName }}
               <br />
-              {{ s.row.parentId }}
+              {{ s.row.parentPhone || '未填写手机号' }}
             </template>
           </el-table-column>
           <el-table-column label="抵扣／门槛（元）" width="150">
@@ -192,6 +193,7 @@
               {{ s.row.lockedEnrollmentId || s.row.usedEnrollmentId || '—' }}
             </template>
           </el-table-column>
+          <el-table-column label="来源" width="100"><template slot-scope="s">{{s.row.referralRewardId?'推荐奖励':'普通发放'}}</template></el-table-column>
           <el-table-column label="发放原因" prop="grantReason" min-width="130" />
           <el-table-column label="撤回原因" prop="revokeReason" min-width="130" />
           <el-table-column label="操作" width="95">
@@ -215,6 +217,8 @@
           @pagination="getGrants"
         />
       </el-tab-pane>
+      <el-tab-pane label="发放优惠券" name="issue"><el-alert title="先选择已启用模板，再按手机号查找家长并预览发放。推荐奖励请到推荐奖励页审核。" type="info" :closable="false"/><el-table :data="rows" v-loading="loading"><el-table-column label="优惠券"><template slot-scope="s"><strong>{{s.row.couponName}}</strong><div>{{couponSummary(s.row)}}</div></template></el-table-column><el-table-column label="适用学科"><template slot-scope="s">{{subjectText(s.row)}}</template></el-table-column><el-table-column label="剩余数量"><template slot-scope="s">{{Number(s.row.totalQuantity)-Number(s.row.issuedQuantity||0)}}</template></el-table-column><el-table-column label="操作"><template slot-scope="s"><el-button v-hasPermi="['system:coupon:grant']" :disabled="s.row.templateStatus!=='ACTIVE'||parentSelectionLocked()" type="text" @click="openGrant(s.row)">选择并发放</el-button></template></el-table-column></el-table><pagination v-show="total>0" :total="total" :page.sync="queryParams.pageNum" :limit.sync="queryParams.pageSize" @pagination="getList"/></el-tab-pane>
+      <el-tab-pane v-if="canReferral" name="referrals"><span slot="label">推荐奖励 <el-badge :value="Number(rewardCounts.pending||0)+Number(rewardCounts.anomalies||0)" :hidden="!Number(rewardCounts.pending||0)&&!Number(rewardCounts.anomalies||0)" :max="99"/></span><referral-rewards v-if="activeTab==='referrals'" @counts-change="rewardCounts=$event"/></el-tab-pane>
     </el-tabs>
     <el-dialog
       :title="form.templateId ? '编辑优惠券模板' : '建立优惠券模板'"
@@ -248,19 +252,17 @@
               maxlength="500"
             />
           </el-form-item>
+          <el-form-item label="优惠方式"><el-radio-group v-model="couponKind" :disabled="form.issuedQuantity>0" @change="couponKindChanged"><el-radio label="NONE">无门槛抵扣</el-radio><el-radio label="THRESHOLD">满减</el-radio></el-radio-group></el-form-item>
           <el-form-item label="抵扣面额（元）">
             <el-input v-model="form.discountAmount" :disabled="form.issuedQuantity > 0" />
           </el-form-item>
-          <el-form-item label="原价门槛（元）">
+          <el-form-item label="满多少元可用" v-if="couponKind==='THRESHOLD'">
             <el-input v-model="form.minSpendAmount" :disabled="form.issuedQuantity > 0" />
           </el-form-item>
-          <el-form-item label="指定排课ID">
-            <el-input
-              v-model="form.scopeScheduleId"
-              :disabled="form.issuedQuantity > 0"
-              placeholder="留空表示全部课程"
-            />
+          <el-form-item label="适用课程">
+            <el-select v-model="form.scopeScheduleId" filterable clearable :disabled="form.issuedQuantity>0" placeholder="全部课程"><el-option v-for="course in courseOptions" :key="course.scheduleId" :value="course.scheduleId" :label="course.label"/></el-select>
           </el-form-item>
+          <el-form-item label="适用学科"><el-checkbox v-model="allSubjects" :disabled="form.issuedQuantity>0" @change="toggleAllSubjects">全选（不限学科）</el-checkbox><el-checkbox-group v-model="form.subjectNames" :disabled="form.issuedQuantity>0" @change="subjectsChanged"><el-checkbox v-for="subject in subjectOptions" :key="subject" :label="subject">{{subject}}</el-checkbox></el-checkbox-group><div class="el-form-item__error" v-if="!allSubjects&&!form.subjectNames.length">请选择至少一个学科，或全选</div></el-form-item>
           <el-form-item label="生效时间">
             <el-date-picker
               v-model="form.validFrom"
@@ -329,12 +331,13 @@
         :closable="false"
         class="mb8"
       />
+      <el-alert v-if="grantTemplate" :title="couponSummary(grantTemplate)+' · '+subjectText(grantTemplate)+' · 有效至 '+grantTemplate.validUntil" type="info" :closable="false"/>
       <el-form :inline="true" size="small" :disabled="parentSelectionLocked()">
         <el-form-item label="查找家长">
           <el-input
             v-model="parentQuery.search"
-            maxlength="64"
-            placeholder="账号／姓名"
+            maxlength="11"
+            placeholder="输入家长手机号，至少3位"
             @input="parentFiltersChanged"
             @keyup.enter.native="searchParents"
           />
@@ -385,8 +388,8 @@
             :selectable="parentSelectable"
             width="55"
           />
-          <el-table-column label="家长ID" prop="userId" />
-          <el-table-column label="账号" prop="userName" />
+          <el-table-column label="家长手机号" prop="parentPhone" />
+
           <el-table-column label="姓名" prop="nickName" />
           <el-table-column label="命中孩子／报名年级／学科" min-width="240">
             <template slot-scope="s">
@@ -412,6 +415,7 @@
             parentQuery.search || '全部'
           }}
         </el-form-item>
+        <el-form-item label="接收名单"><div style="max-height:140px;overflow:auto"><div v-for="id in grantForm.parentIds" :key="id">{{(parentPeople[id]||{}).parentName || (parentPeople[id]||{}).nickName || '家长'}} · {{(parentPeople[id]||{}).parentPhone || '未填写手机号'}}</div></div></el-form-item>
         <el-form-item label="发放原因">
           <el-input v-model="grantForm.reason" type="textarea" maxlength="255" />
         </el-form-item>
@@ -462,8 +466,12 @@
   </div>
 </template>
 <script>
+import ReferralRewards from './ReferralRewards'
+import { getToken } from '@/utils/auth'
+import { referralCounts } from '@/api/system/referral'
 import {
   listTemplates,
+  couponOptions,
   addTemplate,
   editTemplate,
   grantCoupon,
@@ -482,9 +490,13 @@ import {
 } from '@/utils/tuitionFinance'
 export default {
   name: 'Coupon',
+  components:{ReferralRewards},
+  props:{initialTab:{type:String,default:'templates'}},
+  computed:{canReferral(){const p=this.$store&&this.$store.getters&&this.$store.getters.permissions||[];return p.includes('*:*:*')||p.includes('edu:referral:manage')}},
   data() {
     return {
-      activeTab: 'templates',
+      activeTab: this.initialTab || 'templates',
+      subjectOptions:[],courseOptions:[],allSubjects:true,couponKind:'NONE',rewardCounts:{pending:0,anomalies:0},
       queryParams: { pageNum: 1, pageSize: 10 },
       rows: [],
       total: 0,
@@ -504,6 +516,7 @@ export default {
       grantForm: { parentIds: [], reason: '', idempotencyKey: '' },
       grantFormError: '',
       parents: [],
+      parentPeople: {},
       parentTotal: 0,
       parentQuery: {
         pageNum: 1,
@@ -524,9 +537,21 @@ export default {
     }
   },
   created() {
-    this.getList()
+    this._couponVisible=true;this._couponToken=getToken();this.getList();this.loadOptions();if(this.canReferral)this.loadRewardCounts();this._couponTimer=setInterval(()=>{if(this.canReferral)this.loadRewardCounts()},30000)
   },
+  activated(){this._couponVisible=true;if(this._couponToken!==getToken()){this._couponToken=getToken();this.rewardCounts={pending:0,anomalies:0};this.rows=[];this.grants=[];this.parents=[];this.grantBatch=null;this.grantOpen=false;this.templateOpen=false;this.parentRequest++;this.getList()}if(this.canReferral)this.loadRewardCounts();clearInterval(this._couponTimer);this._couponTimer=setInterval(()=>{if(this.canReferral)this.loadRewardCounts()},30000)},
+  deactivated(){this._couponVisible=false;clearInterval(this._couponTimer);this._countRequest=(this._countRequest||0)+1;this.rewardCounts={pending:0,anomalies:0}},
+  beforeDestroy(){this._couponVisible=false;clearInterval(this._couponTimer)},
   methods: {
+    async loadOptions(){try{const r=await couponOptions();this.subjectOptions=(r.data.subjects||[]).map(s=>s.subjectName);if(this.templateOpen&&this.allSubjects&&!this.form.issuedQuantity)this.form.subjectNames=this.subjectOptions.slice();this.courseOptions=(r.data.schedules||[]).map(s=>({...s,label:[s.courseClassName,s.subjectName,s.teacherName,s.campusName,s.startDate||''].filter(Boolean).join(' · ')}))}catch(e){this.formError='学科和课程选项加载失败，请重试'}},
+    async loadRewardCounts(){const token=getToken(),version=this._countRequest=(this._countRequest||0)+1;try{const r=await referralCounts();if(this._couponVisible!==false&&getToken()===token&&version===this._countRequest)this.rewardCounts=r.data}catch(e){}},
+    subjectNames(row){try{const s=row.subjectNames;return Array.isArray(s)?s:s?JSON.parse(s):[]}catch(e){return[]}},
+    subjectText(row){return this.subjectNames(row).join('、')||'不限学科'},
+    courseName(id){const c=this.courseOptions.find(c=>String(c.scheduleId)===String(id));return id?(c?c.label:'原指定课程'):'全部课程'},
+    couponSummary(row){return Number(row.minSpendAmount)>0?'满 '+money(row.minSpendAmount)+' 减 '+money(row.discountAmount):'无门槛减 '+money(row.discountAmount)},
+    toggleAllSubjects(value){this.form.subjectNames=value?this.subjectOptions.slice():[]},
+    subjectsChanged(values){this.allSubjects=this.subjectOptions.length>0&&values.length===this.subjectOptions.length},
+    couponKindChanged(value){if(value==='NONE')this.form.minSpendAmount='0.00'},
     money,
     label,
     statusType,
@@ -555,7 +580,8 @@ export default {
     },
     loadTab() {
       if (this.activeTab === 'grants') this.getGrants()
-      else this.getList()
+      else if(this.activeTab==='referrals')this.loadRewardCounts()
+      else {if(this.activeTab==='issue'){this.queryParams.templateStatus='ACTIVE';this.queryParams.pageNum=1}this.getList()}
     },
     async getGrants() {
       this.grantsLoading = true
@@ -596,7 +622,8 @@ export default {
             templateStatus: 'DRAFT',
             issuedQuantity: 0,
           }
-      this.formError = ''
+      const subjects=this.subjectNames(this.form);this.allSubjects=!subjects.length;this.form.subjectNames=subjects.length?subjects:this.subjectOptions.slice();this.couponKind=Number(this.form.minSpendAmount)>0?'THRESHOLD':'NONE'
+      this.formError = '';this.loadOptions()
       this.templateOpen = true
     },
     async submitTemplate() {
@@ -609,12 +636,15 @@ export default {
           const validFrom = required(this.form.validFrom, '生效时间')
           const validUntil = required(this.form.validUntil, '到期时间')
           if (validUntil <= validFrom) throw new Error('到期时间必须晚于生效时间')
+          if(!this.allSubjects&&!this.form.subjectNames.length)throw new Error('请选择适用学科，或全选')
+          if(this.couponKind==='THRESHOLD'&&Number(this.form.minSpendAmount)<=0)throw new Error('满减门槛必须大于0')
           body = {
             ...body,
+            subjectNames:this.allSubjects?[]:this.form.subjectNames.slice(),
             couponName: required(this.form.couponName, '券名称'),
             description: this.form.description || '',
             discountAmount: amount(this.form.discountAmount, true),
-            minSpendAmount: amount(this.form.minSpendAmount),
+            minSpendAmount: this.couponKind==='NONE'?'0.00':amount(this.form.minSpendAmount),
             scopeScheduleId: this.form.scopeScheduleId
               ? String(this.form.scopeScheduleId).trim()
               : null,
@@ -658,6 +688,7 @@ export default {
         }
         return
       }
+      this.parentPeople = {}
       this.grantTemplate = row
       this.grantForm = {
         parentIds: [],
@@ -697,7 +728,8 @@ export default {
     },
     parentFilters() {
       return {
-        search: String(this.parentQuery.search || '').trim(),
+        search: '',
+        parentPhone: String(this.parentQuery.search || '').trim(),
         gradeName: String(this.parentQuery.gradeName || '').trim(),
         subjectName: String(this.parentQuery.subjectName || '').trim(),
       }
@@ -747,7 +779,7 @@ export default {
       try {
         const r = await listParents({
           ...this.parentQuery,
-          q: this.parentQuery.search,
+          search:'',parentPhone:this.parentQuery.search.trim(),q:'',
         })
         if (request !== this.parentRequest || filterKey !== this.parentFilterKey()) return
         this.parents = (r.rows || []).map((p) => ({
@@ -755,6 +787,7 @@ export default {
           userId: String(p.userId || p.parentId),
           nickName: p.nickName || p.parentName,
         }))
+        this.parents.forEach(p=>{this.$set?this.$set(this.parentPeople,this.parentRowKey(p),p):this.parentPeople[this.parentRowKey(p)]=p})
         this.parentTotal = r.total || 0
         if (this.$nextTick) await this.$nextTick()
         this.syncParentSelection()
@@ -782,7 +815,7 @@ export default {
         for (let pageNum = 1; ; pageNum++) {
           const r = await listParents({
             ...filters,
-            q: filters.search,
+            parentPhone:filters.parentPhone,q:'',
             pageNum,
             pageSize: 100,
           })
@@ -791,7 +824,7 @@ export default {
           if (total === null) total = Number(r.total || 0)
           if (Number(r.total || 0) !== total)
             throw new Error('候选名单已改变，请重新查询并全选')
-          for (const row of r.rows || []) ids.add(this.parentRowKey(row))
+          for (const row of r.rows || []) {ids.add(this.parentRowKey(row));this.parentPeople[this.parentRowKey(row)]=row}
           if (pageNum * 100 >= total) break
           if (!(r.rows || []).length) throw new Error('候选名单不完整，请重新查询并全选')
         }
@@ -859,6 +892,7 @@ export default {
               }),
               gradeName: filters.gradeName,
               subjectName: filters.subjectName,
+              ...(this.grantTemplate.templateRulesHash?{templateRulesHash:this.grantTemplate.templateRulesHash}:{}),
             })
           const snapshot = {
             templateId: this.grantTemplate.templateId,

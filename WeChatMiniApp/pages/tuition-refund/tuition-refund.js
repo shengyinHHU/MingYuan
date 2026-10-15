@@ -1,8 +1,9 @@
+const childContext = require('../../utils/child-context')
 const t = require('../../utils/tuition')
 const kinds = ['PARTIAL', 'WITHDRAWAL', 'SESSION']
-Page({
+Page(childContext.page({
   data: { loading: false, submitting: false, error: '', detail: null, rows: [], total: 0, pageNum: 1, reason: '', kindIndex: 0, kindOptions: ['费用调整', '退出此课程', '单次请假'], retrying: false, legacyIntent: false, targets: [], targetOptions: [], targetIndex: 0, targetsLoading: false, targetError: '' },
-  onLoad(options) { this.id = String(options.id || ''); this._visit = 0 },
+  onLoad(options={}) { this.accountId=options.accountId?String(options.accountId):''; this.id = String(options.id || ''); this._visit = 0 },
   onShow() { this._active = true; this._visit++; this.setData({ submitting: false }); return this.load(true) },
   onHide() { this._active = false; this._visit++ },
   onUnload() { this.onHide() },
@@ -23,7 +24,7 @@ Page({
     const visit = this._visit, sequence = this._targetSequence = (this._targetSequence || 0) + 1
     this.setData({ targetsLoading: true, targets: [], targetOptions: [], targetError: '' })
     try {
-      const res = await t.request({ url: `${t.parentUrl}/${encodeURIComponent(this.id)}/refund-targets` })
+      const res = await t.request({parentScope:this._parentScope, url: `${t.parentUrl}/${encodeURIComponent(this.id)}/refund-targets`,...(this.accountId?{data:{accountId:this.accountId}}:{}) })
       if (!this._active || visit !== this._visit || sequence !== this._targetSequence) return
       const targets = ((res.data || {}).rows || []).filter(r => typeof r.targetId === 'string' && ['CLASS_SIGN_IN', 'LESSON_BOOKING'].includes(r.targetType) && r.label)
       this.setData({ targets, targetOptions: targets.map(r => r.label), targetIndex: 0, targetError: targets.length ? '' : '暂无可申请的已审核请假或已取消返次记录。' })
@@ -36,13 +37,13 @@ Page({
     this.setData({ loading: true, error: '', ...(reset ? { detail: null, rows: [] } : {}) })
     try {
       if (this.id && reset) {
-        const res = await t.request({ url: `${t.parentUrl}/${encodeURIComponent(this.id)}` })
+        const res = await t.request({parentScope:this._parentScope, url: `${t.parentUrl}/${encodeURIComponent(this.id)}`,...(this.accountId?{data:{accountId:this.accountId}}:{}) })
         if (!this._active || visit !== this._visit || sequence !== this._loadSequence) return
         const pending = t.savedIntent('refund', this.id)
         this.setData({ detail: t.bill(res.data), retrying: !!pending, legacyIntent: !!pending && Object.prototype.hasOwnProperty.call(pending, 'requestedAmount'), ...(pending ? { reason: pending.reason, kindIndex: Math.max(0, kinds.indexOf(pending.refundKind)) } : {}) })
         if (this.data.kindIndex === 2 && !pending) await this.loadTargets()
       }
-      const res = await t.request({ url: `${t.parentUrl}/refunds`, data: { pageNum, pageSize: 20, ...(this.id ? { enrollmentId: this.id } : {}) } })
+      const res = await t.request({parentScope:this._parentScope, url: `${t.parentUrl}/refunds`, data: { pageNum, pageSize: 20,...(this.accountId?{accountId:this.accountId}:{}), ...(this.id ? { enrollmentId: this.id } : {}) } })
       if (this._active && visit === this._visit && sequence === this._loadSequence) this.setData({ rows: (reset ? [] : this.data.rows).concat((res.rows || []).map(t.refund)), total: res.total || 0, pageNum })
     } catch (error) { if (this._active && visit === this._visit && sequence === this._loadSequence) this.setData({ error: error.message }) }
     finally { if (this._active && visit === this._visit && sequence === this._loadSequence) this.setData({ loading: false }) }
@@ -67,7 +68,7 @@ Page({
       if (!this._active || visit !== this._visit) return
       const payload = t.intent('refund', this.id, saved || { paymentId: String(payment.paymentId), refundKind, reason, ...(target ? { [target.targetType === 'CLASS_SIGN_IN' ? 'classSignInId' : 'lessonBookingId']: target.targetId } : {}) })
       this.setData({ retrying: true })
-      const res = await t.request({ url: `${t.parentUrl}/refunds`, method: 'POST', data: payload })
+      const res = await t.request({parentScope:this._parentScope, url: `${t.parentUrl}/refunds`, method: 'POST', data: {...payload,...(this.accountId?{accountId:this.accountId}:{})} })
       if (!res.data || typeof res.data.refundId !== 'string' || !res.data.refundId.trim()) { const failure = new Error('申请结果尚未确定'); failure.uncertain = true; throw failure }
       t.clearIntent('refund', this.id)
       if (this._active && visit === this._visit) { this.setData({ reason: '', retrying: false, legacyIntent: false }); await this.load(true) }
@@ -77,4 +78,4 @@ Page({
     } }
     finally { if (this._active && visit === this._visit) this.setData({ submitting: false }) }
   }
-})
+}, {route:'/pages/tuition-refund/tuition-refund',detail:false}))

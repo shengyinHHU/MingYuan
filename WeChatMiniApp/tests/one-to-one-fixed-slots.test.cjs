@@ -11,7 +11,7 @@ function page(name, request, role='teacher', options={}) {
   const fakeWx={getStorageSync:key=>storage[key],showToast:p=>notices.push(p),stopPullDownRefresh(){},showModal(){},...options.wx}
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../utils/personal-account.js'),'utf8'),{module:account,require:()=>({request}),wx:fakeWx,getCurrentPages:()=>options.pages || []})
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../pages',name,name+'.js'),'utf8'),{
-    Page:p=>{definition=p},require:id=>id.endsWith('/request')?{request}:id.endsWith('/personal-account')?account.exports:calendar,
+    Page:p=>{definition=p},require:id=>id.endsWith('child-context')?require('./helpers/child-context.cjs')(fakeWx):id.endsWith('/request')?{request}:id.endsWith('/personal-account')?account.exports:calendar,
     wx:{getStorageSync:key=>storage[key],getSystemInfoSync:()=>({windowWidth:375}),showToast:p=>notices.push(p),stopPullDownRefresh(){},showModal(){},...options.wx},getCurrentPages:()=>options.pages || [],console
   })
   const p={...definition,data:structuredClone(definition.data),_alive:true,_token:'session'}

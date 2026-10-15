@@ -25,6 +25,7 @@ public class TuitionService {
   private final CouponService coupons;
   private final boolean mockEnabled;
   private final LessonFinance lessons;
+  @Autowired(required=false) private ReferralService referrals;
 
   @Autowired
   public TuitionService(
@@ -335,6 +336,11 @@ public class TuitionService {
     actor(actor, admin);
     String where = " WHERE 1=1";
     List<Object> a = new ArrayList<>();
+    if(!str(q,"accountId").isEmpty()) {
+      long account=id(q.get("accountId"));
+      if(!admin)checkChildAccount(actor,account);
+      where+=" AND e.lesson_account_id=?";a.add(account);
+    }
     if (!admin) {
       where += " AND e.parent_id=?";
       a.add(actor);
@@ -398,6 +404,14 @@ public class TuitionService {
       if (!admin) ((Map<?, ?>) row).remove("refundableAmount");
     }
     return page;
+  }
+
+  private void checkChildAccount(long actor,long account) {
+    db.one("SELECT account_id FROM edu_student_lesson_account WHERE account_id=? AND parent_id=?",account,actor);
+  }
+  public void checkChild(long enrollment,long actor,long account) {
+    actor(actor,false);checkChildAccount(actor,account);
+    db.one("SELECT enrollment_id FROM edu_enrollment WHERE enrollment_id=? AND parent_id=? AND lesson_account_id=?",enrollment,actor,account);
   }
 
   public Map<String, Object> bill(long enrollment, long actor, boolean admin) {
@@ -804,6 +818,13 @@ public class TuitionService {
       require(
           p.get("expireTime") != null && !time(p.get("expireTime")).before(now()),
           "模拟支付已过期，请安全关闭后重新发起");
+    // Additive immutable receipt evidence for delayed referral reconciliation. No referral
+    // tables are required by the original financial transaction.
+    var confirmedSnapshot = JSON.parseObject(str(p, "billSnapshot"));
+    confirmedSnapshot.put("confirmationEnrollmentActive",
+        Set.of("1", "报名成功", "已确认").contains(str(e, "enrollmentStatus"))
+            && "0".equals(e.get("status")) && "0".equals(e.get("delFlag")));
+    String confirmedSnapshotJson = JSON.toJSONString(confirmedSnapshot);
     update(
         "edu_tuition_payment",
         "payment_id",
@@ -812,6 +833,8 @@ public class TuitionService {
         values(
             "payment_status",
             "SUCCESS",
+            "bill_snapshot",
+            confirmedSnapshotJson,
             "confirmed_by",
             actor,
             "confirmed_time",
@@ -848,6 +871,7 @@ public class TuitionService {
         paid.toLocalDateTime()
             .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
     p.put("confirmedBy", String.valueOf(actor));
+    p.put("billSnapshot", confirmedSnapshotJson);
     lessons.activate(enrollment, actor);
     return createReceipt(p, actor);
   }
@@ -936,6 +960,7 @@ public class TuitionService {
               receipt[0] = succeed(p, actor, b);
               return payment(payment, actor, admin);
             });
+    if(referrals!=null)referrals.afterFinancialChange(id(result.get("enrollmentId")));
     generate(receipt[0]);
     return result;
   }
@@ -1193,6 +1218,7 @@ public class TuitionService {
                 + " JOIN edu_enrollment e ON e.enrollment_id=p.enrollment_id",
         where = " WHERE 1=1";
     List<Object> a = new ArrayList<>();
+    if(!str(q,"accountId").isEmpty()) {long account=id(q.get("accountId"));if(!admin)checkChildAccount(actor,account);where+=" AND e.lesson_account_id=?";a.add(account);}
     if (!admin) {
       where += " AND e.parent_id=?";
       a.add(actor);
@@ -1860,6 +1886,7 @@ public class TuitionService {
               }
               return bill(enrollment, actor, true);
             });
+    if(referrals!=null)referrals.afterFinancialChange(enrollment);
     generate(receipt[0]);
     return result;
   }

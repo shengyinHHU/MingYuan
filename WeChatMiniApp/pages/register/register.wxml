@@ -19,6 +19,14 @@
       </view>
     </view>
 
+    <view class="teacher-select" wx:if="{{devRole === 'parent'}}">
+      <view class="teacher-title">选择登录家长</view>
+      <picker range="{{parentOptions}}" range-key="label" value="{{parentIndex}}" bindchange="chooseParent" disabled="{{parentsLoading || submitting}}"><view class="teacher-picker">{{parentsLoading ? '正在加载家长…' : (parentLabel || '上次使用的／默认家长')}} ▾</view></picker>
+      <view class="teacher-hint">开发测试可切换独立家长账号；各自的孩子、报名和推荐关系分别保存。</view>
+      <view class="teacher-error" wx:if="{{parentError}}">{{parentError}}</view>
+      <button size="mini" bindtap="loadParents" disabled="{{parentsLoading || submitting}}">刷新家长列表</button>
+    </view>
+
     <view class="teacher-select" wx:if="{{devRole === 'teacher'}}">
       <view class="teacher-title">选择登录教师</view>
       <picker mode="selector" range="{{teacherOptions}}" range-key="label" value="{{teacherIndex}}" bindchange="chooseTeacher" disabled="{{teachersLoading || submitting || !teachers.length}}">
@@ -42,6 +50,6 @@
       loading="{{submitting}}"
     >手机号授权登录</button>
 
-    <button class="dev-btn" bindtap="handleDevLogin" loading="{{submitting}}" disabled="{{submitting || (devRole === 'teacher' && (teachersLoading || !devTeacherId))}}">{{devRole === 'teacher' ? '以所选教师身份进入' : '开发模拟登录'}}</button>
+    <button class="dev-btn" bindtap="handleDevLogin" loading="{{submitting}}" disabled="{{submitting || (devRole === 'teacher' && (teachersLoading || !devTeacherId)) || (devRole === 'parent' && parentsLoading)}}">{{devRole === 'teacher' ? '以所选教师身份进入' : devParentId && devRole === 'parent' ? '以所选家长身份进入' : '开发模拟登录'}}</button>
   </view>
 </view>

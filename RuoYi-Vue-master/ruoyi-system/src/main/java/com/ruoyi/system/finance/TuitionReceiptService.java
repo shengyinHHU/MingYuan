@@ -52,6 +52,12 @@ public class TuitionReceiptService {
     if (admin) FinanceRules.tuitionStaff(db, actor);
     StringBuilder where = new StringBuilder(" WHERE 1=1");
     List<Object> args = new ArrayList<>();
+    if (q.get("accountId") != null && !q.get("accountId").isBlank()) {
+      long account = FinanceRules.id(q.get("accountId"));
+      if (!admin) db.one("SELECT account_id FROM edu_student_lesson_account WHERE account_id=? AND parent_id=?", account, actor);
+      where.append(" AND e.lesson_account_id=?");
+      args.add(account);
+    }
     if (!admin) {
       where.append(" AND e.parent_id=?");
       args.add(actor);

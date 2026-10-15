@@ -19,8 +19,18 @@
 
     <view class="hero-copy">
       <view class="eyebrow">{{eyebrow}}</view>
-      <view class="title">{{title}}</view>
+      <block wx:if="{{currentRole === 'parent'}}">
+        <view class="parent-welcome"><text class="child-name-switch" bindtap="toggleChildPicker">{{childLoading ? '加载中' : currentChild ? currentChild.studentName : '选择孩子'}} ▾</text><text>{{currentChild ? '家长，欢迎您' : '，欢迎您'}}</text></view>
+        <view class="child-caption">{{currentChild ? currentChild.gradeName + ' · 当前孩子' : childError || '添加孩子信息，开始管理课程与学习'}}</view>
+        <view class="home-child-picker" wx:if="{{showChildPicker}}">
+          <view class="home-child-option {{currentChild.accountId === item.accountId ? 'chosen' : ''}}" wx:for="{{parentChildren}}" wx:key="accountId" data-id="{{item.accountId}}" bindtap="chooseChild"><view><text>{{item.studentName}}</text><text class="child-option-grade">{{item.gradeName}}</text></view><view><text class="child-option-badge" wx:if="{{item.badgeText}}">{{item.badgeText}}</text><text wx:if="{{currentChild.accountId === item.accountId}}">✓</text></view></view>
+          <view class="home-child-add" bindtap="addChild">＋ 添加孩子信息</view>
+        </view>
+        <view class="child-load-retry" wx:if="{{childError}}" bindtap="loadParentTag">重新加载孩子资料</view>
+      </block>
+      <view class="title" wx:else>{{title}}</view>
       <view class="teacher-switch" wx:if="{{currentRole === 'teacher'}}" bindtap="switchTeacher">切换教师</view>
+      <view class="teacher-switch" wx:if="{{currentRole === 'parent' && !roleLocked}}" bindtap="switchParent">切换家长</view>
     </view>
 
     <view class="stats {{currentRole === 'teacher' ? 'stats-teacher' : ''}}">
@@ -60,6 +70,7 @@
   <view class="section split">
     <view class="panel">
       <view class="section-title">{{agendaTitle}}</view>
+      <view class="course-meta" wx:if="{{currentRole === 'parent'}}">{{parentScheduleError || (!schedule.length ? (currentChild ? '暂无已排定的待上课程' : '请先选择孩子') : currentChild.studentName + '的近期课程')}}</view>
       <view class="course-meta" wx:if="{{currentRole === 'teacher' && teacherDataMessage}}">{{teacherDataMessage}}</view>
       <view class="course" wx:for="{{schedule}}" wx:key="time">
         <view class="course-time-wrap">

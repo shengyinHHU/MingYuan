@@ -1,1 +1,1 @@
-Page(require('../../utils/personal-account').page(false,'children'))
+Page(require('../../utils/child-account').page('list'))

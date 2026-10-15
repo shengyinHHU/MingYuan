@@ -7,6 +7,8 @@ import com.ruoyi.system.domain.*;
 public interface EduHomeworkMapper
 {
     List<EduHomework> selectParentList(@Param("parentId") Long parentId);
+    List<EduHomework> selectParentChildList(@Param("parentId") Long parentId,@Param("accountId") Long accountId);
+    EduHomework selectParentEnrollmentDetail(@Param("homeworkId") Long homeworkId,@Param("parentId") Long parentId,@Param("scheduleId") Long scheduleId,@Param("enrollmentId") Long enrollmentId);
     EduHomework selectParentDetail(@Param("homeworkId") Long homeworkId, @Param("parentId") Long parentId, @Param("scheduleId") Long scheduleId);
     EduHomework selectById(Long homeworkId);
     List<EduHomework> selectTeacherList(@Param("teacherId") Long teacherId);

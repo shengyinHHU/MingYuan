@@ -1,4 +1,5 @@
 const { request } = require('./request')
+const couponDisplay = require('./coupon-display')
 const parentUrl = '/miniapp/parent/tuition'
 const adminUrl = '/system/tuition'
 const labels = { PENDING_PRICE: '待核价', HISTORY_PENDING: '历史待核验', OPEN: '已核价', CLOSED: '已关闭', PENDING: '待确认收款', SUCCESS: '已成功', FAILED: '已失败', UNKNOWN: '结果待核查', WAIT_EDU: '等待教务确认金额', WAIT_ADMIN: '教务已阅，等待管理员退款', PENDING_REVIEW: '历史待审核', APPROVED: '审核通过，尚未退款', PROCESSING: '退款处理中', REJECTED: '已驳回', CANCELLED: '已撤回', AVAILABLE: '可使用', LOCKED: '缴费占用中', USED: '已使用', REVOKED: '已撤回', EXPIRED: '已过期', NOT_STARTED: '未生效', ISSUED: '有效', VOID: '已作废', READY: '文件可下载', GENERATING: '文件生成中', CASH: '现金', BANK_TRANSFER: '银行转账', WECHAT_OFFLINE: '微信线下收款', MOCK: '本地模拟', FREE: '费用减免' }
@@ -30,7 +31,7 @@ function refund(item) {
     progressText: legacy ? '' : item.refundStatus === 'WAIT_EDU' ? '教务核定实际退款金额后提交管理员。' : item.refundStatus === 'WAIT_ADMIN' ? '教务已阅，管理员登记线下实际退款后完成。' : completed ? '线下退款已登记完成。' : '' }
 }
 function receipt(item) { return { ...item, amountText: money(item.amount), statusText: status(item.receiptStatus), fileText: status(item.fileStatus), title: item.documentType === 'WAIVER' ? '费用减免确认单' : '课程收款收据', canDownload: item.receiptStatus === 'ISSUED' && item.fileStatus === 'READY' } }
-function coupon(item) { return { ...item, amountText: money(item.discountAmount), minSpendText: money(item.minSpendAmount), statusText: status(item.displayStatus || item.couponStatus), scopeText: item.scopeScheduleId ? `限指定课次（${item.scopeScheduleId}）` : '全部课程可用' } }
+function coupon(item) { return { ...item, subjectText:couponDisplay.subjectText(item),summaryText:couponDisplay.summary(item), amountText: money(item.discountAmount), minSpendText: money(item.minSpendAmount), statusText: status(item.displayStatus || item.couponStatus), scopeText: item.scopeScheduleId ? `限指定课次（${item.scopeScheduleId}）` : couponDisplay.subjects(item).length ? '所选学科课程可用' : '全部课程可用' } }
 function message(error) { wx.showToast({ title: error.message || '操作失败，请重试', icon: 'none' }) }
 function auth(role) {
   const data = getApp().globalData

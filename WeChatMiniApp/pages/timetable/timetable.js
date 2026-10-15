@@ -1,6 +1,7 @@
+const childContext = require('../../utils/child-context')
 const { request } = require('../../utils/request')
 
-Page({
+Page(childContext.page({
   data: {
     loading: false,
     loadError: '',
@@ -13,7 +14,8 @@ Page({
     showEmpty: false
   },
 
-  onLoad() {
+  onLoad(options={}) {
+    this.accountId=options.accountId?String(options.accountId):''
     this._unloaded = false
     if (this.redirectTeacher()) return
     this.loadTimetable()
@@ -62,7 +64,7 @@ Page({
     this.setData({ loading: true, loadError: '', loadSucceeded: false, timetable: [], groupedTimetable: [],
       timetableCount: 0, showEmpty: false })
     try {
-      const res = await request({ url: '/miniapp/parent/timetable', timeout: 15000 })
+      const res = await request({ url: '/miniapp/parent/timetable', ...(this.accountId?{data:{accountId:this.accountId}}:{}), timeout: 15000 })
       if (!current()) return
       const timetable = this.decorateTimetable(res.data || [])
       this.setData({
@@ -249,7 +251,7 @@ Page({
 
   goEnrollment() {
     if (this.data.teacherMode) return
-    wx.navigateTo({ url: '/pages/enrollment/enrollment' })
+    wx.navigateTo({ url: '/pages/enrollment/enrollment'+(this.accountId?'?accountId='+encodeURIComponent(this.accountId):'') })
   },
 
   async handleCancel(e) {
@@ -303,4 +305,4 @@ Page({
       if (!this._unloaded) this.setData({ cancelingId: '' })
     }
   }
-})
+}, {route:'/pages/timetable/timetable',detail:false}))

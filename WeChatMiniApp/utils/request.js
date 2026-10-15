@@ -1,6 +1,9 @@
 const app = getApp()
+const childContext = require('./child-context')
 
 function request(options) {
+  let childTicket
+  try { const prepared=childContext.prepare(options);options=prepared.options;childTicket=prepared.ticket } catch(error) { return Promise.reject(error) }
   const token = wx.getStorageSync('token')
   const baseUrl = app.globalData.baseUrl
   const header = {
@@ -17,6 +20,7 @@ function request(options) {
       data: options.data || {},
       header,
       success(res) {
+        if(childTicket && !childContext.current(childTicket)){const error=new Error('当前孩子已切换，请重新进入');error.staleChild=true;error.uncertain=true;reject(error);return}
         const data = res.data || {}
         if (res.statusCode >= 200 && res.statusCode < 300 && data.code === 200) {
           resolve(data)

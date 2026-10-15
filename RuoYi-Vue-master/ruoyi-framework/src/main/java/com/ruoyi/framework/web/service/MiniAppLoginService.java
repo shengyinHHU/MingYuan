@@ -63,6 +63,9 @@ public class MiniAppLoginService
     private MiniAppDevelopmentSession developmentSession;
 
     @Autowired
+    private org.springframework.core.env.Environment environment;
+
+    @Autowired
     private ISysUserService userService;
 
     @Autowired
@@ -87,6 +90,17 @@ public class MiniAppLoginService
 
     public String login(String loginCode, String phoneCode, String nickName, String devRole, Long devTeacherId)
     {
+        return login(loginCode, phoneCode, nickName, devRole, devTeacherId, null);
+    }
+
+    public String login(String loginCode, String phoneCode, String nickName, String devRole, Long devTeacherId, Long devParentId)
+    {
+        if (devParentId != null)
+        {
+            if (!EduRoleConstants.PARENT.equalsIgnoreCase(StringUtils.trim(devRole)))
+                throw new ServiceException("家长账号参数仅适用于家长开发登录");
+            assertDevelopmentParentLogin();
+        }
         if (devTeacherId != null && !EduRoleConstants.TEACHER.equalsIgnoreCase(StringUtils.trim(devRole)))
         {
             throw new ServiceException("教师账号参数仅适用于教师开发登录");
@@ -97,7 +111,7 @@ public class MiniAppLoginService
         }
         if (mockEnabled && StringUtils.isNotBlank(devRole))
         {
-            return loginMockRole(devRole, nickName, devTeacherId);
+            return loginMockRole(devRole, nickName, devTeacherId, devParentId);
         }
 
         String openid;
@@ -130,7 +144,7 @@ public class MiniAppLoginService
         return createLoginToken(user);
     }
 
-    private String loginMockRole(String devRole, String nickName, Long devTeacherId)
+    private String loginMockRole(String devRole, String nickName, Long devTeacherId, Long devParentId)
     {
         String role = StringUtils.defaultString(devRole).trim().toLowerCase();
         SysUser user;
@@ -158,7 +172,13 @@ public class MiniAppLoginService
         }
         else if (EduRoleConstants.PARENT.equals(role))
         {
-            user = findOrCreateParentUser(mockPhone, nickName, "mock-openid-" + mockPhone);
+            if (devParentId == null)
+                user = findOrCreateParentUser(mockPhone, nickName, "mock-openid-" + mockPhone);
+            else {
+                user = userService.selectUserById(devParentId);
+                if (!isEligibleParent(user))
+                    throw new ServiceException("该家长不存在、已停用或并非独立家长账号，请刷新列表");
+            }
         }
         else
         {
@@ -217,6 +237,45 @@ public class MiniAppLoginService
             options.add(option);
         }
         return options;
+    }
+
+    public List<Map<String, Object>> developmentParents()
+    {
+        assertDevelopmentParentLogin();
+        List<Map<String, Object>> options = new ArrayList<>();
+        SysRole parentRole = roleMapper.checkRoleKeyUnique(EduRoleConstants.PARENT);
+        if (parentRole == null || !"0".equals(parentRole.getStatus()) || !"0".equals(parentRole.getDelFlag())) return options;
+        SysUser query = new SysUser();query.setRoleId(parentRole.getRoleId());
+        List<SysUser> users = new ArrayList<>(userMapper.selectAllocatedList(query));
+        users.sort(Comparator.comparing((SysUser u) -> !u.getUserName().startsWith("dev_referral_"))
+                .thenComparing(SysUser::getUserId));
+        for (SysUser candidate : users) {
+            SysUser user = userService.selectUserById(candidate.getUserId());
+            if (!isEligibleParent(user)) continue;
+            Map<String,Object> option = new LinkedHashMap<>();
+            option.put("userId",String.valueOf(user.getUserId()));
+            option.put("name",StringUtils.defaultIfBlank(user.getNickName(),user.getUserName()));
+            option.put("userName",user.getUserName());options.add(option);
+        }
+        return options;
+    }
+
+    private void assertDevelopmentParentLogin()
+    {
+        developmentSession.getVersion();
+        List<String> profiles=java.util.Arrays.asList(environment.getActiveProfiles());
+        if(!mockEnabled || (!profiles.contains("local") && !profiles.contains("test")) || profiles.contains("prod") || profiles.contains("production"))
+            throw new ServiceException("家长账号选择仅在local/test模拟开发环境开放");
+    }
+
+    private boolean isEligibleParent(SysUser user)
+    {
+        if (user == null || user.isAdmin() || !"0".equals(user.getStatus()) || !"0".equals(user.getDelFlag())) return false;
+        if(user.getRoles()==null || user.getRoles().stream().anyMatch(r -> !EduRoleConstants.PARENT.equals(r.getRoleKey()))) return false;
+        List<SysRole> roles = roleMapper.selectRolePermissionByUserId(user.getUserId()).stream()
+                .filter(r -> "0".equals(r.getStatus()) && "0".equals(r.getDelFlag())).toList();
+        // Never allow the password-free parent selector to issue a staff identity.
+        return !roles.isEmpty() && roles.stream().allMatch(r -> EduRoleConstants.PARENT.equals(r.getRoleKey()));
     }
 
     private boolean isEligibleTeacher(SysUser user)

@@ -1,7 +1,8 @@
+const childContext = require('../../utils/child-context')
 const t = require('../../utils/tuition')
-Page({
+Page(childContext.page({
   data: { loading: false, submitting: false, error: '', detail: null, coupons: [], paymentUncertain: false },
-  onLoad(options) { this.id = String(options.id || ''); this._visit = 0 },
+  onLoad(options={}) { this.accountId=options.accountId?String(options.accountId):''; this.id = String(options.id || ''); this._visit = 0 },
   onShow() { this._active = true; this._visit++; this.setData({ submitting: false }); return this.load() },
   onHide() { this._active = false; this._visit++ },
   onUnload() { this.onHide() },
@@ -12,7 +13,7 @@ Page({
     const active = () => this._active && visit === this._visit && sequence === this._loadSequence
     this.setData({ loading: true, error: '', detail: null })
     try {
-      const res = await t.request({ url: `${t.parentUrl}/${encodeURIComponent(this.id)}` })
+      const res = await t.request({parentScope:this._parentScope, url: `${t.parentUrl}/${encodeURIComponent(this.id)}`,...(this.accountId?{data:{accountId:this.accountId}}:{}) })
       if (!active()) return
       // A previous unknown payment must be checked by staff; do not discard its key.
       this.setData({ detail: t.bill(res.data), coupons: (res.data.coupons || []).map(t.coupon), paymentUncertain: !!t.savedIntent('payment', this.id) })
@@ -24,9 +25,9 @@ Page({
     const detail = this.data.detail, visit = this._visit
     if (!detail || !detail.canCancel || t.savedIntent('payment', this.id)) { t.message(new Error('已有收款、待核验或结果未知，请先联系教务核对或申请退费')); return }
     this.setData({ submitting: true })
-    try { if (await t.confirm('取消未缴费报名', '取消此报名并释放课程名额？后端将再次核对收款状态。') && this._active && visit === this._visit) { await t.request({ url: `/miniapp/parent/enrollment/${encodeURIComponent(this.id)}`, method: 'DELETE' }); if (this._active && visit === this._visit) await this.load() } } catch (error) { if (this._active && visit === this._visit) t.message(error) }
+    try { if (await t.confirm('取消未缴费报名', '取消此报名并释放课程名额？后端将再次核对收款状态。') && this._active && visit === this._visit) { await t.request({parentScope:this._parentScope, url: `/miniapp/parent/enrollment/${encodeURIComponent(this.id)}`, method: 'DELETE' }); if (this._active && visit === this._visit) await this.load() } } catch (error) { if (this._active && visit === this._visit) t.message(error) }
     finally { if (this._active && visit === this._visit) this.setData({ submitting: false }) }
   },
-  receipts() { wx.navigateTo({ url: `/pages/tuition-receipt/tuition-receipt?id=${encodeURIComponent(this.id)}` }) },
-  refunds() { wx.navigateTo({ url: `/pages/tuition-refund/tuition-refund?id=${encodeURIComponent(this.id)}` }) }
-})
+  receipts() { wx.navigateTo({ url: `/pages/tuition-receipt/tuition-receipt?id=${encodeURIComponent(this.id)}${this.accountId?'&accountId='+encodeURIComponent(this.accountId):this._parentScope?'&unlinked=1':''}` }) },
+  refunds() { wx.navigateTo({ url: `/pages/tuition-refund/tuition-refund?id=${encodeURIComponent(this.id)}${this.accountId?'&accountId='+encodeURIComponent(this.accountId):this._parentScope?'&unlinked=1':''}` }) }
+}, {route:'/pages/tuition-detail/tuition-detail',detail:true}))
