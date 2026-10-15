@@ -1,55 +1,23 @@
 <view class="auth-page">
   <view class="brand">
     <image class="logo" src="/images/logo.png" mode="widthFix"></image>
-    <view class="badge">开发登录</view>
-    <view class="title">选择角色进入小程序</view>
-    <view class="subtitle">开发阶段可直接切换家长、教师、管理员，并获得对应若依鉴权 token。</view>
+    <view class="title">欢迎来到名远教育</view>
+    <view class="subtitle">连接家校，让每一次成长都有陪伴</view>
   </view>
 
   <view class="panel">
-    <view class="role-tabs">
-      <view
-        class="role-tab {{item.className}}"
-        wx:for="{{devRoles}}"
-        wx:key="key"
-        data-role="{{item.key}}"
-        bindtap="chooseDevRole"
-      >
-        {{item.name}}
-      </view>
-    </view>
-
-    <view class="teacher-select" wx:if="{{devRole === 'parent'}}">
-      <view class="teacher-title">选择登录家长</view>
-      <picker range="{{parentOptions}}" range-key="label" value="{{parentIndex}}" bindchange="chooseParent" disabled="{{parentsLoading || submitting}}"><view class="teacher-picker">{{parentsLoading ? '正在加载家长…' : (parentLabel || '上次使用的／默认家长')}} ▾</view></picker>
-      <view class="teacher-hint">开发测试可切换独立家长账号；各自的孩子、报名和推荐关系分别保存。</view>
-      <view class="teacher-error" wx:if="{{parentError}}">{{parentError}}</view>
-      <button size="mini" bindtap="loadParents" disabled="{{parentsLoading || submitting}}">刷新家长列表</button>
-    </view>
-
-    <view class="teacher-select" wx:if="{{devRole === 'teacher'}}">
-      <view class="teacher-title">选择登录教师</view>
-      <picker mode="selector" range="{{teacherOptions}}" range-key="label" value="{{teacherIndex}}" bindchange="chooseTeacher" disabled="{{teachersLoading || submitting || !teachers.length}}">
-        <view class="teacher-picker">{{teachersLoading ? '正在加载教师…' : (teacherLabel || '请选择教师')}} ▾</view>
-      </picker>
-      <view class="teacher-hint">仅用于开发测试，进入后查看所选教师负责的班级。</view>
-      <view class="teacher-error" wx:if="{{teacherError}}">{{teacherError}}</view>
-      <button size="mini" bindtap="loadTeachers" disabled="{{teachersLoading || submitting}}">刷新教师列表</button>
-    </view>
-
-    <view class="notice">
-      <view class="notice-title">名远教育</view>
-      <view class="notice-text">当前开发模式会向若依后端申请所选角色的真实登录 token，方便继续联调角色权限和接口。</view>
-    </view>
-
-    <button
-      class="wechat-btn"
-      wx:if="{{devRole !== 'teacher'}}"
-      open-type="getPhoneNumber"
-      bindgetphonenumber="handlePhoneLogin"
-      loading="{{submitting}}"
-    >手机号授权登录</button>
-
-    <button class="dev-btn" bindtap="handleDevLogin" loading="{{submitting}}" disabled="{{submitting || (devRole === 'teacher' && (teachersLoading || !devTeacherId)) || (devRole === 'parent' && parentsLoading)}}">{{devRole === 'teacher' ? '以所选教师身份进入' : devParentId && devRole === 'parent' ? '以所选家长身份进入' : '开发模拟登录'}}</button>
+    <view class="panel-title">手机号登录</view>
+    <view class="panel-subtitle">登录后自动进入您已授权的工作台</view>
+    <view class="field-label">手机号码</view>
+    <view class="phone-field"><text class="phone-prefix">+86</text><input class="account-input" type="number" maxlength="11" value="{{phone}}" bindinput="phoneInput" placeholder="请输入手机号" placeholder-class="input-placeholder" disabled="{{submitting || codeSending}}"/></view>
+    <view class="field-label">验证码</view>
+    <view class="code-row"><input class="account-input code-input" type="number" maxlength="6" value="{{verificationCode}}" bindinput="verificationInput" placeholder="请输入6位验证码" placeholder-class="input-placeholder" disabled="{{submitting}}"/><button class="code-button" bindtap="sendCode" loading="{{codeSending}}" disabled="{{configLoading || !phoneLoginEnabled || codeSending || submitting || cooldown > 0}}">{{cooldown ? cooldown + '秒后重试' : '获取验证码'}}</button></view>
+    <view class="development-hint" wx:if="{{developmentCodeMode}}"><text class="development-label">开发测试</text><text>不发送短信，验证码5分钟内有效</text></view>
+    <view class="test-code" wx:if="{{developmentCodeMode && developmentCode}}">测试验证码：{{developmentCode}}</view>
+    <view class="teacher-error" wx:if="{{loginError}}">{{loginError}}</view>
+    <view class="teacher-hint" wx:if="{{!configLoading && !phoneLoginEnabled}}">短信登录暂未开通，请联系管理员。</view>
+    <button class="wechat-btn" bindtap="handlePhoneCodeLogin" loading="{{submitting}}" disabled="{{configLoading || !phoneLoginEnabled || submitting || codeSending}}">登录 / 注册</button>
+    <view class="register-note">未注册手机号将自动创建家长账号</view>
   </view>
+  <view class="auth-footer">教师、教务及管理员身份由管理员授权<view>一个账号，多种身份，登录后自动识别</view></view>
 </view>

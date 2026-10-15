@@ -66,9 +66,18 @@ class MiniAppLoginServiceTest
                             u.getRoles().stream().limit(1).toList())).orElse(null);
             case "selectUserById" -> users.stream().filter(u -> u.getUserId().equals(args[0])).findFirst().orElse(null);
             case "updateLoginInfo" -> 1;
+            case "insertUser" -> {
+                SysUser created = (SysUser) args[0];
+                assertArrayEquals(new Long[] { parentRole.getRoleId() }, created.getRoleIds());
+                created.setUserId(44L); created.setDelFlag("0"); created.setRoles(List.of(parentRole));
+                users = java.util.stream.Stream.concat(users.stream(), java.util.stream.Stream.of(created)).toList();
+                yield 1;
+            }
             default -> throw new AssertionError("Unexpected user service call: " + method);
         }));
         set("userMapper", proxy(SysUserMapper.class, (method, args) -> {
+            if ("selectUserIdsByPhone".equals(method)) return users.stream()
+                    .filter(u -> u.getPhonenumber().equals(args[0]) && "0".equals(u.getDelFlag())).map(SysUser::getUserId).toList();
             if (!"selectAllocatedList".equals(method)) throw new AssertionError(method);
             SysUser filter = (SysUser) args[0];
             return users.stream().filter(u -> u.getRoles().stream()
@@ -260,6 +269,57 @@ class MiniAppLoginServiceTest
         }
         profiles=new String[]{"local"};developmentEnabled=false;assertThrows(ServiceException.class,service::developmentParents);
         assertNull(issuedToken);
+    }
+
+    @Test void legacyAdminShortcutRequiresAnEnabledDevelopmentSession() {
+        developmentEnabled = false;
+        assertThrows(ServiceException.class, () -> service.login("mock", "mock", "Admin", "admin"));
+        assertNull(issuedToken);
+    }
+
+    @Test void developmentSessionRejectsProductionEvenWithMockFlag() throws Exception {
+        MiniAppDevelopmentSession session = new MiniAppDevelopmentSession();
+        var flag = MiniAppDevelopmentSession.class.getDeclaredField("mockEnabled");
+        flag.setAccessible(true); flag.set(session, true);
+        var env = MiniAppDevelopmentSession.class.getDeclaredField("environment");
+        env.setAccessible(true); env.set(session, new org.springframework.core.env.StandardEnvironment() {
+            @Override public String[] getActiveProfiles() { return profiles; }
+        });
+        assertTrue(session.isEnabled());
+        for (String[] value : List.of(new String[] {}, new String[] { "prod" }, new String[] { "local", "production" })) {
+            profiles = value;
+            assertFalse(session.isEnabled());
+            assertThrows(ServiceException.class, session::getVersion);
+        }
+    }
+
+    @Test void verifiedPhoneKeepsMultipleExistingRolesWithoutAddingParent() {
+        SysRole education = new SysRole(9L); education.setRoleKey("education"); education.setStatus("0"); education.setDelFlag("0");
+        users.get(0).setRoles(List.of(teacherRole, education));
+        assertEquals("test-token", service.loginVerifiedPhone("13800000010"));
+        assertEquals(List.of("teacher", "education"), issuedToken.getUser().getRoles().stream().map(SysRole::getRoleKey).toList());
+        assertEquals(1, users.size());
+    }
+
+    @Test void firstRegistrationCanOnlyReceiveExistingParentRole() {
+        assertEquals("test-token", service.loginVerifiedPhone("13900000044"));
+        assertEquals(List.of("parent"), issuedToken.getUser().getRoles().stream().map(SysRole::getRoleKey).toList());
+        assertEquals("13900000044", issuedToken.getUser().getPhonenumber());
+    }
+
+    @Test void ambiguousPhoneNeverSelectsAnArbitraryPrivilegedAccount() {
+        SysUser other = user(11L, "other", "0", List.of(parentRole)); other.setPhonenumber("13800000010");
+        users = List.of(users.get(0), other);
+        assertThrows(ServiceException.class, () -> service.loginVerifiedPhone("13800000010"));
+        assertNull(issuedToken);
+    }
+
+    @Test void disabledAccountOrMissingActiveRoleDoesNotRegisterAReplacement() {
+        users.get(0).setStatus("1");
+        assertThrows(ServiceException.class, () -> service.loginVerifiedPhone("13800000010"));
+        users.get(0).setStatus("0"); teacherRole.setStatus("1");
+        assertThrows(ServiceException.class, () -> service.loginVerifiedPhone("13800000010"));
+        assertEquals(1, users.size()); assertNull(issuedToken);
     }
 
     private SysUser user(long id, String name, String status, List<SysRole> roles)

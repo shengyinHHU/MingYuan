@@ -2,7 +2,7 @@ const test=require('node:test'),assert=require('node:assert/strict'),vm=require(
 const root=path.join(__dirname,'..'),clone=x=>JSON.parse(JSON.stringify(x))
 test('home referral badge counts pending and anomalies without surviving role switch',async()=>{
   let definition,resolve;const storage={token:'session',roles:['admin'],currentRole:'admin'}
-  vm.runInNewContext(fs.readFileSync(path.join(root,'pages/index/index.js'),'utf8'),{Page:p=>definition=p,require:id=>id.endsWith('request')?{request:()=>new Promise(r=>resolve=r)}:id.endsWith('teacher-course-state')?require('../utils/teacher-course-state'):{},wx:{getStorageSync:k=>storage[k]},console,setInterval:()=>0,clearInterval(){}})
+  vm.runInNewContext(fs.readFileSync(path.join(root,'pages/index/index.js'),'utf8'),{Page:p=>definition=p,require:id=>id.endsWith('access')?require('./helpers/access.cjs')({getStorageSync:k=>storage[k]}):id.endsWith('request')?{request:()=>new Promise(r=>resolve=r)}:id.endsWith('teacher-course-state')?require('../utils/teacher-course-state'):{},wx:{getStorageSync:k=>storage[k]},console,setInterval:()=>0,clearInterval(){}})
   const p={...definition,data:{currentRole:'admin',quickActions:[{key:'referral'}]},_visible:true,_roleLoadVersion:1};p.setData=u=>Object.assign(p.data,u)
   let work=p.loadReferralPending();resolve({data:{pending:2,anomalies:3}});await work;assert.equal(p.data.quickActions[0].badgeText,'5')
   work=p.loadReferralPending();p.stopCoursePendingRefresh();storage.currentRole='parent';p.data.currentRole='parent';p.data.quickActions=[];resolve({data:{pending:9,anomalies:9}});await work;assert.deepEqual(p.data.quickActions,[])

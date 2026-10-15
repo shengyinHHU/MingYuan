@@ -19,6 +19,31 @@ public class MiniAppLoginController
 {
     @Autowired
     private MiniAppLoginService miniAppLoginService;
+    @Autowired private com.ruoyi.framework.web.service.MiniAppPhoneCodeService phoneCodes;
+
+    public record PhoneCodeRequest(String phone) {}
+    public record PhoneLoginRequest(String phone, String code) {}
+
+    @Anonymous
+    @GetMapping("/miniapp/auth/config")
+    public AjaxResult phoneConfig() { return AjaxResult.success(phoneCodes.config()); }
+
+    @Anonymous
+    @PostMapping("/miniapp/auth/code")
+    public AjaxResult phoneCode(@RequestBody PhoneCodeRequest body)
+    {
+        return AjaxResult.success(phoneCodes.issue(body.phone(), com.ruoyi.common.utils.ip.IpUtils.getIpAddr()));
+    }
+
+    @Anonymous
+    @PostMapping("/miniapp/auth/login")
+    public AjaxResult phoneLogin(@RequestBody PhoneLoginRequest body)
+    {
+        phoneCodes.verify(body.phone(), body.code());
+        AjaxResult result = AjaxResult.success();
+        result.put(Constants.TOKEN, miniAppLoginService.loginVerifiedPhone(body.phone()));
+        return result;
+    }
 
     @Anonymous
     @GetMapping("/miniapp/dev/session")

@@ -111,12 +111,13 @@ public class MiniAppLoginService
         }
         if (mockEnabled && StringUtils.isNotBlank(devRole))
         {
+            developmentSession.getVersion();
             return loginMockRole(devRole, nickName, devTeacherId, devParentId);
         }
 
         String openid;
         String phoneNumber;
-        if (mockEnabled)
+        if (mockEnabled && developmentSession.isEnabled())
         {
             openid = "mock-openid-" + mockPhone;
             phoneNumber = mockPhone;
@@ -141,6 +142,40 @@ public class MiniAppLoginService
             throw new ServiceException("Account is disabled");
         }
 
+        return createLoginToken(user);
+    }
+
+    /** Called only after a phone challenge has been consumed; clients cannot choose their roles. */
+    @org.springframework.transaction.annotation.Transactional(rollbackFor = Exception.class)
+    public String loginVerifiedPhone(String value)
+    {
+        String phone = MiniAppPhoneCodeService.phone(value);
+        List<Long> ids = userMapper.selectUserIdsByPhone(phone);
+        if (ids.size() > 1) throw new ServiceException("此手机号关联多个历史账号，请联系管理员核对后再登录");
+        SysUser user;
+        if (ids.isEmpty())
+        {
+            SysRole parent = getParentRole();
+            if (!"0".equals(parent.getStatus()) || !"0".equals(parent.getDelFlag()))
+                throw new ServiceException("家长注册暂未开放，请联系管理员");
+            user = new SysUser();
+            user.setUserName("mp_" + phone + "_" + IdUtils.fastSimpleUUID().substring(0, 8));
+            user.setNickName("家长" + phone.substring(7));
+            user.setPhonenumber(phone);
+            user.setPassword(SecurityUtils.encryptPassword(IdUtils.fastSimpleUUID()));
+            user.setStatus("0"); user.setCreateBy("miniapp-phone");
+            user.setRoleIds(new Long[] { parent.getRoleId() });
+            if (userService.insertUser(user) <= 0) throw new ServiceException("注册未完成，请稍后重试");
+            user = userService.selectUserById(user.getUserId());
+        }
+        else user = userService.selectUserById(ids.get(0));
+        if (user == null || !"0".equals(user.getStatus()) || !"0".equals(user.getDelFlag()))
+            throw new ServiceException("账号已停用，请联系管理员");
+        List<SysRole> activeRoles = roleMapper.selectRolePermissionByUserId(user.getUserId()).stream()
+                .filter(r -> "0".equals(r.getStatus()) && "0".equals(r.getDelFlag())).toList();
+        if (activeRoles.stream().noneMatch(r -> Set.of("parent", "teacher", "education", "admin").contains(r.getRoleKey())))
+            throw new ServiceException("账号尚未分配小程序角色，请联系管理员");
+        user.setRoles(activeRoles);
         return createLoginToken(user);
     }
 
