@@ -35,6 +35,54 @@ public final class FinanceRules {
     return v == null ? "" : String.valueOf(v).trim();
   }
 
+  /**
+   * 家长姓名的 SQL 表达式（真名优先，真名不是中文名时退回中文昵称）。{@code alias} 是 sys_user 的表别名。
+   *
+   * <p>为什么不能直接用 {@code nick_name}：家长账号的 {@code nick_name} 存的是报名表里的「微信昵称」。
+   * 195 个导入家长里有 20 个是经办老师/课程顾问的微信（「数学管老师」「课程顾问周老师」等），
+   * 其中 195 金孝泽 / 295 杨泽远 更是直接等于教师 112 的真名「王文晶」——
+   * 直接显示会让人误以为该家长就是那位老师。
+   *
+   * <p>为什么不能只用 {@code user_name}：手机号注册的家长 {@code user_name} 是
+   * {@code mp_<手机号>_<hash>} 机器名（如 437/443/444），纯数字手机号的账号（如 100）也一样不适合当姓名。
+   *
+   * <p>对现有数据的结果：195→金孝泽、295→杨泽远、117→潘奕博、142→杨昕诺、
+   * 437→家长3793、394→测试学生01、100→13800000000。
+   */
+  public static String parentNameSql(String alias) {
+    return "CASE WHEN TRIM(COALESCE("
+        + alias
+        + ".user_name,''))='' THEN TRIM(COALESCE("
+        + alias
+        + ".nick_name,''))"
+        + " WHEN "
+        + alias
+        + ".user_name REGEXP '[一-龥]' THEN TRIM("
+        + alias
+        + ".user_name)"
+        + " WHEN TRIM(COALESCE("
+        + alias
+        + ".nick_name,''))<>'' AND "
+        + alias
+        + ".nick_name REGEXP '[一-龥]' THEN TRIM("
+        + alias
+        + ".nick_name)"
+        + " ELSE TRIM("
+        + alias
+        + ".user_name) END";
+  }
+
+  /**
+   * 家长姓名搜索表达式，与展示口径完全一致（搜什么显示什么）。
+   *
+   * <p>刻意<b>不</b>把 {@code nick_name} 拼进来：那样搜「王文晶」会命中 195/295 两个家长，
+   * 而列表里显示的是「金孝泽 / 杨泽远」，反而让人以为又认错人了。
+   * 需要按微信昵称找人请去「用户管理」。
+   */
+  public static String parentSearchSql(String alias) {
+    return "(" + parentNameSql(alias) + ")";
+  }
+
   public static String str(Map<String, ?> m, String key) {
     return text(m.get(key));
   }

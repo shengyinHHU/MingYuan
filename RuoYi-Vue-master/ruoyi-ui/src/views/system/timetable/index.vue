@@ -31,8 +31,9 @@
         </el-select>
       </el-form-item>
       <el-form-item label="教师">
-        <el-select v-model="queryParams.teacherName" placeholder="全部教师" clearable filterable style="width:140px" @change="handleQuery">
-          <el-option v-for="t in dims.teachers" :key="t.userId" :label="t.nickName" :value="t.nickName" />
+        <!-- 按 teacher_id 精确筛选：教师改名/重名都不影响，不要改回按姓名匹配 -->
+        <el-select v-model="queryParams.teacherId" placeholder="全部教师" clearable filterable style="width:140px" @change="handleQuery">
+          <el-option v-for="t in dims.teachers" :key="t.userId" :label="t.realName || t.userName || t.nickName" :value="t.userId" />
         </el-select>
       </el-form-item>
       <el-form-item>
@@ -387,7 +388,6 @@
       </div>
 
       <div slot="footer" style="text-align:left">
-        <el-checkbox v-if="imp.rows.length" v-model="imp.updateSupport" style="margin-right:16px">已存在同时段排课时覆盖更新</el-checkbox>
         <el-button type="warning" size="mini" icon="el-icon-magic-stick" :loading="imp.oneClicking" @click="doOneClick">一键导入</el-button>
         <el-button type="success" size="mini" :disabled="!imp.rows.length" :loading="imp.confirming" @click="doConfirm">确认导入</el-button>
         <el-button size="mini" @click="imp.open = false">取 消</el-button>
@@ -483,6 +483,7 @@ export default {
         campusName: '',
         subjectName: '',
         gradeName: '',
+        teacherId: null,
         teacherName: ''
       },
       // key: classroomId@timeSlot（缺失部分用 "-" 占位）-> 排课数组（同格可多条）
@@ -514,7 +515,6 @@ export default {
         warnCount: 0,
         datedCount: 0,
         undatedCount: 0,
-        updateSupport: false,
         pageNo: 1,
         pageSize: 50,
         pageRows: []
@@ -538,10 +538,14 @@ export default {
     }
   },
   computed: {
-    // nickName -> userName 映射
+    // 旧数据兼容映射：昵称 -> 真名。新数据 teacher_name 已直接存真名，命中不到就原样显示。
     teacherNameMap() {
       const m = {}
-      ;(this.dims.teachers || []).forEach(t => { m[t.nickName] = t.userName })
+      ;(this.dims.teachers || []).forEach(t => {
+        const real = t.realName || t.userName || t.nickName
+        if (t.nickName) m[t.nickName] = real
+        if (t.userName) m[t.userName] = real
+      })
       return m
     },
     availablePeriods() {
@@ -685,7 +689,6 @@ export default {
       this.imp.undatedCount = 0
       this.imp.datePlans = []
       this.imp.termRanges = {}
-      this.imp.updateSupport = false
       this.imp.pageNo = 1
       this.imp.pageRows = []
       this.imp.courseYear = this.queryParams.courseYear || new Date().getFullYear()
@@ -827,7 +830,9 @@ export default {
       try {
         const res = await importTimetableConfirm({
           rows: this.imp.rows,
-          updateSupport: this.imp.updateSupport,
+          // 导入一律「以新课表为准」：同位置已有课程覆盖更新，新课表里已无课的格子清空。
+          // 原先的「已存在同时段排课时覆盖更新」勾选框已去掉，这里固定传 true。
+          updateSupport: true,
           dateRanges: ranges
         })
         const switched = await this.applyImportScope(res.data)
@@ -900,12 +905,13 @@ export default {
         const terms = (d.undatedTerms || []).filter(Boolean)
         msg += `\n${d.undated} 条未写入日期，仍保持「待排」${terms.length ? '（涉及：' + terms.join('、') + '）' : ''}：请确认已在导入时按「学期 / 期次」填写起止日期；若学期/期次写法无法判定上课模式，可在课表中编辑该排课补充起止日期。`
       }
-      if (d.stale) msg += `\n另检测到 ${d.stale} 条历史遗留行：这些格子来自更早的导入、本次文件里已经没有了（常见于修正教室映射后重新导入），会显示成「文件里没有的课」，请核对后在课表上删除。`
-      if (d.staleMsgs && d.staleMsgs.length) msg += '\n遗留行示例：\n' + d.staleMsgs.join('\n')
+      if (d.cleared) msg += `\n已按新课表清空 ${d.cleared} 个格子：这些位置库里原有课程、而本次导入的文件里是空的，已按「以新课表为准」删除。`
+      if (d.keptStale) msg += `\n另有 ${d.keptStale} 条历史遗留行因已有报名/考勤/调课等关联数据，未自动清除；请先处理报名，再到课表上手动删除。`
+      if (d.staleMsgs && d.staleMsgs.length) msg += '\n已清空示例：\n' + d.staleMsgs.join('\n')
+      if (d.keptMsgs && d.keptMsgs.length) msg += '\n未清除示例：\n' + d.keptMsgs.join('\n')
       if (switched) msg += `\n已切换到：${switched}`
       if (syncParts.length) msg += '\n主数据同步：' + syncParts.join('，')
       if (d.skipMsgs && d.skipMsgs.length) msg += '\n跳过示例：\n' + d.skipMsgs.join('\n')
-      if (!d.inserted && !d.updated && d.skipped) msg += '\n提示：若需覆盖同位置已有课程，请在导入时勾选「覆盖更新」。'
       msg += '\n\n课表中红色感叹号格子表示：冲突（同一时间、同一地点多门课）、时间／科目／教师名／地点不明确，或导入时格式未识别。'
       this.$alert(msg, '导入完成', { type: 'success' })
     },
@@ -1097,7 +1103,7 @@ export default {
           classroomName: cls ? cls.classroomName : '',
           campusName: cls ? cls.campusName : '',
           timeSlot: slot,
-          teacherName: this.dims.isAdmin ? '' : this.dims.currentUserNick,
+          teacherName: this.dims.isAdmin ? '' : (this.dims.currentUserName || this.dims.currentUserNick),
           teacherId: this.dims.isAdmin ? null : this.dims.currentUserId
         }
       }

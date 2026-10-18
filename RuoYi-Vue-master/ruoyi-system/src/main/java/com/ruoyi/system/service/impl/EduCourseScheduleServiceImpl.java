@@ -37,8 +37,9 @@ public class EduCourseScheduleServiceImpl implements IEduCourseScheduleService {
         if (teacherOnly()) require(Objects.equals(schedule.getTeacherId(), SecurityUtils.getUserId()), "无权操作其他教师的排课");
     }
     private void scope(EduCourseSchedule query) {
+        // 教师身份强制只看自己的课（覆盖调用方传入的任何值）；
+        // 管理员/教务保留调用方显式传入的 teacherUserId —— 这是课表页「按教师筛选」的入口。
         if (teacherOnly()) query.getParams().put("teacherUserId", SecurityUtils.getUserId());
-        else query.getParams().remove("teacherUserId");
     }
     @Override public EduCourseSchedule selectEduCourseScheduleByScheduleId(Long id) {
         EduCourseSchedule schedule = eduCourseScheduleMapper.selectEduCourseScheduleByScheduleId(id);
@@ -155,6 +156,19 @@ public class EduCourseScheduleServiceImpl implements IEduCourseScheduleService {
     @Override @Transactional(rollbackFor = Exception.class)
     public int deleteEduCourseScheduleByScheduleId(Long id) { return deleteEduCourseScheduleByScheduleIds(new Long[]{id}); }
 
+    /**
+     * 见接口说明。判据与 {@link #deleteEduCourseScheduleByScheduleIds(Long[])} 里的校验保持一致：
+     * 既不能有「有效报名」（报名保护），也不能有任何带 schedule_id 的引用（签到/考勤/调课/作业…）。
+     * 只做判断、不加锁，供课表导入在删除前逐个预筛。
+     */
+    @Override
+    public boolean isDeletable(Long scheduleId) {
+        if (scheduleId == null || selectEduCourseScheduleByScheduleId(scheduleId) == null) return false;
+        if (!db.rows("SELECT enrollment_id FROM edu_enrollment WHERE schedule_id=? AND del_flag='0'"
+            + " AND COALESCE(enrollment_status,'') NOT IN ('2','3','已取消','已拒绝','老师已拒绝')", scheduleId).isEmpty()) return false;
+        return referenceCount(scheduleId) == 0;
+    }
+
     private void bindTeacher(EduCourseSchedule input, EduCourseSchedule current) {
         if (teacherOnly()) {
             require(input.getTeacherId() == null || input.getTeacherId().equals(SecurityUtils.getUserId()), "只能为当前教师排课");
@@ -168,8 +182,23 @@ public class EduCourseScheduleServiceImpl implements IEduCourseScheduleService {
         }
         List<Map<String,Object>> teachers = db.rows("SELECT u.nick_name,u.user_name FROM sys_user u WHERE u.user_id=? AND u.status='0' AND u.del_flag='0' AND EXISTS(SELECT 1 FROM sys_user_role ur JOIN sys_role r ON r.role_id=ur.role_id WHERE ur.user_id=u.user_id AND r.role_key='teacher' AND r.status='0' AND r.del_flag='0')", input.getTeacherId());
         require(!teachers.isEmpty(), "教师账号不存在、已停用或不具备教师角色");
-        String name = String.valueOf(teachers.get(0).get("nickName"));
-        input.setTeacherName(name.equals("null") || name.isBlank() ? String.valueOf(teachers.get(0).get("userName")) : name);
+        // teacher_name 只是冗余展示字段：统一存真名(user_name)，真名为空才退回昵称。
+        // 归属判定一律以 teacher_id 为准，不要用这里的名字做匹配。
+        input.setTeacherName(realNameOf(teachers.get(0)));
+    }
+
+    /**
+     * 取教师展示名：真名(user_name) 优先，空则退回昵称(nick_name)。
+     * 供所有写入 teacher_name 冗余字段的地方复用，避免各处口径不一致。
+     */
+    public static String realNameOf(Map<String,Object> user) {
+        if (user == null) return "";
+        Object real = user.get("userName");
+        String r = real == null ? "" : String.valueOf(real).trim();
+        if (!r.isEmpty() && !"null".equals(r)) return r;
+        Object nick = user.get("nickName");
+        String n = nick == null ? "" : String.valueOf(nick).trim();
+        return "null".equals(n) ? "" : n;
     }
     private void lockResources(List<EduCourseSchedule> courses) {
         availability.lockResources(courses);

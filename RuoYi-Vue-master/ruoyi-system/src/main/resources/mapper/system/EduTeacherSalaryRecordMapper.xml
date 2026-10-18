@@ -135,9 +135,10 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         </foreach>
     </update>
 
-    <!-- 全部教师账号 -->
+    <!-- 全部教师账号：teacherName 保持昵称（历史调用方依赖），realName 为登录名（真实姓名） -->
     <select id="selectTeacherUsers" resultType="java.util.HashMap">
-        select u.user_id as teacherId, u.nick_name as teacherName
+        select u.user_id as teacherId, u.nick_name as teacherName, u.user_name as realName,
+               (select p.teacher_subject from edu_teacher_profile p where p.user_id = u.user_id) as teacherSubject
         from sys_user u
         inner join sys_user_role ur on ur.user_id = u.user_id
         inner join sys_role r on r.role_id = ur.role_id and r.role_key = 'teacher' and r.status = '0'

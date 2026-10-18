@@ -70,7 +70,9 @@ public class EduHomeworkServiceImpl implements IEduHomeworkService
             mapper.insertAnswer(answer);
             if(answer.getFiles()!=null) for(EduHomeworkFile file:answer.getFiles()){if(StringUtils.isBlank(file.getFilePath())) continue; file.setHomeworkId(body.getHomeworkId()); file.setSubmissionId(submission.getSubmissionId()); file.setAnswerId(answer.getAnswerId()); file.setFileType("answer"); file.setCreateBy(SecurityUtils.getUsername()); file.setCreateTime(new Date()); mapper.insertFile(file);}
         }
-        submission.setAutoScore(autoScore); submission.setFinalScore(autoScore); submission.setStatus((manual || questions.isEmpty()) ? "1" : "2"); submission.setReviewerId(null); submission.setReviewTime(null); mapper.reviewSubmission(submission);
+        // 只有「题目全部作答且都是可自动判分的客观题」才算自动批阅完成；否则一律待教师批阅，
+        // 避免小程序端不答题直接提交时被误标为「已批阅」（教师端看不到待批记录、家长端看到空评语）。
+        submission.setAutoScore(autoScore); submission.setFinalScore(autoScore); submission.setStatus((manual || questions.isEmpty() || answered.size() < questions.size()) ? "1" : "2"); submission.setReviewerId(null); submission.setReviewTime(null); mapper.reviewSubmission(submission);
         return submission.getSubmissionId();
     }
     private String normalize(String value){return value==null?"":value.trim().replaceAll("\\s+","").toLowerCase();}

@@ -140,12 +140,15 @@ public class EduTimetableController extends BaseController
             List<SysUser> teacherUsers = userService.selectAllocatedList(teacherQuery);
             teachers = teacherUsers.stream()
                     .filter(u -> "0".equals(u.getStatus()))
-                    .sorted(Comparator.comparing(SysUser::getNickName, Comparator.nullsLast(String::compareTo)))
+                    .sorted(Comparator.comparing((SysUser u) -> StringUtils.isNotEmpty(u.getUserName()) ? u.getUserName() : u.getNickName(),
+                            Comparator.nullsLast(String::compareTo)))
                     .map(u -> {
                         Map<String, Object> m = new HashMap<>();
                         m.put("userId", u.getUserId());
                         m.put("nickName", u.getNickName());
                         m.put("userName", u.getUserName());
+                        // 真名优先，供前端下拉直接展示；userName 为空的老账号退回昵称
+                        m.put("realName", StringUtils.isNotEmpty(u.getUserName()) ? u.getUserName() : u.getNickName());
                         return m;
                     })
                     .collect(Collectors.toList());
@@ -156,7 +159,11 @@ public class EduTimetableController extends BaseController
         data.put("currentYear", Calendar.getInstance().get(Calendar.YEAR));
         data.put("isAdmin", SecurityUtils.isAdmin() || SecurityUtils.hasRole("admin"));
         data.put("isTeacher", SecurityUtils.hasRole("teacher"));
-        data.put("currentUserNick", SecurityUtils.getLoginUser().getUser().getNickName());
+        SysUser currentUser = SecurityUtils.getLoginUser().getUser();
+        data.put("currentUserNick", currentUser.getNickName());
+        // 真名：teacher_name 统一存真名，前端新建排课的默认教师名要用这个，不要用昵称
+        data.put("currentUserName", StringUtils.isNotEmpty(currentUser.getUserName())
+                ? currentUser.getUserName() : currentUser.getNickName());
         data.put("currentUserId", SecurityUtils.getUserId());
 
         return success(data);
@@ -172,7 +179,8 @@ public class EduTimetableController extends BaseController
      *   campusName   (可选) String  校区（万达/百家湖），传空不过滤
      *   gradeName    (可选)
      *   subjectName  (可选)
-     *   teacherName  (可选)
+     *   teacherId    (可选) 教师账号ID —— 教师筛选请优先用这个（精确、改名不受影响）
+     *   teacherName  (可选) 教师姓名，仅作兼容旧调用；teacherId 传了就不生效
      *   classType    (可选)
      *   classroomId  (可选)
      */
@@ -185,6 +193,7 @@ public class EduTimetableController extends BaseController
             @RequestParam(value = "campusName",  required = false) String campusName,
             @RequestParam(value = "gradeName",   required = false) String gradeName,
             @RequestParam(value = "subjectName", required = false) String subjectName,
+            @RequestParam(value = "teacherId",   required = false) Long teacherId,
             @RequestParam(value = "teacherName", required = false) String teacherName,
             @RequestParam(value = "classType",   required = false) String classType,
             @RequestParam(value = "classroomId", required = false) Long classroomId)
@@ -197,7 +206,18 @@ public class EduTimetableController extends BaseController
         q.setRemark(StringUtils.trimToNull(campusName));
         q.setGradeName(gradeName);
         q.setSubjectName(subjectName);
-        q.setTeacherName(teacherName);
+        // 教师筛选：一律按 teacher_id 执行。
+        // 旧调用只传了 teacherName 时，先把它解析成唯一账号ID，再按 id 查 —— 姓名不参与 SQL 的归属判定，
+        // 这样即使两个教师重名也不会把别人的课查出来。
+        if (teacherId != null)
+        {
+            q.getParams().put("teacherUserId", teacherId);
+        }
+        else
+        {
+            Long resolved = resolveTeacherIdByName(teacherName);
+            if (resolved != null) q.getParams().put("teacherUserId", resolved);
+        }
         q.setClassType(classType);
         q.setClassroomId(classroomId);
 
@@ -217,6 +237,36 @@ public class EduTimetableController extends BaseController
     }
 
     /**
+     * 兼容旧调用：把「教师姓名」解析成唯一的 teacher_id。
+     * <p>只用于把旧参数翻译成 id，最终 SQL 仍按 teacher_id 过滤。
+     * <ul>
+     *   <li>解析不到 → 返回 -1（查不到任何数据，绝不退化成"不过滤"）</li>
+     *   <li>解析到多个同名账号 → 直接报错，不猜</li>
+     * </ul>
+     */
+    private Long resolveTeacherIdByName(String teacherName)
+    {
+        String name = StringUtils.trimToNull(teacherName);
+        if (name == null) return null;
+        Long teacherRoleId = roleService.selectRoleList(new SysRole()).stream()
+                .filter(r -> "teacher".equals(r.getRoleKey()))
+                .map(SysRole::getRoleId).findFirst().orElse(null);
+        if (teacherRoleId == null) return -1L;
+        SysUser query = new SysUser();
+        query.setRoleId(teacherRoleId);
+        List<SysUser> matched = userService.selectAllocatedList(query).stream()
+                .filter(u -> "0".equals(u.getStatus()))
+                .filter(u -> name.equals(StringUtils.trimToEmpty(u.getUserName()))
+                          || name.equals(StringUtils.trimToEmpty(u.getNickName())))
+                .collect(Collectors.toList());
+        if (matched.size() > 1)
+        {
+            throw new ServiceException("教师「" + name + "」对应多个账号，请改用 teacherId 指定");
+        }
+        return matched.isEmpty() ? -1L : matched.get(0).getUserId();
+    }
+
+    /**
      * 单条排课详情（给单元格点击"编辑"弹窗回填）
      */
     @PreAuthorize("@ss.hasPermi('system:courseschedule:query') or @ss.hasAnyRoles('admin,teacher')")
@@ -228,7 +278,8 @@ public class EduTimetableController extends BaseController
 
     /**
      * 新增排课
-     * 权限：admin 任意新增；teacher 新增时，teacherName 必须等于当前用户 nickName，否则拒绝
+     * 权限：admin 任意新增；teacher 只能为自己排课（归属一律按 teacherId 判定，不看姓名）。
+     * 落库的 teacher_name 统一写真名(user_name)，昵称只用于显示层兜底，不参与权限判定。
      */
     @PreAuthorize("@ss.hasPermi('system:courseschedule:add') or @ss.hasAnyRoles('admin,teacher')")
     @Log(title = "可视化课表-新增", businessType = BusinessType.INSERT)
@@ -359,7 +410,10 @@ public class EduTimetableController extends BaseController
     }
 
     /**
-     * 课表导入-确认：将预览行落库；updateSupport=true 时同教室+同学期+同期次+同时段覆盖更新。
+     * 课表导入-确认：将预览行落库。
+     * <p>
+     * 默认「以新课表为准」（updateSupport=true）：同位置已有课程覆盖更新，新课表里已无课的格子清空。
+     * 只有显式传 updateSupport=false 才退回旧行为（跳过已存在的格子、且不做清空）。
      * dateRanges 形如 [{ termName: "寒假", startDate: "2027-01-20", endDate: "2027-02-05" }, ...]
      */
     @PreAuthorize("@ss.hasPermi('system:courseschedule:add') or @ss.hasRole('admin')")
@@ -369,7 +423,8 @@ public class EduTimetableController extends BaseController
     {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> rows = (List<Map<String, Object>>) body.get("rows");
-        boolean updateSupport = Boolean.TRUE.equals(body.get("updateSupport"));
+        Object us = body.get("updateSupport");
+        boolean updateSupport = us == null || !"false".equalsIgnoreCase(String.valueOf(us).trim());
         Map<String, LocalDate[]> ranges = parseDateRanges(body.get("dateRanges"), body.get("startDate"), body.get("endDate"));
         return success(timetableImportService.confirm(rows, updateSupport, SecurityUtils.getUsername(), ranges));
     }
@@ -687,6 +742,8 @@ public class EduTimetableController extends BaseController
             throw new ServiceException("教师仅能为自己排课");
         }
         input.setTeacherId(SecurityUtils.getUserId());
-        input.setTeacherName(SecurityUtils.getLoginUser().getUser().getNickName());
+        // teacher_name 统一写真名，与 bindTeacher 口径一致（不要写昵称，昵称只用于显示层兜底）
+        SysUser self = SecurityUtils.getLoginUser().getUser();
+        input.setTeacherName(StringUtils.isNotEmpty(self.getUserName()) ? self.getUserName() : self.getNickName());
     }
 }

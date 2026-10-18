@@ -100,7 +100,7 @@ public class TuitionService {
                 "studentName",
                 "e.student_name",
                 "parentName",
-                "u.nick_name",
+                FinanceRules.parentSearchSql("u"),
                 "campusName",
                 "c.campus_name",
                 "courseClassName",
@@ -267,7 +267,9 @@ public class TuitionService {
           + " edu_course_schedule s ON s.schedule_id=e.schedule_id LEFT JOIN edu_classroom c ON"
           + " c.classroom_id=s.classroom_id";
   private static final String BILL_SELECT =
-      "SELECT e.*,u.nick_name parent_name,COALESCE(e.fee_title_snapshot,s.course_class_name)"
+      "SELECT e.*,"
+          + FinanceRules.parentNameSql("u")
+          + " parent_name,COALESCE(e.fee_title_snapshot,s.course_class_name)"
           + " course_class_name,COALESCE(e.campus_name_snapshot,c.campus_name) campus_name,(SELECT"
           + " COALESCE(SUM(p.amount),0) FROM edu_tuition_payment p WHERE"
           + " p.enrollment_id=e.enrollment_id AND p.payment_status='SUCCESS')"
@@ -382,7 +384,7 @@ public class TuitionService {
                 "enrollmentCode",
                 "e.enrollment_code",
                 "parentName",
-                "u.nick_name",
+                FinanceRules.parentSearchSql("u"),
                 "courseClassName",
                 "s.course_class_name",
                 "campusName",
@@ -679,8 +681,12 @@ public class TuitionService {
               if (payer.isBlank())
                 payer =
                     str(
-                        db.one("SELECT nick_name FROM sys_user WHERE user_id=?", e.get("parentId")),
-                        "nickName");
+                        db.one(
+                            "SELECT "
+                                + FinanceRules.parentNameSql("u")
+                                + " parent_name FROM sys_user u WHERE u.user_id=?",
+                            e.get("parentId")),
+                        "parentName");
               require(!payer.isBlank() && payer.length() <= 64, "付款人名称无效");
               String provider = str(b, "providerTradeNo");
               require(provider.length() <= 64, "流水号过长");
@@ -1810,9 +1816,11 @@ public class TuitionService {
                             "payer_name",
                             str(
                                 db.one(
-                                    "SELECT nick_name FROM sys_user WHERE user_id=?",
+                                    "SELECT "
+                                        + FinanceRules.parentNameSql("u")
+                                        + " parent_name FROM sys_user u WHERE u.user_id=?",
                                     e.get("parentId")),
-                                "nickName"),
+                                "parentName"),
                             "evidence_key",
                             proof,
                             "bill_snapshot",

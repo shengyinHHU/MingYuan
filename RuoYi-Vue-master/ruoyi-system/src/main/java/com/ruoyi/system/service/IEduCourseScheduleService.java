@@ -68,6 +68,18 @@ public interface IEduCourseScheduleService
     public int deleteEduCourseScheduleByScheduleId(Long scheduleId);
 
     /**
+     * 该排课是否「无任何关联」——没有有效报名，也没有签到、考勤、调课、作业等任何带 schedule_id 的引用，
+     * 因而可以安全删除。
+     * <p>
+     * 供课表导入清理「新课表里已经没有了」的历史格子使用：先问一次能不能删，
+     * 能删的才批量删，避免删到一半因报名保护抛异常导致整次导入回滚。
+     *
+     * @param scheduleId 课程排课主键
+     * @return true 表示可以安全删除
+     */
+    public boolean isDeletable(Long scheduleId);
+
+    /**
      * 可视化课表：网格查询
      */
     public List<EduCourseSchedule> selectTimetableGrid(EduCourseSchedule eduCourseSchedule);
