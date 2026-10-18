@@ -441,7 +441,7 @@ public class TimetableImportService
             if (created != null)
             {
                 r.put("teacherId", created.getUserId());
-                r.put("teacherName", created.getNickName());
+                r.put("teacherName", displayName(created));
             }
         }
 
@@ -703,45 +703,77 @@ public class TimetableImportService
         out.put("skipMsgs", skipMsgs);
         out.put("sync", syncStat);
 
-        // 覆盖导入时，检查同一工作表里「本次文件已不再包含」的历史格子：
-        // 旧版导入若把某格映射到过别的教室/时段，重导入时旧行匹配不上新键就会留在库里，
-        // 表现为「文件里明明是空的、课表上却有一节课」的幽灵课程。
-        // 这里只统计并回报，不自动删除，避免误删人工维护的数据。
-        int stale = 0;
+        // 覆盖导入时，以「本次文件」为准清理历史格子：
+        //   同一工作表内，凡是本次文件已经不再包含的格子（学期+期次+时段+教室 四个键都没命中），
+        //   就说明新课表把这些位置改成了「空课」—— 库里原有的旧行必须删掉，
+        //   否则会留下「文件里明明是空的、课表上却有一节课」的幽灵课程
+        //   （典型场景：改过教室映射/期次，或某节课被从课表上撤掉后重新导入）。
+        // 两条安全边界：
+        //   ① 只在该工作表「本次确实覆盖到的 学期+期次」范围内清理，本次没导到的期次一律不动；
+        //   ② 只删「无任何关联」的行（无有效报名、无签到/考勤/调课/作业），
+        //      有引用的保留原样并回报，交人工处理 —— 不会因为删不动而让整次导入回滚。
+        int stale = 0, cleared = 0;
         List<String> staleMsgs = new ArrayList<>();
+        List<String> keptMsgs = new ArrayList<>();
         if (updateSupport)
         {
-            Map<String, Set<String>> importedBySheet = new LinkedHashMap<>();
+            // 按工作表收集：本次文件覆盖到的「学期|期次」，以及文件里实际有课的格子键
+            Map<String, Set<String>> importedTerms = new LinkedHashMap<>();
+            Map<String, Set<String>> importedCells = new LinkedHashMap<>();
             Set<String> skipSheets = new HashSet<>();
             for (Map<String, Object> r : rows)
             {
                 String sh = str(r.get("sheetName"));
                 if (StringUtils.isEmpty(sh)) continue;
-                String sc = str(r.get("sourceCol"));
-                if (StringUtils.isEmpty(sc)) { skipSheets.add(sh); continue; }
-                importedBySheet.computeIfAbsent(sh, k -> new HashSet<>())
-                        .add(toLong(r.get("sourceRow")) + "#" + sc);
+                String term = str(r.get("termName")), period = str(r.get("periodName"));
+                if (StringUtils.isEmpty(term) || StringUtils.isEmpty(period)) { skipSheets.add(sh); continue; }
+                importedTerms.computeIfAbsent(sh, k -> new HashSet<>()).add(term + "|" + period);
+                importedCells.computeIfAbsent(sh, k -> new HashSet<>())
+                        .add(cellKey(term, period, str(r.get("timeSlot")), toLong(r.get("classroomId"))));
             }
             Long year = toLong(rows.get(0).get("courseYear"));
-            for (Map.Entry<String, Set<String>> en : importedBySheet.entrySet())
+            if (year == null) year = (long) Calendar.getInstance().get(Calendar.YEAR);
+            List<Long> removable = new ArrayList<>();
+            for (Map.Entry<String, Set<String>> en : importedTerms.entrySet())
             {
-                if (skipSheets.contains(en.getKey())) continue;
+                String sheet = en.getKey();
+                if (skipSheets.contains(sheet)) continue;
                 EduCourseSchedule q = new EduCourseSchedule();
                 q.setCourseYear(year);
-                q.setSourceSheet(en.getKey());
+                q.setSourceSheet(sheet);
                 for (EduCourseSchedule e : scheduleService.selectEduCourseScheduleList(q))
                 {
-                    if (StringUtils.isEmpty(e.getSourceCol()) || e.getSourceRow() == null) continue;
-                    if (en.getValue().contains(e.getSourceRow() + "#" + e.getSourceCol())) continue;
+                    String t = str(e.getTermName()), p = str(e.getPeriodName());
+                    // ① 该「学期/期次」本次文件没覆盖到 —— 可能只导了别的期次，不动它
+                    if (!en.getValue().contains(t + "|" + p)) continue;
+                    // ② 文件里这一格有课 —— 上面已按覆盖更新处理，不能删
+                    if (importedCells.get(sheet).contains(cellKey(t, p, str(e.getTimeSlot()), e.getClassroomId()))) continue;
                     stale++;
-                    if (staleMsgs.size() < 10)
-                        staleMsgs.add(String.format("%s 第%s行 %s 列（%s %s %s）", en.getKey(), e.getSourceRow(),
-                                e.getSourceCol(), e.getTermName(), e.getPeriodName(), e.getSubjectName()));
+                    String desc = String.format("%s：%s/%s %s %s —— %s（%s）", sheet, t, p, str(e.getTimeSlot()),
+                            StringUtils.isNotEmpty(e.getSourceCol()) ? e.getSourceCol() + " 列" : "教室#" + e.getClassroomId(),
+                            e.getCourseClassName(), e.getTeacherName());
+                    if (scheduleService.isDeletable(e.getScheduleId()))
+                    {
+                        removable.add(e.getScheduleId());
+                        cleared++;
+                        if (staleMsgs.size() < 10) staleMsgs.add(desc);
+                    }
+                    else if (keptMsgs.size() < 10)
+                    {
+                        keptMsgs.add(desc);
+                    }
                 }
+            }
+            if (!removable.isEmpty())
+            {
+                scheduleService.deleteEduCourseScheduleByScheduleIds(removable.toArray(new Long[0]));
             }
         }
         out.put("stale", stale);
+        out.put("cleared", cleared);
+        out.put("keptStale", stale - cleared);
         out.put("staleMsgs", staleMsgs);
+        out.put("keptMsgs", keptMsgs);
         // 导入数据涉及的「学期/期次」范围，供前端导入后自动切换到对应视图（避免"导入后页面没变化"）
         List<Map<String, Object>> scope = new ArrayList<>();
         Set<String> scopeSeen = new HashSet<>();
@@ -979,7 +1011,7 @@ public class TimetableImportService
         SysUser t = matchTeacher(teacherName, teacherByName);
         if (t != null)
         {
-            item.put("teacherName", t.getNickName());
+            item.put("teacherName", displayName(t));
             item.put("teacherId", t.getUserId());
             item.put("teacherGuess", null);
         }
@@ -1103,7 +1135,7 @@ public class TimetableImportService
             SysUser t = matchTeacher(teacherName, teacherByName);
             if (t != null)
             {
-                item.put("teacherName", t.getNickName());
+                item.put("teacherName", displayName(t));
                 item.put("teacherId", t.getUserId());
                 item.put("teacherGuess", null);
             }
@@ -1232,7 +1264,7 @@ public class TimetableImportService
         String teacher = null; Long teacherId = null; String teacherGuess = null;
         if (matched != null)
         {
-            teacher = matched.getNickName();
+            teacher = displayName(matched);
             teacherId = matched.getUserId();
         }
         else
@@ -1267,15 +1299,56 @@ public class TimetableImportService
                 .map(SysRole::getRoleId).findFirst().orElse(null);
         if (teacherRoleId == null) return map;
         SysUser q = new SysUser(); q.setRoleId(teacherRoleId);
-        // 长名优先排序，避免短名抢先匹配
-        userService.selectAllocatedList(q).stream()
+        // 长名优先排序，避免短名抢先匹配（按真名/昵称里较长的那个算长度）
+        List<SysUser> users = userService.selectAllocatedList(q).stream()
                 .filter(u -> "0".equals(u.getStatus()))
-                .sorted(Comparator.comparingInt((SysUser u) -> StringUtils.length(u.getNickName())).reversed())
-                .forEach(u -> {
-                    if (StringUtils.isNotEmpty(u.getNickName())) map.putIfAbsent(u.getNickName(), u);
-                    if (StringUtils.isNotEmpty(u.getUserName())) map.putIfAbsent(u.getUserName(), u);
-                });
+                .sorted(Comparator.comparingInt((SysUser u) ->
+                        Math.max(StringUtils.length(u.getUserName()), StringUtils.length(u.getNickName()))).reversed())
+                .collect(Collectors.toList());
+        // 真名优先：先把全部 user_name 占位，再用 nick_name 补空缺。
+        // 课表里写「张晨涵」或旧课表的「张老师」都能认到同一账号，且真名不会被昵称覆盖。
+        for (SysUser u : users) if (StringUtils.isNotEmpty(u.getUserName())) map.putIfAbsent(u.getUserName(), u);
+        for (SysUser u : users) if (StringUtils.isNotEmpty(u.getNickName())) map.putIfAbsent(u.getNickName(), u);
+        // 异体字别名：账号里可能用了生僻异体字，而课表 Excel 写的是常用字。
+        // 典型：账号「陈贇」(U+8D07) vs 课表「陈赟」(U+8D5F) —— 不归一化会整批「未识别教师」。
+        // 只做「异体 → 常用」单向注册，不覆盖已有 key（真人同名以真名为准）。
+        for (SysUser u : users)
+        {
+            for (String name : new String[] { u.getUserName(), u.getNickName() })
+            {
+                if (StringUtils.isEmpty(name)) continue;
+                String variant = variantAlias(name);
+                if (variant != null && !variant.equals(name)) map.putIfAbsent(variant, u);
+            }
+        }
         return map;
+    }
+
+    /**
+     * 中文异体字 → 常用字。返回 null 表示不含需要归一的字。
+     * <p>只登记「已经实际踩到」的异体字，不做猜测性扩散：误映射会把课挂到错误教师名下。
+     */
+    private static String variantAlias(String name)
+    {
+        String out = name;
+        for (Map.Entry<Character, Character> e : CN_VARIANT_TO_COMMON.entrySet())
+        {
+            if (out.indexOf(e.getKey()) >= 0) out = out.replace(e.getKey(), e.getValue());
+        }
+        return out.equals(name) ? null : out;
+    }
+
+    /** 异体字 → 常用字（单向）。新增前必须有真实数据佐证。 */
+    private static final Map<Character, Character> CN_VARIANT_TO_COMMON = Map.of(
+            '\u8D07', '\u8D5F'   // 贇(U+8D07) → 赟(U+8D5F)，例：陈贇 / 陈赟
+    );
+
+    /** 教师展示名：真名(user_name) 优先，空则退回昵称。写入 teacher_name 一律走这里。 */
+    private static String displayName(SysUser u)
+    {
+        if (u == null) return null;
+        String real = StringUtils.trimToNull(u.getUserName());
+        return real != null ? real : StringUtils.trimToNull(u.getNickName());
     }
 
     private List<String> dictLabels(String dictType)
@@ -1389,6 +1462,17 @@ public class TimetableImportService
     }
 
     private String str(Object o) { return o == null ? null : StringUtils.trimToNull(String.valueOf(o)); }
+
+    /**
+     * 课表格子键：`学期|期次|时段|教室`。
+     * 用来回答「新课表里这一格到底有没有课」—— 库里同键的行就是这一格上的课。
+     * 教室为空（未匹配到教室）时用空串占位，保证「同一格」能稳定比较。
+     */
+    private String cellKey(String term, String period, String slot, Long classroomId)
+    {
+        return StringUtils.trimToEmpty(term) + "|" + StringUtils.trimToEmpty(period) + "|"
+                + StringUtils.trimToEmpty(slot) + "|" + (classroomId == null ? "" : classroomId);
+    }
 
     private Long toLong(Object o)
     {
