@@ -56,8 +56,11 @@ public class MiniAppAdminSignController extends BaseController
     @PostMapping("/review")
     public AjaxResult review(@RequestBody MiniAppSignReviewBody body)
     {
-        Map<String, Object> result = signInService.review(body, SecurityUtils.getUserId(),
-                SecurityUtils.getLoginUser().getUser().getNickName());
+        com.ruoyi.common.core.domain.entity.SysUser reviewer = SecurityUtils.getLoginUser().getUser();
+        // 复核人姓名统一记真名（user_name），空则退回昵称
+        String reviewerName = com.ruoyi.common.utils.StringUtils.isNotEmpty(reviewer.getUserName())
+                ? reviewer.getUserName() : reviewer.getNickName();
+        Map<String, Object> result = signInService.review(body, SecurityUtils.getUserId(), reviewerName);
         AjaxResult ajax = AjaxResult.success();
         ajax.putAll(result);
         return ajax;

@@ -133,8 +133,7 @@ public class MiniAppTeacherCheckInController extends BaseController
         record.setClassDate(java.sql.Date.valueOf(LocalDate.now()));
         record.setCheckType(type);
         record.setTeacherId(teacherId);
-        record.setTeacherName(StringUtils.isNotEmpty(SecurityUtils.getLoginUser().getUser().getNickName())
-                ? SecurityUtils.getLoginUser().getUser().getNickName() : SecurityUtils.getUsername());
+        record.setTeacherName(realNameOf(SecurityUtils.getLoginUser().getUser()));
         record.setCampusName(matched.getCampusName());
         record.setSsid(ssid);
         record.setBssid(StringUtils.isEmpty(bssid) ? null : bssid);
@@ -159,7 +158,7 @@ public class MiniAppTeacherCheckInController extends BaseController
             Long teacherId = toLong(teacher.get("teacherId"));
             Map<String, Object> row = new HashMap<>();
             row.put("teacherId", teacherId);
-            row.put("teacherName", teacher.get("teacherName"));
+            row.put("teacherName", displayNameOf(teacher));
             row.put("inId", null);
             row.put("outId", null);
             row.put("inTime", null);
@@ -266,7 +265,7 @@ public class MiniAppTeacherCheckInController extends BaseController
             Long teacherId = toLong(teacher.get("teacherId"));
             Map<String, Object> row = new HashMap<>();
             row.put("teacherId", teacherId);
-            row.put("teacherName", teacher.get("teacherName"));
+            row.put("teacherName", displayNameOf(teacher));
             row.put("inCount", 0);
             row.put("outCount", 0);
             row.put("days", new java.util.HashSet<String>());
@@ -464,7 +463,7 @@ public class MiniAppTeacherCheckInController extends BaseController
         record.setClassDate(java.sql.Date.valueOf(LocalDate.parse(classDate)));
         record.setCheckType(type);
         record.setTeacherId(teacherId);
-        record.setTeacherName(StringUtils.isNotEmpty(teacher.getNickName()) ? teacher.getNickName() : teacher.getUserName());
+        record.setTeacherName(realNameOf(teacher));
         record.setCampusName(StringUtils.isEmpty(campusName) ? null : campusName);
         record.setCheckInTime(parseTimestamp(toText(body.get("checkInTime"))));
         String remark = toText(body.get("remark"));
@@ -527,5 +526,28 @@ public class MiniAppTeacherCheckInController extends BaseController
     private String toText(Object value)
     {
         return value == null ? null : String.valueOf(value).trim();
+    }
+
+    /**
+     * 教师展示名：真名(user_name) 优先，空则退回昵称。
+     * teacher_name 只是冗余展示字段，归属判定一律用 teacher_id。
+     */
+    private static String realNameOf(com.ruoyi.common.core.domain.entity.SysUser user)
+    {
+        if (user == null) return "";
+        String real = StringUtils.trimToEmpty(user.getUserName());
+        return real.isEmpty() ? StringUtils.trimToEmpty(user.getNickName()) : real;
+    }
+
+    /**
+     * 同上，但入参是 selectTeacherUsers() 返回的行：
+     * 该查询同时给了 teacherName(昵称) 与 realName(真名)，展示一律取真名。
+     */
+    private static Object displayNameOf(Map<String, Object> row)
+    {
+        if (row == null) return "";
+        Object real = row.get("realName");
+        if (real != null && !String.valueOf(real).isBlank() && !"null".equals(String.valueOf(real))) return real;
+        return row.get("teacherName");
     }
 }

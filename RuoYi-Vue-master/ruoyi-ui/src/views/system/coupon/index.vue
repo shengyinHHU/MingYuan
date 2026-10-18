@@ -390,7 +390,10 @@
           />
           <el-table-column label="家长手机号" prop="parentPhone" />
 
-          <el-table-column label="姓名" prop="nickName" />
+          <!-- 姓名：后端 parent_name 已按「真名优先、非中文名退回中文昵称」取值。
+               不要再改回 nickName —— 家长账号的 nick_name 是报名表里的微信昵称，
+               有的就是经办老师的名字（如「王文晶」「课程顾问周老师」），显示出来会认错人。 -->
+          <el-table-column label="姓名" prop="parentName" />
           <el-table-column label="命中孩子／报名年级／学科" min-width="240">
             <template slot-scope="s">
               <div v-for="child in s.row.matchedChildren || []" :key="child.enrollmentId">
@@ -785,7 +788,8 @@ export default {
         this.parents = (r.rows || []).map((p) => ({
           ...p,
           userId: String(p.userId || p.parentId),
-          nickName: p.nickName || p.parentName,
+          // parentName 已是后端算好的展示名（真名优先），nickName 只作兜底，顺序不能反
+          nickName: p.parentName || p.nickName,
         }))
         this.parents.forEach(p=>{this.$set?this.$set(this.parentPeople,this.parentRowKey(p),p):this.parentPeople[this.parentRowKey(p)]=p})
         this.parentTotal = r.total || 0

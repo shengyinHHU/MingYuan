@@ -172,7 +172,11 @@ public class EduTeacherSalaryRecordServiceImpl implements IEduTeacherSalaryRecor
         Map<Long, String> teacherNames = new HashMap<>();
         for (Map<String, Object> u : teacherUsers)
         {
-            teacherNames.put(toLong(u.get("teacherId")), String.valueOf(u.get("teacherName")));
+            // 优先真名(realName)，老接口没返回时退回 teacherName；teacher_name 冗余字段统一存真名
+            Object real = u.get("realName");
+            String name = real == null || String.valueOf(real).isBlank() || "null".equals(String.valueOf(real))
+                    ? String.valueOf(u.get("teacherName")) : String.valueOf(real);
+            teacherNames.put(toLong(u.get("teacherId")), name);
         }
         // 薪资标准
         Map<Long, EduTeacherSalaryConfig> configMap = new HashMap<>();

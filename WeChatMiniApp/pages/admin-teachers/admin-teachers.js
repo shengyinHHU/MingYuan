@@ -2,6 +2,16 @@ const { request } = require('../../utils/request')
 
 function num(v) { const n = Number(v); return Number.isFinite(n) ? n : 0 }
 
+// 真名优先；但真名是纯英文账号名（如 teacher_demo）、昵称是中文时，用昵称更可读
+function pickRealName(nick, real) {
+  const n = (nick || '').trim()
+  const r = (real || '').trim()
+  if (!r) return n
+  if (!n) return r
+  if (/^[\x00-\x7F]+$/.test(r) && /[\u4e00-\u9fa5]/.test(n)) return n
+  return r
+}
+
 Page({
   data: {
     loading: false,
@@ -26,7 +36,8 @@ Page({
 
   applyFilter() {
     const kw = (this.data.keyword || '').trim()
-    const list = kw ? this._all.filter((t) => (t.teacherName || '').indexOf(kw) >= 0) : this._all
+    const list = kw ? this._all.filter((t) => [t.teacherName, t.nickName, t.subjectText, t.teacherSubject]
+      .some((v) => (v || '').indexOf(kw) >= 0)) : this._all
     this.setData({ list, showEmpty: list.length === 0 })
   },
 
@@ -45,25 +56,33 @@ Page({
       const rows = scheduleRes.rows || []
       const statByTeacher = {}
       rows.forEach((s) => {
-        const name = s.teacherName
-        if (!name) return
-        const st = statByTeacher[name] || (statByTeacher[name] = { count: 0, subjects: {}, modes: {} })
+        // 按 teacherId 归集：teacher_name 已统一存真名，用名字匹配在改名后会失配
+        const key = s.teacherId != null ? String(s.teacherId) : ''
+        if (!key) return
+        const st = statByTeacher[key] || (statByTeacher[key] = { count: 0, subjects: {}, modes: {} })
         st.count += 1
         if (s.subjectName) st.subjects[s.subjectName] = 1
         if (s.classMode) st.modes[s.classMode] = 1
       })
       const all = roster.map((t) => {
         const cfg = cfgByTeacher[t.teacherId] || null
-        const st = statByTeacher[t.teacherName] || { count: 0, subjects: {}, modes: {} }
+        // 排课统计按 teacherId 归集（teacher_name 只作展示，不参与匹配）
+        const st = statByTeacher[String(t.teacherId)] || { count: 0, subjects: {}, modes: {} }
         const subjects = Object.keys(st.subjects)
+        const nickName = t.teacherName || ''
+        const realName = pickRealName(nickName, t.realName)
         return {
           teacherId: t.teacherId,
-          teacherName: t.teacherName,
+          // 对外统一用真名（sys_user.user_name），昵称单独保留
+          teacherName: realName,
+          nickName,
+          showNick: !!nickName && nickName !== realName,
+          teacherSubject: t.teacherSubject || '',
           configId: cfg ? cfg.configId : null,
           baseSalary: cfg ? num(cfg.baseSalary) : null,
           hasConfig: !!cfg,
           lessonCount: st.count,
-          subjectText: subjects.length ? subjects.join('、') : '—'
+          subjectText: subjects.length ? subjects.join('、') : (t.teacherSubject || '—')
         }
       }).sort((a, b) => b.lessonCount - a.lessonCount)
       this._all = all
@@ -107,6 +126,8 @@ Page({
         configId: base.configId,
         teacherId: base.teacherId,
         teacherName: base.teacherName,
+        // 落库统一用真名，与排课/签到的 teacher_name 口径一致
+        saveName: base.teacherName,
         baseSalary: cfg ? cfg.baseSalary : '',
         ratePrimaryClass: cfg ? cfg.ratePrimaryClass : '',
         rateJhClass: cfg ? cfg.rateJhClass : '',
@@ -126,7 +147,7 @@ Page({
     if (!f) return
     const payload = {
       teacherId: f.teacherId,
-      teacherName: f.teacherName,
+      teacherName: f.saveName || f.teacherName,
       status: '0'
     }
     const map = { baseSalary: 'baseSalary', ratePrimaryClass: 'ratePrimaryClass', rateJhClass: 'rateJhClass', ratePrimary1on1: 'ratePrimary1on1', rateJunior1on1: 'rateJunior1on1', rateSenior1on1: 'rateSenior1on1', classHoursPerSession: 'classHoursPerSession' }

@@ -63,7 +63,7 @@
           <el-form-item label="教师" prop="teacherId">
             <el-select v-model="form.teacherId" placeholder="请选择教师" style="width:100%" filterable
                        :disabled="!dims.isAdmin && dims.isTeacher">
-              <el-option v-for="t in dims.teachers" :key="t.userId" :label="`${t.nickName}（${t.userName}）`" :value="t.userId" />
+              <el-option v-for="t in dims.teachers" :key="t.userId" :label="teacherLabel(t)" :value="t.userId" />
             </el-select>
             <div v-if="!dims.isAdmin && dims.isTeacher" style="font-size:12px;color:#909399;line-height:1.4;margin-top:2px;">
               教师身份仅能为自己排课
@@ -196,6 +196,14 @@ export default {
     }
   },
   methods: {
+    // 教师下拉标签：真名优先；真名与昵称不同时把昵称作为别名附在后面
+    teacherLabel(t) {
+      const real = t.realName || t.userName || ''
+      const nick = t.nickName || ''
+      if (!real) return nick
+      if (!nick || nick === real) return real
+      return `${real}（${nick}）`
+    },
     buildEmptyForm() {
       return {
         mode: 'add',

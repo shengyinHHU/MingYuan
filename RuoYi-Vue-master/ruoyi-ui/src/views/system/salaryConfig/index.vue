@@ -60,7 +60,7 @@
         <el-form-item label="教师" prop="teacherId">
           <el-select v-model="form.teacherId" placeholder="请选择教师" style="width: 100%" :disabled="form.configId != null"
             @change="onTeacherChange">
-            <el-option v-for="t in teacherOptions" :key="t.teacherId" :label="t.teacherName" :value="t.teacherId" />
+            <el-option v-for="t in teacherOptions" :key="t.teacherId" :label="t.realName || t.teacherName" :value="t.teacherId" />
           </el-select>
         </el-form-item>
         <el-form-item label="底薪（元/月）" prop="baseSalary">
@@ -148,7 +148,8 @@ export default {
     },
     onTeacherChange(val) {
       const t = this.teacherOptions.find(x => x.teacherId === val)
-      if (t) this.form.teacherName = t.teacherName
+      // teacher_name 冗余字段统一存真名（realName），与排课/签到口径一致
+      if (t) this.form.teacherName = t.realName || t.teacherName
     },
     reset() {
       this.form = {

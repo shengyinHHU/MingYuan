@@ -352,7 +352,8 @@ public class CouponService {
 
   static final String COUPONS =
       "SELECT"
-          + " c.*,t.coupon_name,t.description,t.discount_amount,t.min_spend_amount,t.scope_schedule_id,t.subject_names,u.phonenumber parent_phone,u.nick_name"
+          + " c.*,t.coupon_name,t.description,t.discount_amount,t.min_spend_amount,t.scope_schedule_id,t.subject_names,u.phonenumber parent_phone,"
+          + FinanceRules.parentNameSql("u")
           + " parent_name,CASE WHEN c.coupon_status='AVAILABLE' AND c.valid_until<=NOW(3) THEN"
           + " 'EXPIRED' WHEN c.coupon_status='AVAILABLE' AND c.valid_from>NOW(3) THEN 'NOT_STARTED'"
           + " ELSE c.coupon_status END display_status FROM edu_user_coupon c JOIN"
@@ -415,7 +416,7 @@ public class CouponService {
     }
     if(!str(q,"couponName").isBlank()){where+=" AND t.coupon_name LIKE ?";a.add("%"+str(q,"couponName")+"%");}
     if (!str(q, "parentName").isBlank()) {
-      where += " AND u.nick_name LIKE ?";
+      where += " AND " + FinanceRules.parentSearchSql("u") + " LIKE ?";
       a.add("%" + q.get("parentName") + "%");
     }
     var result=page(
@@ -483,7 +484,9 @@ public class CouponService {
     var result =
         page(
             db,
-            "SELECT u.user_id parent_id,u.nick_name parent_name,u.user_name,u.phonenumber parent_phone FROM sys_user u"
+            "SELECT u.user_id parent_id,"
+                + FinanceRules.parentNameSql("u")
+                + " parent_name,u.user_name,u.phonenumber parent_phone FROM sys_user u"
                 + where
                 + " ORDER BY u.user_id",
             "SELECT COUNT(*) FROM sys_user u" + where,
