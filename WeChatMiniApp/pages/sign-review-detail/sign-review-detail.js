@@ -1,153 +1,53 @@
-const { request } = require('../../utils/request')
-const app = getApp()
-
-const STATUS_LABELS = { '1': '到课', '2': '录播', '3': '请假', '4': '试听到课', '5': '调课到课' }
-const SOURCE_LABELS = { '1': '报名', '2': '试听', '3': '调课' }
-
-function imgUrl(path) {
-  if (!path) return ''
-  return path.startsWith('http') ? path : `${app.globalData.baseUrl}${path}`
-}
-
+const { request }=require('../../utils/request')
+const reviewState=require('../../utils/sign-review')
+const app=getApp()
+const statuses={'1':'到课','2':'录播','3':'请假','4':'试听到课','5':'调课到课'}
+const actionLabels={SUBMIT:'教师提交',RETURN:'退回更正',APPROVE:'确认复核'}
 Page({
-  data: {
-    scheduleId: null,
-    classDate: '',
-    course: '',
-    rows: [],
-    review: null,
-    loading: false,
-    uploading: false,
-    submitting: false,
-    pendingImages: []
+  data:{baseUrl:app.globalData.baseUrl,scheduleId:null,classDate:'',course:'',room:'',rows:[],review:{},loading:false,ready:false,error:'',uploading:false,submitting:false,pendingImages:[],history:[],historyOpen:false},
+  onLoad(q){this._token=wx.getStorageSync('token');this.setData({scheduleId:q.scheduleId,classDate:q.classDate||'',course:decodeURIComponent(q.course||''),room:decodeURIComponent(q.room||'')})},
+  onShow(){if(this._token!==wx.getStorageSync('token')){this._token=wx.getStorageSync('token');this.setData({rows:[],review:{},pendingImages:[],history:[],ready:false,submitting:false,uploading:false})}this.loadDetail()},
+  onHide(){this._version=(this._version||0)+1;this.setData({ready:false,loading:false})},
+  onUnload(){this._unloaded=true;this._version=(this._version||0)+1},
+  current(token=this._token){return !this._unloaded&&reviewState.isAdmin()&&wx.getStorageSync('token')===token&&token===this._token},
+  async loadDetail(){
+    if(!this.current()){this.setData({error:'请以管理员身份查看',ready:false,rows:[],history:[],review:{},pendingImages:[]});return}
+    const token=this._token,version=this._version=(this._version||0)+1
+    this.setData({loading:true,ready:false,error:''})
+    try{
+      const res=await request({url:'/miniapp/admin/sign/detail',data:{scheduleId:this.data.scheduleId,classDate:this.data.classDate}})
+      if(!this.current(token)||version!==this._version)return
+      const data=res.data||{},review=data.review||{},rows=(data.details||[]).map(r=>({...r,statusText:statuses[r.signStatus]||'未登记',sourceText:({'1':'报名','2':'试听','3':'调课'})[r.sourceType]||'报名'}))
+      const history=(review.history||[]).slice().reverse().map(e=>({...e,label:actionLabels[e.action]||e.action,before:(e.before||[]).map(r=>({...r,statusText:statuses[r.signStatus]})),after:(e.after||[]).map(r=>({...r,statusText:statuses[r.signStatus]}))}))
+      const images=[...new Set([...(review.review1Images||'').split(','),...(review.review2Images||'').split(','),...(review.history||[]).flatMap(e=>e.images||[])].filter(Boolean))].map(p=>p.startsWith('http')?p:app.globalData.baseUrl+p)
+      this.setData({rows,review:{...review,images,statusText:reviewState.label(review)},history,ready:true})
+    }catch(e){if(this.current(token)&&version===this._version)this.setData({error:e.message||'加载失败，请重试'})}
+    finally{if(this.current(token)&&version===this._version)this.setData({loading:false})}
   },
-
-  onLoad(query) {
-    this.setData({
-      scheduleId: Number(query.scheduleId),
-      classDate: query.classDate || '',
-      course: decodeURIComponent(query.course || ''),
-      room: decodeURIComponent(query.room || '')
-    })
-    this.loadDetail()
+  toggleHistory(){this.setData({historyOpen:!this.data.historyOpen})},
+  chooseImages(){if(!this.current()||!this.data.ready||this.data.uploading||this.data.submitting||String(this.data.review.reviewStatus)!=='0')return;const token=this._token;wx.chooseMedia({count:Math.max(1,9-this.data.pendingImages.length),mediaType:['image'],success:r=>{if(this.current(token))this.uploadImages((r.tempFiles||[]).map(f=>f.tempFilePath),token)}})},
+  async uploadImages(files,token){
+    this.setData({uploading:true})
+    try{for(const file of files){if(!this.current(token))return;const saved=await new Promise((resolve,reject)=>wx.uploadFile({url:app.globalData.baseUrl+'/common/upload',filePath:file,name:'file',header:{Authorization:'Bearer '+token},success:r=>{try{const j=JSON.parse(r.data);if(j.code!==200||!j.fileName)throw Error(j.msg||'图片上传失败');resolve(j.fileName)}catch(e){reject(e)}},fail:reject}));if(this.current(token))this.setData({pendingImages:[...this.data.pendingImages,saved].slice(0,9)})}}
+    catch(e){if(this.current(token))wx.showToast({title:e.message||'图片上传失败',icon:'none'})}
+    finally{if(this.current(token))this.setData({uploading:false})}
   },
-
-  async loadDetail() {
-    const { scheduleId, classDate } = this.data
-    this.setData({ loading: true })
-    try {
-      const res = await request({
-        url: '/miniapp/admin/sign/detail',
-        data: { scheduleId, classDate }
-      })
-      const data = res.data || {}
-      const review = this.decorateReview(data.review || {})
-      const rows = (data.details || []).map((d) => ({
-        ...d,
-        sourceText: SOURCE_LABELS[d.sourceType] || '报名',
-        statusText: STATUS_LABELS[d.signStatus] || ''
-      }))
-      const course = rows.length
-        ? (rows[0].courseClassName || [rows[0].gradeName, rows[0].subjectName].filter(Boolean).join(''))
-        : ''
-      const room = rows.length
-        ? [rows[0].campusName, rows[0].classroomName].filter(Boolean).join(' · ')
-        : ''
-      this.setData({ review, rows, course, room })
-    } catch (error) {
-      wx.showToast({ title: error.message || '加载失败', icon: 'none' })
-    } finally {
-      this.setData({ loading: false })
-    }
-  },
-
-  decorateReview(review) {
-    return {
-      ...review,
-      review1Images: (review.review1Images || '').split(',').filter(Boolean).map(imgUrl),
-      review2Images: (review.review2Images || '').split(',').filter(Boolean).map(imgUrl)
-    }
-  },
-
-  chooseImages() {
-    wx.chooseMedia({
-      count: 9,
-      mediaType: ['image'],
-      success: (res) => {
-        const files = (res.tempFiles || []).map((f) => f.tempFilePath)
-        if (files.length) this.uploadImages(files)
-      }
-    })
-  },
-
-  uploadImages(files) {
-    this.setData({ uploading: true })
-    const token = wx.getStorageSync('token')
-    const baseUrl = app.globalData.baseUrl
-    const results = []
-    const uploadOne = (i) => {
-      if (i >= files.length) {
-        this.setData({
-          pendingImages: this.data.pendingImages.concat(results),
-          uploading: false
-        })
-        if (results.length) wx.showToast({ title: `已添加 ${results.length} 张图片`, icon: 'none' })
-        return
-      }
-      wx.uploadFile({
-        url: `${baseUrl}/common/upload`,
-        filePath: files[i],
-        name: 'file',
-        header: { Authorization: `Bearer ${token}` },
-        success: (res) => {
-          try {
-            const data = JSON.parse(res.data)
-            if (data.code === 200 && data.fileName) results.push(data.fileName)
-            else wx.showToast({ title: data.msg || '图片上传失败', icon: 'none' })
-          } catch (e) {
-            wx.showToast({ title: '上传响应解析失败', icon: 'none' })
-          }
-        },
-        fail: () => wx.showToast({ title: '图片上传失败', icon: 'none' }),
-        complete: () => uploadOne(i + 1)
-      })
-    }
-    uploadOne(0)
-  },
-
-  removePending(e) {
-    const { index } = e.currentTarget.dataset
-    const pendingImages = this.data.pendingImages.filter((_, i) => i !== index)
-    this.setData({ pendingImages })
-  },
-
-  previewImage(e) {
-    const { urls, current } = e.currentTarget.dataset
-    if (urls && urls.length) wx.previewImage({ urls, current })
-  },
-
-  async confirmReview() {
-    const { scheduleId, classDate, pendingImages, submitting } = this.data
-    if (submitting) return
-    this.setData({ submitting: true })
-    try {
-      const res = await request({
-        url: '/miniapp/admin/sign/review',
-        method: 'POST',
-        data: { scheduleId, classDate, images: pendingImages }
-      })
-      const confirmed = res.confirmedCount
-      const done = res.reviewStatus === '1'
-      wx.showToast({
-        title: done ? '复核完成（2/2）' : `确认成功（${confirmed}/2）`,
-        icon: 'success'
-      })
-      this.setData({ pendingImages: [] })
-      await this.loadDetail()
-    } catch (error) {
-      wx.showToast({ title: error.message || '确认失败', icon: 'none' })
-    } finally {
-      this.setData({ submitting: false })
-    }
+  removePending(e){if(this.current()&&!this.data.submitting)this.setData({pendingImages:this.data.pendingImages.filter((_,i)=>i!==Number(e.currentTarget.dataset.index))})},
+  previewImage(e){if(this.current())wx.previewImage({urls:e.currentTarget.dataset.urls,current:e.currentTarget.dataset.current})},
+  returnReview(){return this.decide('RETURN')},
+  confirmReview(){return this.decide('APPROVE')},
+  async decide(action){
+    if(!this.current()||!this.data.ready||this.data.loading||this.data.uploading||this.data.submitting||String(this.data.review.reviewStatus)!=='0')return
+    const token=this._token,version=this._version,reviewVersion=this.data.review.reviewVersion||0,images=this.data.pendingImages.slice()
+    this.setData({submitting:true})
+    try{
+      const result=await new Promise(resolve=>wx.showModal({title:action==='RETURN'?'退回教师更正':'确认学生出勤',content:action==='RETURN'?'':'确认名单及出勤结果无误？确认后将锁定本课次。',editable:action==='RETURN',placeholderText:'请填写更正原因',success:resolve,fail:()=>resolve({confirm:false})}))
+      if(!result.confirm||!this.current(token)||version!==this._version)return
+      const reason=(result.content||'').trim();if(action==='RETURN'&&!reason){wx.showToast({title:'请填写更正原因',icon:'none'});return}
+      await request({url:'/miniapp/admin/sign/review',method:'POST',data:{scheduleId:this.data.scheduleId,classDate:this.data.classDate,reviewVersion,action,reason:action==='RETURN'?reason:undefined,images}})
+      if(!this.current(token)||version!==this._version)return
+      this.setData({pendingImages:[]});wx.showToast({title:action==='RETURN'?'已退回教师更正':'已复核',icon:'success'});await this.loadDetail()
+    }catch(e){if(this.current(token))this.setData({error:e.message||'操作失败，请重新加载核对',ready:false})}
+    finally{if(this.current(token))this.setData({submitting:false})}
   }
 })

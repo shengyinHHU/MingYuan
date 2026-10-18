@@ -27,6 +27,22 @@ public class MiniAppAdminSignController extends BaseController
     @Autowired
     private IEduClassSignInService signInService;
 
+    @PreAuthorize("@ss.hasRole('admin')")
+    @GetMapping("/courses")
+    public AjaxResult courses(@RequestParam(defaultValue="") String keyword) { return success(signInService.attendanceCourses(keyword)); }
+
+    @PreAuthorize("@ss.hasRole('admin')")
+    @GetMapping("/overview")
+    public AjaxResult overview(@RequestParam Long scheduleId,@RequestParam(required=false) String from,@RequestParam(required=false) String to) {
+        return success(signInService.attendanceOverview(scheduleId,from,to));
+    }
+
+    @PreAuthorize("@ss.hasRole('admin')")
+    @GetMapping("/student-summary")
+    public AjaxResult student(@RequestParam Long scheduleId,@RequestParam String studentKey,@RequestParam(defaultValue="false") boolean allCourses,@RequestParam(required=false) String from,@RequestParam(required=false) String to,@RequestParam(defaultValue="1") int pageNum) {
+        return success(signInService.attendanceStudent(scheduleId,studentKey,allCourses,from,to,pageNum));
+    }
+
     /**
      * 签到列表（按课次聚合，可按日期过滤）
      */
@@ -50,7 +66,7 @@ public class MiniAppAdminSignController extends BaseController
     }
 
     /**
-     * 确认复核（一节课需2位管理员；同管理员幂等，仅更新图片）
+     * 单管理员确认或退回更正；已完成确认幂等，不改写原历史。
      */
     @PreAuthorize("@ss.hasRole('admin')")
     @PostMapping("/review")

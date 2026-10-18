@@ -1,84 +1,19 @@
 <view class="page">
-  <view class="header">
-    <view class="header-title">{{course || '课次复核'}}</view>
-    <view class="header-subtitle">{{classDate}}<text wx:if="{{room}}"> · {{room}}</text></view>
-  </view>
-
-  <view class="stats" wx:if="{{rows.length > 0}}">
-    <view class="stat main"><text class="num">{{review.actualCount}}</text><text class="label">实到</text></view>
-    <view class="stat"><text class="num">{{review.totalCount}}</text><text class="label">名单</text></view>
-    <view class="stat"><text class="num">{{review.confirmedCount}}</text><text class="label">已确认</text></view>
-  </view>
-
-  <view class="banner done" wx:if="{{review.reviewStatus === '1'}}">✓ 复核完成（2位管理员已确认）</view>
-  <view class="banner half" wx:elif="{{review.confirmedCount > 0}}">已确认 {{review.confirmedCount}}/2，还需 1 位管理员确认</view>
-
-  <view class="section-title">签到明细（{{rows.length}} 人）</view>
-  <view class="student-list">
-    <view class="student-row" wx:for="{{rows}}" wx:key="signInId">
-      <view class="student-name">
-        {{item.studentName}}
-        <text class="source {{item.sourceType === '1' ? '' : 'extra'}}">{{item.sourceText}}</text>
-      </view>
-      <view class="status {{item.signStatus === '3' || item.signStatus === '2' ? 'off' : 'on'}}">{{item.statusText}}</view>
-    </view>
-  </view>
-  <view class="empty" wx:if="{{!loading && rows.length === 0}}">该课次尚未签到</view>
-
-  <view class="section-title">复核记录</view>
-  <view class="review-list">
-    <view class="review-card">
-      <view class="review-head">
-        <text class="review-name">管理员1：{{review.review1AdminName || '待确认'}}</text>
-        <text class="review-time" wx:if="{{review.review1Time}}">{{review.review1Time}}</text>
-      </view>
-      <view class="img-grid" wx:if="{{review.review1Images.length > 0}}">
-        <image
-          wx:for="{{review.review1Images}}"
-          wx:key="*this"
-          class="img"
-          src="{{item}}"
-          mode="aspectFill"
-          data-urls="{{review.review1Images}}"
-          data-current="{{item}}"
-          bindtap="previewImage"
-        />
-      </view>
-    </view>
-    <view class="review-card">
-      <view class="review-head">
-        <text class="review-name">管理员2：{{review.review2AdminName || '待确认'}}</text>
-        <text class="review-time" wx:if="{{review.review2Time}}">{{review.review2Time}}</text>
-      </view>
-      <view class="img-grid" wx:if="{{review.review2Images.length > 0}}">
-        <image
-          wx:for="{{review.review2Images}}"
-          wx:key="*this"
-          class="img"
-          src="{{item}}"
-          mode="aspectFill"
-          data-urls="{{review.review2Images}}"
-          data-current="{{item}}"
-          bindtap="previewImage"
-        />
-      </view>
-    </view>
-  </view>
-
-  <view class="section-title" wx:if="{{pendingImages.length > 0}}">本次新增图片（{{pendingImages.length}}）</view>
-  <view class="img-grid pending" wx:if="{{pendingImages.length > 0}}">
-    <view class="img-wrap" wx:for="{{pendingImages}}" wx:key="*this">
-      <image class="img" src="{{item}}" mode="aspectFill" data-urls="{{pendingImages}}" data-current="{{item}}" bindtap="previewImage" />
-      <view class="img-remove" data-index="{{index}}" bindtap="removePending">×</view>
-    </view>
-  </view>
-
-  <view class="action-bar">
-    <view class="action upload {{uploading ? 'disabled' : ''}}" bindtap="chooseImages">
-      {{uploading ? '上传中...' : '上传课堂图片'}}
-    </view>
-    <view class="action confirm {{submitting ? 'disabled' : ''}}" bindtap="confirmReview">
-      {{submitting ? '提交中...' : (review.confirmedCount > 0 ? '补充确认' : '确认复核')}}
-    </view>
-  </view>
+  <view class="header"><view class="header-title">{{course || '学生出勤复核'}}</view><view class="header-subtitle">{{classDate}} · {{room}}</view></view>
+  <view wx:if="{{error}}" class="empty">{{error}}<button bindtap="loadDetail">重新加载</button></view>
+  <view wx:if="{{loading}}" class="empty">加载中…</view>
+  <block wx:if="{{ready}}">
+    <view class="stats"><view class="stat main"><text class="num">{{review.actualCount || 0}}</text><text class="label">到课</text></view><view class="stat"><text class="num">{{review.totalCount || 0}}</text><text class="label">名单人数</text></view><view class="stat"><text class="label">{{review.statusText}}</text></view></view>
+    <view class="banner half" wx:if="{{review.reviewStatus === '2'}}">{{review.reviewReason}} · 等待教师重新提交</view>
+    <view class="banner done" wx:if="{{review.reviewStatus === '1'}}">已复核，出勤记录已锁定</view>
+    <view class="section-title">学生出勤</view>
+    <view class="student-list"><view class="student-row" wx:for="{{rows}}" wx:key="signInId"><view class="student-name">{{item.studentName}}<text class="source">{{item.sourceText}}</text></view><view class="status {{item.signStatus === '3' || item.signStatus === '2' ? 'off' : 'on'}}">{{item.statusText}}</view></view></view>
+    <view class="section-title" wx:if="{{review.images.length}}">课堂图片</view>
+    <view class="img-grid"><image wx:for="{{review.images}}" wx:key="*this" class="img" src="{{item}}" mode="aspectFill" data-urls="{{review.images}}" data-current="{{item}}" bindtap="previewImage" /></view>
+    <view class="section-title" wx:if="{{history.length}}" bindtap="toggleHistory">操作记录（{{history.length}}） {{historyOpen ? '收起' : '展开'}}</view>
+    <view wx:if="{{historyOpen}}"><view class="review-card" wx:for="{{history}}" wx:key="version" wx:for-item="event"><view class="review-name">{{event.label}} · {{event.actorName}}</view><view class="review-time">{{event.time}}</view><view>{{event.reason || ''}}</view><block wx:if="{{event.action === 'SUBMIT'}}"><view class="review-time">修改前</view><view wx:for="{{event.before}}" wx:key="signInId" wx:for-item="student">{{student.studentName}} · {{student.statusText}}</view><view class="review-time">提交后</view><view wx:for="{{event.after}}" wx:key="signInId" wx:for-item="student">{{student.studentName}} · {{student.statusText}}</view></block></view></view>
+    <view class="img-grid pending"><view class="img-wrap" wx:for="{{pendingImages}}" wx:key="*this"><image class="img" src="{{baseUrl}}{{item}}" mode="aspectFill" /><view class="img-remove" data-index="{{index}}" bindtap="removePending">×</view></view></view>
+    <view class="section-title" wx:if="{{review.reviewStatus === '0'}}" bindtap="chooseImages">{{uploading ? '图片上传中…' : '＋ 添加课堂图片（选填）'}}</view>
+    <view class="action-bar" wx:if="{{review.reviewStatus === '0'}}"><button class="action upload" disabled="{{submitting || uploading}}" bindtap="returnReview">退回更正</button><button class="action confirm" disabled="{{submitting || uploading}}" bindtap="confirmReview">{{submitting ? '处理中…' : '确认复核'}}</button></view>
+  </block>
 </view>
