@@ -18,7 +18,7 @@ export function getDetail(scheduleId, classDate) {
   })
 }
 
-// 单管理员确认或退回；原调用签名保留，增加可选版本及操作。
+// 教务或管理员确认或标记异常；原调用签名保留，增加可选版本及操作。
 export function confirmReview(scheduleId, classDate, images, options = {}) {
   return request({
     url: '/miniapp/admin/sign/review',

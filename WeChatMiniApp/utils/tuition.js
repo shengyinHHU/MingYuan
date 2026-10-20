@@ -18,7 +18,7 @@ function bill(item) {
   const canPay = !['2','已取消','3','已拒绝'].includes(String(item.enrollmentStatus)) && item.billingStatus === 'OPEN' && item.payableAmount != null && !successful && !activePayment
   return { ...item, statusText: status(item.billingStatus), modeText: item.financeMode === 'MOCK' ? '模拟 · 不涉及真实资金' : '真实线下收费',
     originalText: money(item.originalAmount), discountText: money(item.discountAmount), payableText: money(item.payableAmount), receivedText: money(item.receivedAmount), refundedText: money(item.refundedAmount), netText: money(item.netAmount), dueText: money(item.dueAmount), refundableText: money(item.refundableAmount), canPay, activePayment, canCancel: !item.classDate && ['OPEN', 'PENDING_PRICE'].includes(item.billingStatus) && !successful && !activePayment && !['2', '已取消'].includes(String(item.enrollmentStatus)),
-    canRefund: item.canApplyRefund === true,
+    canRefund: item.billType !== 'CREDIT_PACKAGE' && item.canApplyRefund === true,
     payments: (item.payments || []).map(p => ({ ...p, statusText: status(p.paymentStatus), channelText: status(p.channel), amountText: money(p.amount) })),
     refunds: (item.refunds || []).map(refund), receipts: (item.receipts || []).map(receipt) }
 }
@@ -31,7 +31,7 @@ function refund(item) {
     progressText: legacy ? '' : item.refundStatus === 'WAIT_EDU' ? '教务核定实际退款金额后提交管理员。' : item.refundStatus === 'WAIT_ADMIN' ? '教务已阅，管理员登记线下实际退款后完成。' : completed ? '线下退款已登记完成。' : '' }
 }
 function receipt(item) { return { ...item, amountText: money(item.amount), statusText: status(item.receiptStatus), fileText: status(item.fileStatus), title: item.documentType === 'WAIVER' ? '费用减免确认单' : '课程收款收据', canDownload: item.receiptStatus === 'ISSUED' && item.fileStatus === 'READY' } }
-function coupon(item) { return { ...item, subjectText:couponDisplay.subjectText(item),summaryText:couponDisplay.summary(item), amountText: money(item.discountAmount), minSpendText: money(item.minSpendAmount), statusText: status(item.displayStatus || item.couponStatus), scopeText: item.scopeScheduleId ? `限指定课次（${item.scopeScheduleId}）` : couponDisplay.subjects(item).length ? '所选学科课程可用' : '全部课程可用' } }
+function coupon(item) { return { ...item, subjectText:couponDisplay.subjectText(item),summaryText:couponDisplay.summary(item), amountText: money(item.discountAmount), minSpendText: money(item.minSpendAmount), statusText: status(item.displayStatus || item.couponStatus), scopeText: couponDisplay.scopeText(item) } }
 function message(error) { wx.showToast({ title: error.message || '操作失败，请重试', icon: 'none' }) }
 function auth(role) {
   const data = getApp().globalData

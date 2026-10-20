@@ -41,7 +41,7 @@ public class EduClassSignInServiceImpl implements IEduClassSignInService
     /** 计入实际到课人数的签到结果：到课/试听到课/调课到课 */
     private static final Set<String> ATTENDED_STATUSES = new LinkedHashSet<>(Arrays.asList("1", "4", "5"));
 
-    private static final Set<String> VALID_SIGN_STATUSES = new LinkedHashSet<>(Arrays.asList("1", "2", "3", "4", "5"));
+    private static final Set<String> VALID_SIGN_STATUSES = new LinkedHashSet<>(Arrays.asList("1", "2", "3", "4", "5", "6"));
 
     private static final Set<String> VALID_SOURCE_TYPES = new LinkedHashSet<>(Arrays.asList("1", "2", "3"));
 
@@ -79,7 +79,17 @@ public class EduClassSignInServiceImpl implements IEduClassSignInService
         result.put("classDate", classDate);
         result.put("details", details);
         result.put("review", formatReviewInfo(info));
-        boolean reviewed = locked(info);
+        result.put("stats", attendanceStats(details));
+        result.put("submissionVersion", submissionVersion(details));
+        if (!details.isEmpty()) {
+            var first = details.get(0);
+            result.put("teacherName", first.getTeacherName());
+            result.put("timeSlot", first.getTimeSlot());
+            result.put("submittedBy", first.getCreateBy());
+            result.put("submittedTime", formatTime(first.getCreateTime()));
+        }
+        boolean reviewed = info != null && (Set.of("1", "2").contains(String.valueOf(info.get("review_status")))
+            || info.get("review1_admin_id") != null || info.get("review2_admin_id") != null);
         result.put("locked", reviewed);
         result.put("approvedLeaveEnrollmentIds", reviewed ? java.util.Set.of() : classLeaves.approved(scheduleId,classDate));
         return result;
@@ -100,8 +110,8 @@ public class EduClassSignInServiceImpl implements IEduClassSignInService
             return review;
         }
         review.put("reviewStatus", str(info.get("review_status")));
+        review.put("reviewReason", str(info.get("review_reason")));
         review.put("reviewVersion", version(info));
-        review.put("reviewReason", info.get("review_reason"));
         review.put("history", history(info));
         review.put("review1AdminId", info.get("review1_admin_id"));
         review.put("review1AdminName", info.get("review1_admin_name"));
@@ -180,9 +190,10 @@ public class EduClassSignInServiceImpl implements IEduClassSignInService
 
         // 已复核完成的课次锁定，不允许修改签到
         Map<String, Object> info = signInMapper.selectReviewInfo(scheduleId, classDate);
-        if (locked(info))
+        if (info != null && (Set.of("1", "2").contains(String.valueOf(info.get("review_status")))
+            || info.get("review1_admin_id") != null || info.get("review2_admin_id") != null))
         {
-            throw new ServiceException("该课次已有管理员复核，不能修改签到");
+            throw new ServiceException("该课次已进入教务审核，异常记录请由教务或管理员更正，教师不能覆盖签到");
         }
         if(!"0".equals(schedule.getStatus()) && signInMapper.countByScheduleAndDate(scheduleId,classDate)==0)
             throw new ServiceException("课程已停用，只能更正原有课次");
@@ -240,7 +251,7 @@ public class EduClassSignInServiceImpl implements IEduClassSignInService
         singleDb.jdbc().update("UPDATE edu_class_sign_in SET del_flag='2' WHERE schedule_id=? AND class_date=?",scheduleId,classDate);
         for(var row:rows) {
             String identity=row.getEnrollmentId()==null?"N:"+row.getStudentName():"E:"+row.getEnrollmentId();
-            var existing=previous.stream().filter(x->identity.equals(String.valueOf(x.get("signIdentity")))).findFirst().orElse(null);
+            var existing=previous.stream().filter(x->identity.equals(x.get("enrollmentId")==null?"N:"+x.get("studentName"):"E:"+x.get("enrollmentId"))).findFirst().orElse(null);
             var values=new LinkedHashMap<String,Object>();values.put("schedule_id",scheduleId);values.put("class_date",classDate);values.put("enrollment_id",row.getEnrollmentId());values.put("student_name",row.getStudentName());values.put("source_type",row.getSourceType());values.put("sign_status",row.getSignStatus());values.put("remark",row.getRemark());values.put("del_flag","0");values.put("review_status","0");values.put("review_reason",null);values.put("update_by",operator);values.put("update_time",LocalDateTime.now(ZoneId.of("Asia/Shanghai")));
             if(existing==null){values.put("create_by",operator);values.put("create_time",LocalDateTime.now(ZoneId.of("Asia/Shanghai")));singleDb.insert("edu_class_sign_in",values);}
             else singleDb.update("edu_class_sign_in","sign_in_id",Long.parseLong(existing.get("signInId").toString()),values);
@@ -261,8 +272,9 @@ public class EduClassSignInServiceImpl implements IEduClassSignInService
 
     private static final String ATTENDANCE_JOINS=" FROM edu_class_sign_in r JOIN edu_course_schedule c ON c.schedule_id=r.schedule_id LEFT JOIN edu_enrollment e ON e.enrollment_id=r.enrollment_id AND e.schedule_id=r.schedule_id LEFT JOIN edu_student st ON st.student_id=e.student_id AND st.parent_id=e.parent_id LEFT JOIN sys_user p ON p.user_id=e.parent_id LEFT JOIN sys_user t ON t.user_id=c.teacher_id ";
     private static final String ATTENDANCE_FIELDS="r.sign_in_id,r.schedule_id,DATE_FORMAT(r.class_date,'%Y-%m-%d') class_date,e.enrollment_id,r.student_name recorded_name,r.sign_status,r.source_type,COALESCE(r.review_status,'0') review_status,st.student_id,st.parent_id,st.student_name current_name,e.student_name enrolled_name,p.phonenumber parent_phone,c.course_class_name,COALESCE(NULLIF(TRIM(t.user_name),''),c.teacher_name) teacher_name,c.grade_name,c.subject_name";
-    private static final Map<String,String> SIGN_LABELS=Map.of("1","到课","2","录播","3","请假","4","试听到课","5","调课到课");
-    private void attendanceAdmin() {if(!SecurityUtils.isAdmin() && !SecurityUtils.hasRole("admin"))throw new ServiceException("只有管理员可以查看学生出勤总览");}
+    private static final Map<String,String> SIGN_LABELS=Map.of("1","到课","2","录播","3","请假","4","试听到课","5","调课到课","6","未到课");
+    private void attendanceAdmin() {if(!SecurityUtils.isAdmin() && !SecurityUtils.hasRole("admin") && !SecurityUtils.hasRole("education"))throw new ServiceException("只有教务或管理员可以查看学生出勤总览");}
+    private void reviewer(Long actor) {attendanceAdmin();if(!Objects.equals(actor,SecurityUtils.getUserId()))throw new ServiceException("复核身份不一致");}
     private void attendanceRange(String from,String to) {
         try {if(from!=null&&!from.isBlank())LocalDate.parse(from);if(to!=null&&!to.isBlank())LocalDate.parse(to);if(from!=null&&!from.isBlank()&&to!=null&&!to.isBlank()&&from.compareTo(to)>0)throw new IllegalArgumentException();}
         catch(Exception e){throw new ServiceException("请选择有效的起止日期，开始日期不能晚于结束日期");}
@@ -288,13 +300,13 @@ public class EduClassSignInServiceImpl implements IEduClassSignInService
         var row=new LinkedHashMap<String,Object>();row.put("studentKey",studentKey(source));row.put("studentName",displayName(source));row.put("parentPhone",source.get("parentPhone"));row.put("linked",source.get("studentId")!=null);row.put("temporary",source.get("enrollmentId")==null);row.put("stats",emptyStats());return row;
     }
     private Map<String,Long> emptyStats() {
-        var stats=new LinkedHashMap<String,Long>();for(String key:List.of("recorded","attended","normal","video","leave","trial","transfer","approved","pending","returned","conflicts"))stats.put(key,0L);return stats;
+        var stats=new LinkedHashMap<String,Long>();for(String key:List.of("recorded","attended","normal","video","leave","trial","transfer","absent","approved","pending","returned","conflicts"))stats.put(key,0L);return stats;
     }
     private void increment(Map<String,Long> stats,String key) {stats.put(key,stats.get(key)+1);}
     private void countCell(Map<String,Long> stats,List<Map<String,Object>> records) {
         if(records.isEmpty())return;increment(stats,"recorded");if(records.size()!=1){increment(stats,"conflicts");return;}
         var r=records.get(0);String sign=String.valueOf(r.get("signStatus")),review=String.valueOf(r.get("reviewStatus"));
-        if(ATTENDED_STATUSES.contains(sign))increment(stats,"attended");String kind=Map.of("1","normal","2","video","3","leave","4","trial","5","transfer").get(sign);if(kind!=null)increment(stats,kind);
+        if(ATTENDED_STATUSES.contains(sign))increment(stats,"attended");String kind=Map.of("1","normal","2","video","3","leave","4","trial","5","transfer","6","absent").get(sign);if(kind!=null)increment(stats,kind);
         increment(stats,"1".equals(review)?"approved":"2".equals(review)?"returned":"pending");
     }
     private List<Map<String,Object>> overviewRecords(String condition,List<Object> args,String from,String to) {
@@ -345,42 +357,184 @@ public class EduClassSignInServiceImpl implements IEduClassSignInService
         return signInMapper.selectReviewList(classDate);
     }
 
+    private Map<String, Object> attendanceStats(List<EduClassSignIn> rows)
+    {
+        Map<String, Object> stats = new LinkedHashMap<>();
+        stats.put("totalCount", rows.size());
+        stats.put("actualCount", rows.stream().filter(r -> ATTENDED_STATUSES.contains(r.getSignStatus())).count());
+        stats.put("attended", rows.stream().filter(r -> "1".equals(r.getSignStatus())).count());
+        stats.put("recorded", rows.stream().filter(r -> "2".equals(r.getSignStatus())).count());
+        stats.put("leave", rows.stream().filter(r -> "3".equals(r.getSignStatus())).count());
+        stats.put("audited", rows.stream().filter(r -> "4".equals(r.getSignStatus())).count());
+        stats.put("transferred", rows.stream().filter(r -> "5".equals(r.getSignStatus())).count());
+        stats.put("absent", rows.stream().filter(r -> "6".equals(r.getSignStatus())).count());
+        return stats;
+    }
+
+    /** Replacing any submitted row invalidates the sheet being reviewed; no duplicate snapshot table. */
+    private String submissionVersion(List<EduClassSignIn> rows)
+    {
+        var sheet = rows.stream().sorted(java.util.Comparator.comparing(EduClassSignIn::getSignInId))
+            .map(r -> Arrays.asList(r.getSignInId(), r.getEnrollmentId(), r.getStudentName(),
+                r.getSourceType(), r.getSignStatus(), r.getRemark(), r.getCreateBy(),
+                r.getTeacherName(), r.getTimeSlot(), r.getCourseClassName(),
+                r.getCampusName(), r.getClassroomName(), r.getReviewStatus(),
+                r.getReviewReason(), r.getReviewHistory())).toList();
+        try {
+            return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
+                .digest(com.alibaba.fastjson2.JSON.toJSONString(sheet).getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     @Override
     @Transactional(rollbackFor=Exception.class)
     public Map<String, Object> review(MiniAppSignReviewBody body, Long adminId, String adminName)
     {
-        if(!SecurityUtils.isAdmin() && !SecurityUtils.hasRole("admin")) throw new ServiceException("只有管理员可以复核学生出勤");
-        if(!Objects.equals(adminId,SecurityUtils.getUserId())) throw new ServiceException("复核身份不一致");
-        if(body==null || body.getScheduleId()==null || body.getClassDate()==null) throw new ServiceException("请选择课次");
-        Long scheduleId=body.getScheduleId();String classDate=body.getClassDate();LocalDate.parse(classDate);
-        if(scheduleMapper.lockSchedule(scheduleId)==null)throw new ServiceException("排课不存在");
-        if(signInMapper.countByScheduleAndDate(scheduleId,classDate)==0)throw new ServiceException("该课次尚未签到，无法复核");
-        var info=signInMapper.selectReviewInfo(scheduleId,classDate);
+        reviewer(adminId);
+        if (body == null || body.getScheduleId() == null || StringUtils.isEmpty(body.getClassDate()))
+            throw new ServiceException("缺少排课或课次日期");
         String action=body.getAction()==null?"APPROVE":body.getAction();
         if(!Set.of("APPROVE","RETURN").contains(action))throw new ServiceException("复核操作无效");
-        if("1".equals(str(info.get("review_status")))) {
-            if(!"APPROVE".equals(action))throw new ServiceException("已复核课次已锁定，不能退回覆盖历史");
-            return reviewResult(info);
+        if("RETURN".equals(action)){reject(body,adminId,adminName);return reviewResult(freshReviewInfo(body.getScheduleId(),body.getClassDate()));}
+        Long scheduleId = body.getScheduleId();
+        String classDate = body.getClassDate();
+        try {
+            if (!java.time.LocalDate.parse(classDate).toString().equals(classDate))
+                throw new java.time.DateTimeException("Invalid date");
+        } catch (java.time.DateTimeException e) {
+            throw new ServiceException("课次日期格式应为 yyyy-MM-dd");
         }
-        if("2".equals(str(info.get("review_status"))))throw new ServiceException("已退回教师更正，请等待重新提交");
-        checkVersion(body.getReviewVersion(),info);
-        String reason=body.getReason()==null?null:body.getReason().trim();
-        if("RETURN".equals(action) && (reason==null || reason.isBlank() || reason.length()>500))throw new ServiceException("请填写500字以内的退回原因");
-        var images=body.getImages()==null?List.<String>of():body.getImages();
-        if(images.size()>9 || images.stream().anyMatch(x->x==null || !x.startsWith("/profile/") || x.contains(",") || x.contains("..")) || String.join(",",images).length()>2000)throw new ServiceException("课堂图片路径无效");
-        var before=snapshot(scheduleId,classDate);
-        if("APPROVE".equals(action)) {
-            singleDb.jdbc().update("UPDATE edu_class_sign_in SET review_status='1',review_reason=NULL,review1_admin_id=COALESCE(review1_admin_id,?),review1_admin_name=COALESCE(review1_admin_name,?),review1_time=COALESCE(review1_time,CURRENT_TIMESTAMP),review1_images=COALESCE(review1_images,?),update_by=?,update_time=CURRENT_TIMESTAMP WHERE schedule_id=? AND class_date=? AND del_flag='0'",adminId,adminName,String.join(",",images),adminName,scheduleId,classDate);
-        } else singleDb.jdbc().update("UPDATE edu_class_sign_in SET review_status='2',review_reason=?,update_by=?,update_time=CURRENT_TIMESTAMP WHERE schedule_id=? AND class_date=? AND del_flag='0'",reason,adminName,scheduleId,classDate);
-        appendHistory(scheduleId,classDate,info,action,reason,before,snapshot(scheduleId,classDate),images);
-        return reviewResult(freshReviewInfo(scheduleId,classDate));
+        var schedule = scheduleMapper.lockSchedule(scheduleId);
+        if (schedule == null || !"0".equals(schedule.getDelFlag()))
+            throw new ServiceException("排课不存在或已删除");
+        var details = signInMapper.selectDetailList(scheduleId, classDate);
+        if (details.isEmpty()) throw new ServiceException("该课次尚未提交点名，不能审核");
+        var info = signInMapper.selectReviewInfo(scheduleId, classDate);
+        if (info != null && "1".equals(String.valueOf(info.get("review_status"))))
+            return reviewResult(info); // Never overwrite the original auditor, time or images.
+        checkSheetVersion(body,details,info);
+        if ("2".equals(str(info.get("review_status"))) && !hasCorrection(details))
+            throw new ServiceException("请先更正异常学员出勤，再重新审核确认");
+        var images = body.getImages() == null ? List.<String>of() : body.getImages();
+        if (images.size() > 9 || images.stream().anyMatch(Objects::isNull))
+            throw new ServiceException("课堂图片最多9张");
+        if(images.stream().anyMatch(x->!x.startsWith("/profile/") || x.contains(",") || x.contains("..")))throw new ServiceException("课堂图片路径无效");
+        String imageList = String.join(",", images);
+        if (imageList.length() > 2000) throw new ServiceException("课堂图片信息过长");
+        int updated = info != null && info.get("review1_admin_id") != null
+            ? signInMapper.completeLegacyReview(scheduleId, classDate, adminId, adminName, imageList)
+            : signInMapper.updateReview1(scheduleId, classDate, adminId, adminName, imageList);
+        if (updated != details.size()) throw new ServiceException("点名状态已变化，请刷新后再审核");
+        appendHistory(scheduleId,classDate,info,"APPROVE",null,List.of(),snapshot(scheduleId,classDate),images);
+        return reviewResult(freshReviewInfo(scheduleId, classDate));
+    }
+
+    private boolean hasCorrection(List<EduClassSignIn> rows)
+    {
+        return rows.stream().anyMatch(r -> {
+            var history = com.alibaba.fastjson2.JSON.parseArray(r.getReviewHistory());
+            return history != null && !history.isEmpty()
+                && "CORRECT".equals(history.getJSONObject(history.size() - 1).getString("action"));
+        });
+    }
+
+    /** Use the existing sheet and schedule lock; never recreate identities or touch money/credits. */
+    private List<EduClassSignIn> exceptionSheet(MiniAppSignReviewBody body)
+    {
+        if (body == null || body.getScheduleId() == null || body.getClassDate() == null)
+            throw new ServiceException("请选择课次");
+        try {
+            if (!java.time.LocalDate.parse(body.getClassDate()).toString().equals(body.getClassDate()))
+                throw new java.time.DateTimeException("Invalid date");
+        } catch (java.time.DateTimeException e) { throw new ServiceException("课次日期格式应为 yyyy-MM-dd"); }
+        var schedule = scheduleMapper.lockSchedule(body.getScheduleId());
+        if (schedule == null || !"0".equals(schedule.getDelFlag())) throw new ServiceException("排课不存在或已删除");
+        var rows = signInMapper.selectDetailList(body.getScheduleId(), body.getClassDate());
+        if (rows.isEmpty()) throw new ServiceException("该课次尚未提交点名");
+        if (rows.stream().anyMatch(r -> "1".equals(r.getReviewStatus())))
+            throw new ServiceException("已确认课次已锁定，不可直接更正");
+        checkSheetVersion(body,rows,signInMapper.selectReviewInfo(body.getScheduleId(),body.getClassDate()));
+        if (!singleDb.rows("SELECT enrollment_id FROM edu_enrollment WHERE schedule_id=? AND class_date=? AND lesson_completed_time IS NOT NULL FOR UPDATE",
+                body.getScheduleId(), body.getClassDate()).isEmpty())
+            throw new ServiceException("本课次已完成消课，不可直接更正，请先核对消课历史");
+        if (!singleDb.rows("SELECT record_id FROM edu_teacher_salary_record WHERE teacher_id=? AND salary_month=? AND confirm_status='1' AND del_flag='0' FOR UPDATE",
+                schedule.getTeacherId(), body.getClassDate().substring(0,7)).isEmpty())
+            throw new ServiceException("该教师本月薪资已结算，不可直接更正出勤");
+        return rows;
+    }
+
+    private String correctionReason(String value)
+    {
+        String reason = value == null ? "" : value.trim();
+        if (reason.isEmpty() || reason.length() > 500) throw new ServiceException("请填写1至500字的异常或更正原因");
+        return reason;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> reject(MiniAppSignReviewBody body, Long adminId, String adminName)
+    {
+        reviewer(adminId);
+        var rows = exceptionSheet(body);
+        body.setReason(correctionReason(body.getReason()));
+        int updated = singleDb.jdbc().update("UPDATE edu_class_sign_in SET review_history=JSON_ARRAY_APPEND(COALESCE(review_history,JSON_ARRAY()),'$',"
+            + "JSON_OBJECT('action','REJECT','beforeStatus',sign_status,'afterStatus',sign_status,'actorId',CAST(? AS CHAR),'actorName',?,'time',DATE_FORMAT(NOW(),'%Y-%m-%d %H:%i:%s'),'reason',?)),"
+            + "review_reason=?,review_status='2',review_version=review_version+1,update_by=?,update_time=NOW() WHERE schedule_id=? AND class_date=? AND del_flag='0' AND review_status IN ('0','2')",
+            adminId,adminName,body.getReason(),body.getReason(),adminName,body.getScheduleId(),body.getClassDate());
+        if (updated != rows.size()) throw new ServiceException("课次已变化，请刷新后操作");
+        return selectDetail(body.getScheduleId(), body.getClassDate());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> correct(MiniAppSignReviewBody body, Long adminId, String adminName)
+    {
+        reviewer(adminId);
+        var rows = exceptionSheet(body);
+        if (rows.stream().anyMatch(r -> !"2".equals(r.getReviewStatus()))) throw new ServiceException("请先标记审核异常，再更正出勤");
+        if (body.getCorrections() != null && (body.getSignInId() != null || body.getSignStatus() != null))
+            throw new ServiceException("不能混用单人和批量更正参数");
+        var changes = body.getCorrections() == null
+            ? List.of(new MiniAppSignReviewBody.Correction(body.getSignInId(), body.getSignStatus(), body.getReason())) : body.getCorrections();
+        if (changes.isEmpty() || changes.size() > rows.size()) throw new ServiceException("请选择本课次需要更正的学员");
+        var identities = new java.util.HashMap<Long, EduClassSignIn>();
+        rows.forEach(row -> identities.put(row.getSignInId(), row));
+        var seen = new java.util.HashSet<Long>();
+        // Validate the entire batch before writing; the transaction also rolls back any SQL failure.
+        for (var change : changes) {
+            var row = change == null ? null : identities.get(change.getSignInId());
+            if (row == null) throw new ServiceException("该学员不属于当前课次");
+            if (!seen.add(row.getSignInId())) throw new ServiceException("同一学员不能重复更正");
+            var allowed = "2".equals(row.getSourceType()) ? Set.of("3","4","6")
+                : "3".equals(row.getSourceType()) ? Set.of("3","5","6") : Set.of("1","2","3","6");
+            if (change.getSignStatus() == null || !allowed.contains(change.getSignStatus()))
+                throw new ServiceException("请选择符合学员来源的出勤状态");
+            if (change.getSignStatus().equals(row.getSignStatus())) throw new ServiceException("学生「" + row.getStudentName() + "」的出勤状态未改变");
+            change.setReason(correctionReason(change.getReason()));
+        }
+        for (var change : changes) {
+            int updated = singleDb.jdbc().update("UPDATE edu_class_sign_in SET review_history=JSON_ARRAY_APPEND(COALESCE(review_history,JSON_ARRAY()),'$',"
+                + "JSON_OBJECT('action','CORRECT','beforeStatus',sign_status,'afterStatus',?,'actorId',CAST(? AS CHAR),'actorName',?,'time',DATE_FORMAT(NOW(),'%Y-%m-%d %H:%i:%s'),'reason',?)),"
+                + "sign_status=?,update_by=?,update_time=NOW() WHERE sign_in_id=? AND schedule_id=? AND class_date=? AND del_flag='0' AND review_status='2'",
+                change.getSignStatus(),adminId,adminName,change.getReason(),change.getSignStatus(),adminName,change.getSignInId(),body.getScheduleId(),body.getClassDate());
+            if (updated != 1) throw new ServiceException("出勤已变化，请刷新后操作");
+        }
+        long nextVersion=version(freshReviewInfo(body.getScheduleId(),body.getClassDate()))+1;
+        singleDb.jdbc().update("UPDATE edu_class_sign_in SET review_version=? WHERE schedule_id=? AND class_date=? AND del_flag='0'",nextVersion,body.getScheduleId(),body.getClassDate());
+        return selectDetail(body.getScheduleId(), body.getClassDate());
+    }
+
+    private Map<String, Object> reviewResult(Map<String, Object> info)
+    {
+        Map<String, Object> result = formatReviewInfo(info);
+        result.put("requiredConfirmations", 1);
+        return result;
     }
     // JDBC 写入不会清除 MyBatis 会话缓存，操作后的状态须从数据库重新读取。
     private Map<String,Object> freshReviewInfo(Long scheduleId,String date) {
         return singleDb.jdbc().queryForMap("SELECT MAX(review_status) review_status,MAX(review_reason) review_reason,MAX(review_version) review_version,MAX(CAST(review_history AS CHAR)) review_history,MAX(review1_admin_id) review1_admin_id,MAX(review1_admin_name) review1_admin_name,MAX(review1_images) review1_images,MAX(review1_time) review1_time,MAX(review2_admin_id) review2_admin_id,MAX(review2_admin_name) review2_admin_name,MAX(review2_images) review2_images,MAX(review2_time) review2_time,COUNT(*) total_count,SUM(sign_status IN('1','4','5')) actual_count FROM edu_class_sign_in WHERE schedule_id=? AND class_date=? AND del_flag='0'",scheduleId,date);
-    }
-    private Map<String,Object> reviewResult(Map<String,Object> info) {
-        var result=formatReviewInfo(info);result.put("confirmedCount","1".equals(str(info.get("review_status")))?1:0);return result;
     }
     private boolean locked(Map<String,Object> info) {
         return info!=null && ("1".equals(str(info.get("review_status"))) || (info.get("review_history")==null && (info.get("review1_admin_id")!=null || info.get("review2_admin_id")!=null)));
@@ -389,6 +543,14 @@ public class EduClassSignInServiceImpl implements IEduClassSignInService
     private void checkVersion(Long expected,Map<String,Object> info) {
         if(!Objects.equals(expected==null?0L:expected,version(info)))throw new ServiceException("该课次已更新，请重新加载后操作");
     }
+    private void checkSheetVersion(MiniAppSignReviewBody body,List<EduClassSignIn> rows,Map<String,Object> info) {
+        if(body.getSubmissionVersion()!=null && !body.getSubmissionVersion().isBlank()) {
+            if(!submissionVersion(rows).equals(body.getSubmissionVersion()))throw new ServiceException("点名表已变化或版本缺失，请刷新核对后再确认");
+        } else {
+            if(body.getReviewVersion()==null)throw new ServiceException("点名表版本缺失，请刷新后操作");
+            checkVersion(body.getReviewVersion(),info);
+        }
+    }
     private JSONArray history(Map<String,Object> info) {
         return info==null || info.get("review_history")==null?new JSONArray():JSON.parseArray(info.get("review_history").toString());
     }
@@ -396,8 +558,8 @@ public class EduClassSignInServiceImpl implements IEduClassSignInService
         return singleDb.rows("SELECT sign_in_id,enrollment_id,student_name,source_type,sign_status,remark,review_status,review1_admin_id,review1_admin_name,review1_time,review1_images,review2_admin_id,review2_admin_name,review2_time,review2_images FROM edu_class_sign_in WHERE schedule_id=? AND class_date=? AND del_flag='0' ORDER BY sign_in_id",scheduleId,date);
     }
     private void appendHistory(Long scheduleId,String date,Map<String,Object> info,String action,String reason,List<Map<String,Object>> before,List<Map<String,Object>> after,List<String> images) {
-        var events=history(info);var event=new LinkedHashMap<String,Object>();event.put("action",action);event.put("version",version(info)+1);event.put("reason",reason);event.put("actorId",SecurityUtils.getUserId().toString());event.put("actorName",SecurityUtils.getUsername());event.put("time",LocalDateTime.now(ZoneId.of("Asia/Shanghai")).toString());event.put("before",before);event.put("after",after);events.add(event);
+        var event=new LinkedHashMap<String,Object>();event.put("action",action);event.put("version",version(info)+1);event.put("reason",reason);event.put("actorId",SecurityUtils.getUserId().toString());event.put("actorName",SecurityUtils.getUsername());event.put("time",LocalDateTime.now(ZoneId.of("Asia/Shanghai")).toString());event.put("before",before);event.put("after",after);
         event.put("images",images);
-        singleDb.jdbc().update("UPDATE edu_class_sign_in SET review_history=?,review_version=? WHERE schedule_id=? AND class_date=?",JSON.toJSONString(events),version(info)+1,scheduleId,date);
+        singleDb.jdbc().update("UPDATE edu_class_sign_in SET review_history=JSON_ARRAY_APPEND(COALESCE(review_history,JSON_ARRAY()),'$',CAST(? AS JSON)),review_version=? WHERE schedule_id=? AND class_date=?",JSON.toJSONString(event),version(info)+1,scheduleId,date);
     }
 }

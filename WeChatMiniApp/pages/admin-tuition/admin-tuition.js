@@ -36,13 +36,14 @@ Page({
       getApp().globalData.roles = info.roles || []
       if (!t.auth('staff')) throw new Error('收费角色权限已失效')
       const allowed = {}; ['list', 'query', 'price', 'collect', 'confirm'].forEach(p => { allowed[p] = t.can(`system:tuition:${p}`) }); allowed.download = t.can('system:tuitionReceipt:download')
+      allowed.refundList = t.can('system:tuitionRefund:list'); allowed.refundQuery = t.can('system:tuitionRefund:query')
       this.setData({ allowed })
       if (!allowed[this.id ? 'query' : 'list']) throw new Error('当前账号没有收费查询权限')
       if (this.id) {
         const res = await t.request({ url: `${t.adminUrl}/${encodeURIComponent(this.id)}` })
         if (!this._active || visit !== this._visit || sequence !== this._loadSequence) return
         const detail = t.bill(res.data), pending = t.savedIntent('admin-payment', this.id)
-        this.setData({ billingStep: billingStep(detail), retryPayment: !!pending })
+        this.setData({ billingStep: billingStep(detail), retryPayment: !!pending, allowed: { ...allowed, price: allowed.price && detail.billType !== 'CREDIT_PACKAGE' } })
         this.setData({ detail, price: detail.originalAmount || '', modeIndex: detail.financeMode === 'MOCK' ? 1 : 0, channels: detail.financeMode === 'MOCK' && detail.mockAllowed ? ['MOCK'] : ['CASH', 'BANK_TRANSFER', 'WECHAT_OFFLINE'], channelLabels: detail.financeMode === 'MOCK' && detail.mockAllowed ? ['本地模拟'] : ['现金', '银行转账', '微信线下收款'], channelIndex: 0, ...(pending ? { payerName: pending.payerName, providerTradeNo: pending.providerTradeNo || '', paidTime: pending.paidTime || '', evidenceKey: pending.evidenceKey || '', evidenceName: pending.evidenceKey ? '已上传凭证（待确认绑定）' : '' } : {}) })
         if (pending) this.setPaidTime(pending.paidTime || '')
       } else {
@@ -71,7 +72,14 @@ Page({
   filter(e) { this._visit++; this.setData({ filterIndex: Number(e.detail.value), rows: [] }); return this.load(true) },
   search() { this._visit++; return this.load(true) },
   detail(e) { if (this.data.allowed.query) wx.navigateTo({ url: `/pages/admin-tuition/admin-tuition?id=${encodeURIComponent(String(e.currentTarget.dataset.id))}` }) },
+  refunds(e) {
+    if (!this._active || this.data.submitting || !t.auth('staff')) return
+    const id = e.currentTarget.dataset.id
+    if (!t.can('system:tuitionRefund:' + (id ? 'query' : 'list'))) return
+    wx.navigateTo({ url: '/pages/admin-tuition-refunds/admin-tuition-refunds' + (id ? '?id=' + encodeURIComponent(String(id)) : this.id ? '?enrollmentId=' + encodeURIComponent(this.id) : '') })
+  },
   editPrice() {
+    if (this.data.detail && this.data.detail.billType === 'CREDIT_PACKAGE') return
     if (!this.data.submitting && this.permitted('price') && this.data.detail && this.data.detail.canPay && !this.data.detail.payments.length && !this.data.retryPayment) this.setData({ billingStep: 1 })
   },
   nextStep(title, selector) {
@@ -80,6 +88,7 @@ Page({
   },
   async savePrice() {
     if (!this._active || this.data.submitting || !this.permitted('price') || !this.data.detail) return
+    if (this.data.detail.billType === 'CREDIT_PACKAGE') return
     const visit = this._visit, detail = this.data.detail
     if (detail.billingStatus === 'HISTORY_PENDING') { t.message(new Error('历史账单请在管理网页凭证核验')); return }
     this.setData({ submitting: true })

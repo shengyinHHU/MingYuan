@@ -92,7 +92,7 @@ Page(childContext.page({
         timeText: this.buildTimeText(item),
         placeText: this.joinText([item.campusName, item.classroomName]),
         statusText: this.statusText(item.attendanceStatus),
-        reviewText: item.reviewStatus == null ? '' : item.reviewStatus==='1' ? '已核对' : item.reviewStatus==='2' ? '教师更正中' : '教师已登记',
+        reviewText: item.reviewStatus == null ? '' : item.reviewStatus==='1' ? '教务已确认' : item.reviewStatus==='2' ? '审核异常，教务核查中' : '教师已登记',
         statusClass: done ? 'done' : ''
       }
     })
@@ -115,6 +115,7 @@ Page(childContext.page({
     if (status === '3') return '请假'
     if (status === '4') return '试听到课'
     if (status === '5') return '调课到课'
+    if (status === '6') return '未到课'
     return '未上课'
   },
 

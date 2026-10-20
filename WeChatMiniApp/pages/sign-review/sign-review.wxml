@@ -1,7 +1,7 @@
 <view class="page">
   <view class="header">
     <view class="header-title">学生出勤</view>
-    <view class="header-subtitle">按课程总览、查看学生统计与处理复核</view>
+    <view class="header-subtitle">教师提交点名 → 教务核对并确认；按课程查看出勤与学生统计</view>
   </view>
   <view class="attendance-modes"><view class="attendance-mode {{mode==='overview'?'active':''}}" data-mode="overview" bindtap="chooseMode">出勤总览</view><view class="attendance-mode {{mode==='review'?'active':''}}" data-mode="review" bindtap="chooseMode">出勤复核</view></view>
   <block wx:if="{{mode==='overview'}}">
@@ -30,8 +30,6 @@
     </block>
   </block>
   <block wx:if="{{mode==='review'}}">
-  <view class="review-tabs"><view wx:for="{{tabs}}" wx:key="key" class="review-tab {{state === item.key ? 'active' : ''}}" data-state="{{item.key}}" bindtap="chooseState">{{item.label}}</view></view>
-
   <view class="filter-bar">
     <picker mode="date" value="{{filterDate}}" bindchange="onDateFilter">
       <view class="filter-date">{{filterDate || '按日期筛选'}} ▾</view>
@@ -39,8 +37,10 @@
     <view class="filter-reset" bindtap="resetFilter" wx:if="{{filterDate}}">重置</view>
   </view>
 
+  <view class="filter-bar"><view class="filter-reset" wx:for="{{filters}}" wx:key="*this" data-index="{{index}}" bindtap="changeFilter">{{filterIndex === index ? '● ' : ''}}{{item}}</view></view>
+  <view class="empty" wx:if="{{error}}">{{error}}<button size="mini" bindtap="loadList">刷新</button></view>
   <view class="list" wx:if="{{!showEmpty}}">
-    <view class="card" wx:for="{{list}}" wx:key="index"
+    <view class="card" wx:for="{{list}}" wx:key="rowKey"
       data-schedule-id="{{item.scheduleId}}" data-date="{{item.dateText}}"
       data-course="{{item.course}}" data-room="{{item.room}}" bindtap="openDetail">
       <view class="card-top">
@@ -60,11 +60,10 @@
     </view>
   </view>
 
-  <view class="empty" wx:if="{{showEmpty && !loading && !error}}">
+  <view class="empty" wx:if="{{showEmpty && !loading}}">
     <view class="empty-icon">🗂️</view>
-    <view class="empty-text">暂无{{state === '0' ? '待复核' : state === '2' ? '待更正' : '已复核'}}课次</view>
+    <view class="empty-text">当前范围暂无课次记录</view>
   </view>
-  <view class="empty" wx:if="{{error}}"><view class="empty-text">{{error}}</view><button bindtap="loadList">重新加载</button></view>
 
   <view class="loading" wx:if="{{loading}}">加载中...</view>
   </block>
@@ -74,7 +73,7 @@
     <view class="attendance-modes"><view class="attendance-mode {{summaryScope==='course'?'active':''}}" data-scope="course" bindtap="chooseSummaryScope">本课程</view><view wx:if="{{summaryStudent.linked}}" class="attendance-mode {{summaryScope==='all'?'active':''}}" data-scope="all" bindtap="chooseSummaryScope">全部课程</view></view>
     <view class="overview-caption">沿用当前日期范围：{{from || '不限开始'}} 至 {{to || '不限结束'}}</view>
     <view class="overview-metrics"><view><text class="metric-value">{{summaryStats.attended || 0}}</text><text>到课合计</text></view><view><text class="metric-value">{{summaryStats.leave || 0}}</text><text>请假</text></view><view><text class="metric-value">{{summaryStats.video || 0}}</text><text>录播</text></view></view>
-    <view class="summary-counts">其中试听{{summaryStats.trial || 0}}、调课{{summaryStats.transfer || 0}} · 已核对{{summaryStats.approved || 0}} · 待复核{{summaryStats.pending || 0}} · 待更正{{summaryStats.returned || 0}}</view>
+    <view class="summary-counts">其中试听{{summaryStats.trial || 0}}、调课{{summaryStats.transfer || 0}} · 已核对{{summaryStats.approved || 0}} · 待复核{{summaryStats.pending || 0}} · 审核异常{{summaryStats.returned || 0}}</view>
     <view class="overview-warning" wx:if="{{summaryStats.conflicts}}">另有{{summaryStats.conflicts}}个课次存在多条记录，需核对后才能计入确定结果。</view>
     <view class="overview-warning" wx:if="{{summaryError}}">{{summaryError}}<text bindtap="retrySummary"> 重新加载</text></view>
     <scroll-view class="summary-scroll" scroll-y bindscrolltolower="moreSummary"><view class="summary-lesson" wx:for="{{summaryRows}}" wx:key="rowKey" data-schedule-id="{{item.scheduleId}}" data-date="{{item.classDate}}" data-course="{{item.courseClassName}}" bindtap="openDetail"><view><view class="summary-lesson-course">{{item.courseClassName}}</view><view class="student-axis-meta">{{item.classDate}} · {{item.teacherName}}</view><view class="student-axis-meta" wx:if="{{item.recordedName !== summaryStudent.studentName}}">登记名：{{item.recordedName}}</view></view><view><view>{{item.statusText}}</view><view class="student-axis-meta">{{item.reviewText}}</view></view></view><view class="overview-message" wx:if="{{summaryLoading}}">加载中…</view><view class="overview-message" wx:if="{{!summaryLoading && !summaryError && !summaryRows.length}}">该范围暂无已登记记录</view><view class="overview-caption" wx:if="{{summaryHasMore && !summaryLoading}}" bindtap="moreSummary">加载更多（{{summaryRows.length}}/{{summaryTotal}}）</view></scroll-view>

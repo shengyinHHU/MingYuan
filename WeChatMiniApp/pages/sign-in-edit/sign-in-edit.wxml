@@ -8,12 +8,12 @@
     <view class="date-label">课次日期</view>
     <view class="date-value">{{classDate}}</view>
     <view class="review-tag {{locked ? 'done' : 'pending'}}" wx:if="{{review}}">
-      {{review.reviewStatus === '1' ? '复核完成' : (review.reviewStatus === '2' ? '需更正' : '待复核')}}
+      {{review.reviewStatus === '1' ? '教务已确认' : (review.reviewStatus === '2' ? '审核异常' : '待教务确认')}}
     </view>
   </view>
 
-  <view class="banner" wx:if="{{review.reviewStatus === '2'}}">更正原因：{{review.reviewReason}}。修改后重新提交。</view>
-  <view class="banner done" wx:if="{{locked}}">该课次已有管理员复核，签到已锁定，不可修改</view>
+  <view class="banner half" wx:if="{{review.reviewStatus === '2'}}">审核异常：{{review.reviewReason}}。请联系教务或管理员更正出勤；原始点名记录已保留。</view>
+  <view class="banner done" wx:elif="{{locked}}">该课次已有审核确认记录，点名已锁定，不可修改；旧版半完成记录由教务归档。</view>
   <view class="detail-reload" bindtap="loadDetail">重新加载当前课次</view>
 
   <view class="stats" wx:if="{{stats && stats.total > 0}}">
@@ -34,7 +34,7 @@
         </view>
         <view class="remove" wx:if="{{row.added && !locked && !loading && !submitting && ready}}" data-row-key="{{row.rowKey}}" bindtap="removeRow">移除</view>
       </view>
-      <view class="status-btns">
+      <view class="status-btns" wx:if="{{!locked}}">
         <view
           wx:for="{{row.statusOptions}}"
           wx:for-item="opt"
@@ -46,6 +46,7 @@
           bindtap="setStatus"
         >{{opt.label}}</view>
       </view>
+      <view class="status-btns" wx:else>{{row.statusText}}</view>
     </view>
   </view>
 
@@ -59,7 +60,7 @@
 
   <view class="submit-wrap" wx:if="{{!locked}}">
     <view class="submit-btn {{submitting || loading || !ready ? 'disabled' : ''}}" bindtap="submit">
-      {{loading ? '加载中...' : (submitting ? '提交中...' : '提交签到')}}
+      {{loading ? '加载中...' : (submitting ? '提交中...' : '提交点名表给教务')}}
     </view>
   </view>
 </view>

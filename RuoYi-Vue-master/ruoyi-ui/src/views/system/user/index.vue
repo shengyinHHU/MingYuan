@@ -138,31 +138,17 @@
           </el-col>
         </el-row>
         <el-row>
-          <el-col :span="12">
-            <el-form-item label="岗位">
-              <el-select v-model="form.postIds" multiple placeholder="请选择岗位">
-                <el-option v-for="item in postOptions" :key="item.postId" :label="item.postName" :value="item.postId" :disabled="item.status == 1" ></el-option>
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
+          <el-col :span="24">
             <el-form-item label="角色">
-              <el-select v-model="form.roleIds" multiple placeholder="请选择角色">
+              <el-select v-model="form.roleIds" multiple placeholder="请选择角色" style="width:100%">
                 <el-option v-for="item in roleOptions" :key="item.roleId" :label="item.roleName" :value="item.roleId" :disabled="item.status == 1"></el-option>
               </el-select>
             </el-form-item>
           </el-col>
         </el-row>
-        <el-row>
-          <el-col :span="24">
-            <el-form-item label="备注">
-              <el-input v-model="form.remark" type="textarea" placeholder="请输入内容"></el-input>
-            </el-form-item>
-          </el-col>
-        </el-row>
         <div v-if="form.userId && roleOptions.some(role => role.roleKey === 'teacher' && (form.roleIds || []).includes(role.roleId))" v-loading="teacherProfileLoading">
           <el-divider>教师授课配置</el-divider>
-          <el-form-item label="授课学科"><el-select v-model="teacherProfile.teacherSubject"><el-option v-for="subject in dict.type.edu_subject" :key="subject.dictValue" :label="subject.dictLabel" :value="subject.dictLabel" /></el-select></el-form-item>
+          <el-form-item label="授课学科"><el-select v-model="teacherProfile.teacherSubject" filterable placeholder="请选择授课学科"><el-option v-for="subject in dict.type.edu_subject" :key="subject.value" :label="subject.label" :value="subject.label" /></el-select></el-form-item>
           <el-form-item label="教师等级"><el-select v-model="teacherProfile.teacherLevel"><el-option label="精英教师" value="elite" /><el-option label="资深教师" value="senior" /></el-select></el-form-item>
           <el-button size="small" :disabled="teacherProfileLoading" @click="saveTeacherProfile">保存授课配置</el-button>
         </div>
@@ -224,7 +210,6 @@ export default {
       // 日期范围
       dateRange: [],
       // 岗位选项
-      postOptions: [],
       // 角色选项
       roleOptions: [],
       // 表单参数
@@ -386,7 +371,6 @@ export default {
     handleAdd() {
       this.reset()
       getUser().then(response => {
-        this.postOptions = response.posts
         this.roleOptions = response.roles
         this.open = true
         this.title = "添加用户"
@@ -399,7 +383,6 @@ export default {
       const userId = row.userId || this.ids
       getUser(userId).then(response => {
         this.form = response.data
-        this.postOptions = response.posts
         this.roleOptions = response.roles
         this.$set(this.form, "postIds", response.postIds)
         this.$set(this.form, "roleIds", response.roleIds)

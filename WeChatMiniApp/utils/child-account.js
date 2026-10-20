@@ -8,7 +8,7 @@ function child(row){
   return {...row,accountId:String(row.accountId),initial:String(row.studentName||'孩').slice(0,1),availableText:available!=null&&Number.isFinite(Number(available))?String(available):'—',pendingBadge:personal.badge(row.actionPendingCount),paymentPendingCount:Number(row.paymentPendingCount)||0,homeworkPendingCount:Number(row.homeworkPendingCount)||0,courseCount:Number(row.courseCount)||0}
 }
 function record(row,kind){
-  if(kind==='attendance')return {...row,recordKey:String(row.recordKey),timeText:row.classDate||'',statusText:({'1':'到课','2':'录播','3':'请假','4':'试听到课','5':'调课到课'})[row.signStatus]||'待核对',reviewText:row.source==='SINGLE'?'教师已确认':String(row.reviewStatus)==='1'?'已复核':'待管理员复核'}
+  if(kind==='attendance')return {...row,recordKey:String(row.recordKey),timeText:row.classDate||'',statusText:({'1':'到课','2':'录播','3':'请假','4':'试听到课','5':'调课到课','6':'未到课'})[row.signStatus]||'待核对',reviewText:row.source==='SINGLE'?'教师已确认':String(row.reviewStatus)==='1'?'已复核':String(row.reviewStatus)==='2'?'审核异常，待更正':'待教务复核'}
   if(kind==='history')return personal.decorate(row,kind)
   let progress=personal.payText(row.payStatus)
   if(row.settlementMethod==='P')progress='课包结算'
@@ -18,7 +18,8 @@ function record(row,kind){
   else if(row.billingStatus==='PENDING_PRICE')progress='待核价'
   else if(row.billingStatus==='HISTORY_PENDING')progress='历史待核验'
   const actionable=row.actionable===true||Number(row.actionable)===1
-  return {...personal.decorate(row,'enrollments'),enrollmentId:String(row.enrollmentId),actionable,progressText:progress,amountText:amount(row.payableAmount),receivedText:amount(row.receivedAmount),refundedText:amount(row.refundedAmount),receivedLabel:row.billingStatus==='HISTORY_PENDING'?'待核验':'¥'+amount(row.receivedAmount),refundedLabel:row.billingStatus==='HISTORY_PENDING'?'待核验':'¥'+amount(row.refundedAmount),timeText:row.classDate?`${row.classDate} ${String(row.startTime||'').slice(0,5)}–${String(row.endTime||'').slice(0,5)}`:`班课 · ${String(row.startTime||'').slice(0,5)}–${String(row.endTime||'').slice(0,5)}`}
+  const timeText=row.billType==='CREDIT_PACKAGE'?'一对一课包 · '+(row.packageCreditedTime?'已入账':row.billingStatus==='CLOSED'?'已取消':'线下确认收款后入账'):row.classDate?`${row.classDate} ${String(row.startTime||'').slice(0,5)}–${String(row.endTime||'').slice(0,5)}`:`班课 · ${String(row.startTime||'').slice(0,5)}–${String(row.endTime||'').slice(0,5)}`
+  return {...personal.decorate(row,'enrollments'),enrollmentId:String(row.enrollmentId),actionable,progressText:progress,amountText:amount(row.payableAmount),receivedText:amount(row.receivedAmount),refundedText:amount(row.refundedAmount),receivedLabel:row.billingStatus==='HISTORY_PENDING'?'待核验':'¥'+amount(row.receivedAmount),refundedLabel:row.billingStatus==='HISTORY_PENDING'?'待核验':'¥'+amount(row.refundedAmount),timeText}
 }
 function page(view='list'){
   const base=personal.page(false,'children')
@@ -43,7 +44,7 @@ function page(view='list'){
       this.setData({loading:true,error:''})
       try{
         const snapshot=request({url:detailView?`/miniapp/parent/account/children/${this.data.accountId}`:'/miniapp/parent/account'})
-        const rows=detailView||legacy?request({url:'/miniapp/parent/account/records',data:{kind:this.data.recordKind,pageNum:this.data.pageNum,pendingOnly:this.data.pendingOnly,...(detailView?{accountId:this.data.accountId}:{unlinkedOnly:true})}}):Promise.resolve({data:{rows:[],total:0}})
+        const rows=detailView||legacy?request({url:'/miniapp/parent/account/records',data:{kind:this.data.recordKind,pageNum:this.data.pageNum,pendingOnly:this.data.pendingOnly,...(this.data.section==='fees'?{includePackages:true}:{}),...(detailView?{accountId:this.data.accountId}:{unlinkedOnly:true})}}):Promise.resolve({data:{rows:[],total:0}})
         const [a,b]=await Promise.all([snapshot,rows]);if(!this.current()||version!==this._version)return
         const d=a.data||{},account=detailView?child(d.child):null,accounts=detailView?[account]:(d.children||[]).map(child)
         this.setData({detail:d,child:account,accounts,childCount:accounts.length,records:((b.data||{}).rows||[]).map(r=>record(r,this.data.recordKind)),total:(b.data||{}).total||0,pendingCount:detailView?d.pendingCount:d.actionPendingCount||0,pendingBadge:personal.badge(detailView?d.pendingCount:d.actionPendingCount),unlinkedCount:d.unlinkedCount||0,unlinkedPendingBadge:personal.badge(d.unlinkedPendingCount)})
@@ -62,7 +63,7 @@ function page(view='list'){
     openLegacy(){if(this.current())wx.navigateTo({url:'/pages/parent-account/parent-account?legacy=1'})},
     openService(e){if(!this.current())return;const routes={orders:'/pages/material-orders/material-orders',coupons:'/pages/my-coupons/my-coupons',referral:'/pages/parent-referral/parent-referral'};const url=routes[e.currentTarget.dataset.key];if(url)wx.navigateTo({url})},
     scoped(url,extra=''){if(this.current()&&this.data.child)wx.navigateTo({url:`${url}?accountId=${encodeURIComponent(this.data.accountId)}${extra}`})},
-    enroll(){this.scoped('/pages/enrollment/enrollment')},timetable(){this.scoped('/pages/timetable/timetable')},homework(e){this.scoped('/pages/homework/homework',e&&e.currentTarget.dataset.todo?'&status=todo':'')},leave(){this.scoped('/pages/parent-leave/parent-leave')},
+    enroll(){this.scoped('/pages/enrollment/enrollment')},purchasePackage(){if(!this.data.loading)this.scoped('/pages/lesson-packages/lesson-packages')},timetable(){this.scoped('/pages/timetable/timetable')},homework(e){this.scoped('/pages/homework/homework',e&&e.currentTarget.dataset.todo?'&status=todo':'')},leave(){this.scoped('/pages/parent-leave/parent-leave')},
     section(e){if(!this.current()||this.data.submitting||this.data.loading)return;const section=e.currentTarget.dataset.section;if(!['courses','learning','fees'].includes(section))return;this.setData({section,recordKind:section==='learning'?'attendance':'enrollments',pageNum:1,pendingOnly:false,records:[]});this.load()},
     transactions(){if(!this.current()||this.data.loading)return;this.setData({section:'fees',recordKind:this.data.recordKind==='history'?'enrollments':'history',pageNum:1,pendingOnly:false,records:[]});this.load()},
     handlePayment(){if(!this.current()||this.data.loading)return;this.setData({section:'fees',recordKind:'enrollments',pendingOnly:true,pageNum:1,records:[]});this.load()},

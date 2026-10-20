@@ -33,7 +33,7 @@ public class MiniAppParentController extends BaseController
     @PreAuthorize("@ss.hasRole('parent')") @GetMapping("/account")
     public AjaxResult account() { return success(personal.detail(com.ruoyi.common.utils.SecurityUtils.getUserId(),false)); }
     @PreAuthorize("@ss.hasRole('parent')") @GetMapping("/account/records")
-    public AjaxResult accountRecords(@RequestParam(defaultValue="enrollments") String kind,@RequestParam(defaultValue="1") int pageNum,@RequestParam(defaultValue="false") boolean pendingOnly,@RequestParam(required=false) Long accountId,@RequestParam(defaultValue="false") boolean unlinkedOnly) { return success(personal.records(com.ruoyi.common.utils.SecurityUtils.getUserId(),false,kind,pageNum,pendingOnly,accountId,unlinkedOnly)); }
+    public AjaxResult accountRecords(@RequestParam(defaultValue="enrollments") String kind,@RequestParam(defaultValue="1") int pageNum,@RequestParam(defaultValue="false") boolean pendingOnly,@RequestParam(required=false) Long accountId,@RequestParam(defaultValue="false") boolean unlinkedOnly,@RequestParam(defaultValue="false") boolean includePackages) { return success(personal.records(com.ruoyi.common.utils.SecurityUtils.getUserId(),false,kind,pageNum,pendingOnly,accountId,unlinkedOnly,includePackages)); }
     @PreAuthorize("@ss.hasRole('parent')") @GetMapping("/account/children/{id}")
     public AjaxResult childAccount(@PathVariable Long id) { return com.ruoyi.system.controller.EduTuitionController.ok(personal.childDetail(id)); }
     @PreAuthorize("@ss.hasRole('parent')") @GetMapping("/account/pending-count")

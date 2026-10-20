@@ -25,9 +25,15 @@ Page(childContext.page({
     const detail = this.data.detail, visit = this._visit
     if (!detail || !detail.canCancel || t.savedIntent('payment', this.id)) { t.message(new Error('已有收款、待核验或结果未知，请先联系教务核对或申请退费')); return }
     this.setData({ submitting: true })
-    try { if (await t.confirm('取消未缴费报名', '取消此报名并释放课程名额？后端将再次核对收款状态。') && this._active && visit === this._visit) { await t.request({parentScope:this._parentScope, url: `/miniapp/parent/enrollment/${encodeURIComponent(this.id)}`, method: 'DELETE' }); if (this._active && visit === this._visit) await this.load() } } catch (error) { if (this._active && visit === this._visit) t.message(error) }
+    const packageOrder = detail.billType === 'CREDIT_PACKAGE'
+    try {
+      if (await t.confirm(packageOrder ? '取消未收款课包订单' : '取消未缴费报名', packageOrder ? '取消此订单并释放占用的优惠券？后端将再次核对收款状态。' : '取消此报名并释放课程名额？后端将再次核对收款状态。') && this._active && visit === this._visit && childContext.current(this._childTicket)) {
+        await t.request(packageOrder ? { url: `/miniapp/parent/lesson-packages/orders/${encodeURIComponent(this.id)}/cancel`, method: 'POST', data: { accountId: this.accountId } } : { parentScope: this._parentScope, url: `/miniapp/parent/enrollment/${encodeURIComponent(this.id)}`, method: 'DELETE' })
+        if (this._active && visit === this._visit) await this.load()
+      }
+    } catch (error) { if (this._active && visit === this._visit) t.message(error) }
     finally { if (this._active && visit === this._visit) this.setData({ submitting: false }) }
   },
   receipts() { wx.navigateTo({ url: `/pages/tuition-receipt/tuition-receipt?id=${encodeURIComponent(this.id)}${this.accountId?'&accountId='+encodeURIComponent(this.accountId):this._parentScope?'&unlinked=1':''}` }) },
-  refunds() { wx.navigateTo({ url: `/pages/tuition-refund/tuition-refund?id=${encodeURIComponent(this.id)}${this.accountId?'&accountId='+encodeURIComponent(this.accountId):this._parentScope?'&unlinked=1':''}` }) }
+  refunds() { if (this.data.detail && this.data.detail.billType === 'CREDIT_PACKAGE') return; wx.navigateTo({ url: `/pages/tuition-refund/tuition-refund?id=${encodeURIComponent(this.id)}${this.accountId?'&accountId='+encodeURIComponent(this.accountId):this._parentScope?'&unlinked=1':''}` }) }
 }, {route:'/pages/tuition-detail/tuition-detail',detail:true}))

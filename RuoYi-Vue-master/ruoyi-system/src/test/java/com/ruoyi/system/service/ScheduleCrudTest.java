@@ -47,6 +47,12 @@ public class ScheduleCrudTest {
         }));
     }
     @AfterEach void cleanup() { SecurityContextHolder.clearContext(); }
+    @Test void enrolledSingleCannotBypassProtectionUsingImportTestSwitch() throws Exception {
+        principal(1,"admin"); current.setClassMode("2"); db.activeEnrollments=1;
+        inject(service,"configService",proxy(ISysConfigService.class,(p,m,a)->"true"));
+        var patch=new EduCourseSchedule();patch.setScheduleId(10L);patch.setCourseClassName("不允许覆盖");
+        assertThrows(ServiceException.class,()->service.updateEduCourseSchedule(patch));assertNull(captured);
+    }
     @Test void teacherReadAndWriteIsolation() {
         EduCourseSchedule query = new EduCourseSchedule(); query.getParams().put("teacherUserId", 22L);
         service.selectEduCourseScheduleList(query); assertEquals(21L, captured.getParams().get("teacherUserId"));
@@ -81,7 +87,8 @@ public class ScheduleCrudTest {
     @Test void newCourseBindsIdAndProtectsCounters() {
         EduCourseSchedule input = course(); input.setTeacherName("forged"); input.setCreateBy("forged"); input.setEnrolledCount(99L);
         assertEquals(1, service.insertEduCourseSchedule(input));
-        assertEquals(21L, captured.getTeacherId()); assertEquals("Teacher A", captured.getTeacherName());
+        // main已统一姓名来源：user_name为真名，nick_name只作后备，不信任客户端伪造姓名。
+        assertEquals(21L, captured.getTeacherId()); assertEquals("teacher21", captured.getTeacherName());
         assertEquals("teacher21", captured.getCreateBy()); assertEquals(0L, captured.getEnrolledCount()); assertEquals("0", captured.getDelFlag());
         assertEquals(List.of("room:1", "teacher:21"), db.locks);
     }

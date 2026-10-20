@@ -36,7 +36,7 @@
         <el-alert v-if="detailError" :title="detailError" type="error" :closable="false"/>
         <template v-if="ready">
           <el-descriptions :column="3" border><el-descriptions-item label="到课">{{detail.review.actualCount || 0}}</el-descriptions-item><el-descriptions-item label="名单">{{detail.review.totalCount}}</el-descriptions-item><el-descriptions-item label="状态">{{label(detail.review.reviewStatus)}}</el-descriptions-item></el-descriptions>
-          <el-alert v-if="detail.review.reviewStatus==='2'" :title="detail.review.reviewReason + '；等待教师重新提交'" type="warning" :closable="false"/>
+          <el-alert v-if="detail.review.reviewStatus==='2'" :title="detail.review.reviewReason + '；请由教务或管理员在小程序“学生出勤”中更正'" type="warning" :closable="false"/>
           <el-table :data="detail.details" max-height="340"><el-table-column label="学生" prop="studentName"/><el-table-column label="来源"><template slot-scope="s">{{source(s.row.sourceType)}}</template></el-table-column><el-table-column label="出勤结果"><template slot-scope="s"><el-tag :type="['2','3'].includes(s.row.signStatus)?'info':'success'">{{status(s.row.signStatus)}}</el-tag></template></el-table-column><el-table-column label="备注" prop="remark"/></el-table>
           <el-collapse><el-collapse-item title="操作记录及历史课堂图片" name="history">
             <div v-for="e in history" :key="e.version" class="event"><b>{{action(e.action)}}</b> · {{e.actorName}} · {{e.time}}<p v-if="e.reason">{{e.reason}}</p><el-image v-for="image in (e.images || [])" :key="image" :src="publicImage(image)" :preview-src-list="(e.images || []).map(publicImage)" class="review-image"/><template v-if="e.action==='SUBMIT'"><p>修改前：{{snapshot(e.before)}}</p><p>提交后：{{snapshot(e.after)}}</p></template></div>
@@ -45,7 +45,7 @@
           <template v-if="detail.review.reviewStatus==='0'"><p>课堂图片（选填）</p><image-upload v-model="pendingImages" :limit="9"/></template>
         </template>
       </div>
-      <div slot="footer"><el-button :disabled="busy" @click="opened=false">关闭</el-button><template v-if="ready && detail.review.reviewStatus==='0'"><el-button :disabled="busy" @click="decide('RETURN')">退回更正</el-button><el-button type="primary" :loading="busy" @click="decide('APPROVE')">确认复核</el-button></template></div>
+      <div slot="footer"><el-button :disabled="busy" @click="opened=false">关闭</el-button><template v-if="ready && detail.review.reviewStatus==='0'"><el-button :disabled="busy" @click="decide('RETURN')">标记异常</el-button><el-button type="primary" :loading="busy" @click="decide('APPROVE')">确认复核</el-button></template></div>
     </el-dialog>
     <el-dialog :title="selectedStudent ? selectedStudent.studentName + ' · 出勤统计' : '学生出勤统计'" :visible.sync="studentDialog" width="760px" @closed="closeStudent">
       <template v-if="selectedStudent"><el-radio-group v-model="studentScope" size="small" @change="changeStudentScope"><el-radio-button label="course">本课程</el-radio-button><el-radio-button v-if="selectedStudent.linked" label="all">全部课程</el-radio-button></el-radio-group><p class="overview-note">沿用当前日期范围；历史或临时记录不按姓名合并孩子身份。</p><div class="overview-summary"><span><b>{{studentStats.attended || 0}}</b> 到课合计</span><span><b>{{studentStats.leave || 0}}</b> 请假</span><span><b>{{studentStats.video || 0}}</b> 录播</span></div><p class="overview-note">其中试听{{studentStats.trial || 0}}、调课{{studentStats.transfer || 0}} · 已核对{{studentStats.approved || 0}} · 待复核{{studentStats.pending || 0}} · 待更正{{studentStats.returned || 0}}</p><el-alert v-if="studentStats.conflicts" :title="studentStats.conflicts+'个课次有多条记录，未计入确定出勤结果'" type="warning" :closable="false"/><el-alert v-if="studentError" :title="studentError" type="error" :closable="false"/><el-table :data="studentRows" v-loading="studentLoading"><el-table-column label="日期" prop="classDate" width="115"/><el-table-column label="课程" prop="courseClassName"/><el-table-column label="登记姓名" prop="recordedName" width="120"/><el-table-column label="出勤结果" prop="statusText" width="150"/><el-table-column label="复核" width="90"><template slot-scope="r">{{reviewLabel(r.row.reviewStatus)}}</template></el-table-column></el-table><el-pagination layout="prev,pager,next,total" :page-size="30" :current-page="studentPage" :total="studentTotal" @current-change="studentPageChange"/></template>
@@ -78,7 +78,7 @@ export default {
     label(v){return {'0':'待复核','1':'已复核','2':'待更正'}[v]||'待复核'},
     source(v){return {'1':'报名','2':'试听','3':'调课'}[v]||v},
     status(v){return {'1':'到课','2':'录播','3':'请假','4':'试听到课','5':'调课到课'}[v]||v},
-    action(v){return {SUBMIT:'教师提交',APPROVE:'确认复核',RETURN:'退回更正'}[v]||v},
+    action(v){return {SUBMIT:'教师提交',APPROVE:'确认复核',RETURN:'标记异常'}[v]||v},
     publicImage(p){return p.startsWith('http')?p:process.env.VUE_APP_BASE_API+p},
     snapshot(rows){return (rows||[]).map(r=>r.studentName+'：'+this.status(r.signStatus)).join('；')||'无'},
     images(slot){return String(this.detail.review['review'+slot+'Images']||'').split(',').filter(Boolean).map(p=>p.startsWith('http')?p:process.env.VUE_APP_BASE_API+p)},
@@ -88,11 +88,11 @@ export default {
     async decide(action){
       if(this.busy||!this.ready||!this.opened||this.detail.review.reviewStatus!=='0')return
       const token=getToken(),version=this._detailVersion,row=this.row,reviewVersion=this.detail.review.reviewVersion||0,images=Array.isArray(this.pendingImages)?this.pendingImages.slice():String(this.pendingImages||'').split(',').filter(Boolean);this.busy=true
-      try{let reason;if(action==='RETURN'){const r=await this.$prompt('请说明需要教师更正的内容','退回更正',{inputType:'textarea',inputValidator:v=>!!v&&!!v.trim()&&v.length<=500,inputErrorMessage:'请填写500字以内的原因'});reason=r.value.trim()}else await this.$confirm('确认名单及出勤结果无误？确认后本课次将锁定。','确认学生出勤')
+      try{let reason;if(action==='RETURN'){const r=await this.$prompt('请说明出勤异常，由教务或管理员更正','标记异常',{inputType:'textarea',inputValidator:v=>!!v&&!!v.trim()&&v.length<=500,inputErrorMessage:'请填写500字以内的原因'});reason=r.value.trim()}else await this.$confirm('确认名单及出勤结果无误？确认后本课次将锁定。','确认学生出勤')
         if(!this._alive||!this.opened||token!==getToken()||version!==this._detailVersion)return
         await confirmReview(row.scheduleId,row.classDate,images,{action,reason,reviewVersion})
         if(!this._alive||token!==getToken()||version!==this._detailVersion)return
-        this.$modal.msgSuccess(action==='RETURN'?'已退回教师更正':'已复核');this.opened=false;this.close();this.load()
+        this.$modal.msgSuccess(action==='RETURN'?'已标记异常':'已复核');this.opened=false;this.close();this.load()
       }catch(e){if(e!=='cancel'&&e!=='close'&&token===getToken())this.$modal.msgError(e.message||'操作失败，请刷新核对')}finally{if(version===this._detailVersion)this.busy=false}
     }
   }

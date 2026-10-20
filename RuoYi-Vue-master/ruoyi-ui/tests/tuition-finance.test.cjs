@@ -5,6 +5,13 @@ const path = require('node:path')
 const vm = require('node:vm')
 const root = path.resolve(__dirname, '..')
 let finance = {}
+
+test('credit packages cannot be repriced and collection always retains the parent coupon',async()=>{
+ assert.equal(finance.canPrice({billType:'CREDIT_PACKAGE',billingStatus:'OPEN',payments:[]}),false)
+ const ids=[];const p=component('tuition',{quoteTuition:async(id,coupon)=>{ids.push(coupon);return{data:{payableAmount:'7000.00',coupons:[],userCouponId:'88'}}}})
+ p.detail={enrollmentId:'9',billType:'CREDIT_PACKAGE',packageSnapshot:{userCouponId:'88'}};await p.openOperation('collect');assert.equal(p.form.userCouponId,'88');p.form.userCouponId='99';await p.refreshQuote();assert.deepEqual(ids,['88','88'])
+ const routes=[];p.$router={push:v=>routes.push(v)};p.goRefund({paymentId:'1'});assert.equal(routes.length,0)
+})
 before(async () => {
   const file = path.join(root, 'src/utils/tuitionFinance.js')
   if (fs.existsSync(file))
@@ -194,6 +201,7 @@ function component(name, dependencies = {}) {
   const context = vm.createContext({
     component: null,
     ReferralRewards:{},
+    OneToOneManager:{},
     ...finance,
     ...dependencies,
   })
@@ -505,6 +513,7 @@ test('coupon failed batch can reopen from its rendered page entry and retry with
   const compiled = require('vue-template-compiler').compile(
     source.match(/<template>([\s\S]*?)<\/template>\s*<script>/)[1]
   )
+  instance.dict = { type: { edu_grade: [] } }
   const view = new (require('vue'))({
     data: () => instance,
     render: new Function(compiled.render),
@@ -1244,7 +1253,7 @@ test('legacy SUCCESS preserves historical reviewer and amount semantics with or 
 })
 test('coupon template form sends single or multiple subject rules and full selection as unrestricted',async()=>{
   const saved=[];const instance=component('coupon',{addTemplate:async body=>saved.push(body)});instance.getList=async()=>{};
-  instance.form={couponName:'数学券',discountAmount:'50',minSpendAmount:'100',validFrom:'2020-01-01 00:00:00',validUntil:'2099-01-01 00:00:00',totalQuantity:10,templateStatus:'ACTIVE',subjectNames:['数学']};instance.allSubjects=false;instance.couponKind='THRESHOLD';await instance.submitTemplate();assert.deepEqual(Array.from(saved[0].subjectNames),['数学']);assert.equal(saved[0].minSpendAmount,'100.00');
+  instance.form={couponName:'数学券',discountAmount:'50',minSpendAmount:'100',validFrom:'2020-01-01 00:00:00',validUntil:'2099-01-01 00:00:00',totalQuantity:10,templateStatus:'ACTIVE',subjectNames:['数学'],courseTypes:['ONE_TO_ONE']};instance.allSubjects=false;instance.couponKind='THRESHOLD';await instance.submitTemplate();assert.deepEqual(Array.from(saved[0].subjectNames),['数学']);assert.equal(saved[0].minSpendAmount,'100.00');assert.equal(saved[0].courseScope,'ONE_TO_ONE');assert.equal(saved[0].scopeScheduleId,null);
   instance.form.subjectNames=['数学','化学'];await instance.submitTemplate();assert.deepEqual(Array.from(saved[1].subjectNames),['数学','化学']);instance.allSubjects=true;instance.couponKind='NONE';await instance.submitTemplate();assert.deepEqual(Array.from(saved[2].subjectNames),[]);assert.equal(saved[2].minSpendAmount,'0.00');
 });
 test('coupon pending badge ignores response after account change or page hide',async()=>{

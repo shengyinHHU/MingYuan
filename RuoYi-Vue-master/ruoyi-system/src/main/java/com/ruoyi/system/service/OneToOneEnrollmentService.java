@@ -122,12 +122,19 @@ public class OneToOneEnrollmentService {
         return 1;
     }
     private Map<String,Object> lock(Long enrollmentId, boolean teacher) {
+        return lock(enrollmentId,teacher,false);
+    }
+    private static void administrator() {
+        check(SecurityUtils.isAdmin() || SecurityUtils.hasRole("admin"),"仅管理员可管理一对一课程");
+    }
+    private Map<String,Object> lock(Long enrollmentId, boolean teacher, boolean admin) {
+        if (admin) administrator();
         var before = db.one("SELECT schedule_id FROM edu_enrollment WHERE enrollment_id=?",enrollmentId);
         EduCourseSchedule s = schedules.lockSchedule(id(before,"scheduleId"));
         check(s != null && "2".equals(s.getClassMode()),"不是单次一对一课程");
         var e = db.one("SELECT * FROM edu_enrollment WHERE enrollment_id=? FOR UPDATE",enrollmentId);
         check(e.get("classDate") != null && "0".equals(e.get("delFlag")),"旧报名未指定单次日期，请联系管理员核对");
-        check(SecurityUtils.getUserId().equals(teacher ? s.getTeacherId() : id(e,"parentId")),"无权操作其他人的报名");
+        check(admin || SecurityUtils.getUserId().equals(teacher ? s.getTeacherId() : id(e,"parentId")),"无权操作其他人的报名");
         e.put("schedule",s); return e;
     }
     private void editable(Map<String,Object> e) {
@@ -138,8 +145,18 @@ public class OneToOneEnrollmentService {
     }
     @Transactional(rollbackFor=Exception.class)
     public int decide(Long enrollmentId, String action, String reason) {
-        var e = lock(enrollmentId,true); String before = String.valueOf(e.get("enrollmentStatus"));
-        check(List.of("CONFIRM","REJECT","APPROVE_CANCEL","REJECT_CANCEL").contains(action),"操作无效");
+        return decideLocked(lock(enrollmentId,true),action,reason);
+    }
+    /** 管理员代办不切换登录身份；所有资金、课次和历史约束仍走同一事务。 */
+    @Transactional(rollbackFor=Exception.class)
+    public int adminDecide(Long enrollmentId, String action, String reason) {
+        return decideLocked(lock(enrollmentId,true,true),action,reason);
+    }
+    private int decideLocked(Map<String,Object> e,String action,String reason) {
+        Long enrollmentId=id(e,"enrollmentId"); String before=String.valueOf(e.get("enrollmentStatus"));
+        check(action != null && List.of("CONFIRM","REJECT","APPROVE_CANCEL","REJECT_CANCEL").contains(action),"操作无效");
+        check("CONFIRM".equals(action) || (reason != null && !reason.isBlank()),"请填写处理原因");
+        reason(reason);
         if ("CONFIRM".equals(action) && "1".equals(before)) return 0;
         if ("REJECT".equals(action) && "3".equals(before)) return 0;
         if ("APPROVE_CANCEL".equals(action) && "2".equals(before) && "2".equals(e.get("cancelRequestStatus"))) return 0;
@@ -179,16 +196,29 @@ public class OneToOneEnrollmentService {
         db.update("edu_enrollment","enrollment_id",enrollmentId,values); event(enrollmentId,"REQUEST_CANCEL",before,before,reason); return 1;
     }
     public List<Map<String,Object>> transactions() {
-        return formatRows(db.rows("SELECT e.enrollment_id,e.schedule_id,e.student_name,e.class_date,e.enrollment_status,e.cancel_request_status,e.cancel_request_reason,e.create_time,e.settlement_method,e.pay_status,e.lesson_credits,e.lesson_completed_time,"+COMPLETED+","+PROCESSABLE+",(e.enrollment_status='1' AND e.cancel_request_status<>'1' AND e.lesson_completed_time IS NULL AND TIMESTAMP(e.class_date,s.end_time)<=? AND EXISTS(SELECT 1 FROM edu_class_sign_in r WHERE r.enrollment_id=e.enrollment_id AND r.schedule_id=e.schedule_id AND r.class_date=e.class_date AND r.del_flag='0' AND r.sign_status IN ('1','4','5'))) AS can_complete,s.course_class_name,s.start_time,s.end_time,COALESCE(NULLIF(s.lesson_location,''),c.classroom_name) AS lesson_location FROM edu_enrollment e JOIN edu_course_schedule s ON s.schedule_id=e.schedule_id LEFT JOIN edu_classroom c ON c.classroom_id=s.classroom_id WHERE s.teacher_id=? AND s.class_mode='2' AND e.class_date IS NOT NULL AND e.del_flag='0' ORDER BY (e.cancel_request_status='1' OR e.enrollment_status='0') DESC,e.class_date DESC,e.enrollment_id DESC",LocalDateTime.now(ZONE),LocalDateTime.now(ZONE),SecurityUtils.getUserId()));
+        return transactions(SecurityUtils.getUserId(),null);
+    }
+    public List<Map<String,Object>> adminTransactions(Long teacherId,Long scheduleId) {
+        administrator(); return transactions(teacherId,scheduleId);
+    }
+    private List<Map<String,Object>> transactions(Long teacherId,Long scheduleId) {
+        return formatRows(db.rows("SELECT e.enrollment_id,e.schedule_id,e.parent_id,e.student_name,e.contact_phone,e.class_date,e.enrollment_status,e.cancel_request_status,e.cancel_request_reason,e.create_time,e.settlement_method,e.pay_status,e.lesson_credits,e.teacher_level_snapshot,e.lesson_completed_time,"+COMPLETED+","+PROCESSABLE+",(e.enrollment_status='1' AND e.cancel_request_status<>'1' AND e.lesson_completed_time IS NULL AND TIMESTAMP(e.class_date,s.end_time)<=? AND EXISTS(SELECT 1 FROM edu_class_sign_in r WHERE r.enrollment_id=e.enrollment_id AND r.schedule_id=e.schedule_id AND r.class_date=e.class_date AND r.del_flag='0' AND r.review_status<>'2' AND r.sign_status IN ('1','4','5'))) AS can_complete,s.teacher_id,s.teacher_name,s.grade_name,s.subject_name,s.course_class_name,s.start_time,s.end_time,COALESCE(NULLIF(s.lesson_location,''),c.classroom_name) AS lesson_location FROM edu_enrollment e JOIN edu_course_schedule s ON s.schedule_id=e.schedule_id LEFT JOIN edu_classroom c ON c.classroom_id=s.classroom_id WHERE (? IS NULL OR s.teacher_id=?) AND (? IS NULL OR s.schedule_id=?) AND s.class_mode='2' AND s.del_flag='0' AND e.class_date IS NOT NULL AND e.del_flag='0' ORDER BY (e.cancel_request_status='1' OR e.enrollment_status='0') DESC,e.class_date DESC,e.enrollment_id DESC",LocalDateTime.now(ZONE),LocalDateTime.now(ZONE),teacherId,teacherId,scheduleId,scheduleId));
     }
     @Transactional(rollbackFor=Exception.class)
     public int complete(Long enrollmentId) {
-        var e=lock(enrollmentId,true);
+        return completeLocked(lock(enrollmentId,true));
+    }
+    @Transactional(rollbackFor=Exception.class)
+    public int adminComplete(Long enrollmentId) {
+        return completeLocked(lock(enrollmentId,true,true));
+    }
+    private int completeLocked(Map<String,Object> e) {
+        Long enrollmentId=id(e,"enrollmentId");
         if(e.get("lessonCompletedTime") != null) return 0;
         check("1".equals(e.get("enrollmentStatus")) && !"1".equals(e.get("cancelRequestStatus")),"仅可完成已确认且没有待处理取消申请的课程");
         var s=(EduCourseSchedule)e.get("schedule");
         check(!LocalDateTime.of(ScheduleCalendar.date(e.get("classDate")),s.getEndTime()).isAfter(LocalDateTime.now(ZONE)),"课程尚未结束，不能提前消课");
-        check(!db.rows("SELECT sign_in_id FROM edu_class_sign_in WHERE enrollment_id=? AND schedule_id=? AND class_date=? AND del_flag='0' AND sign_status IN ('1','4','5') FOR UPDATE",enrollmentId,s.getScheduleId(),e.get("classDate")).isEmpty(),"请先在学生出勤中登记本次到课，再确认完成");
+        check(!db.rows("SELECT sign_in_id FROM edu_class_sign_in WHERE enrollment_id=? AND schedule_id=? AND class_date=? AND del_flag='0' AND review_status<>'2' AND sign_status IN ('1','4','5') FOR UPDATE",enrollmentId,s.getScheduleId(),e.get("classDate")).isEmpty(),"请先登记到课；审核异常的点名须经教务更正确认后再消课");
         credits.consume(e);
         db.update("edu_enrollment","enrollment_id",enrollmentId,Map.of("lesson_completed_time",LocalDateTime.now(ZONE),"lesson_completed_by",SecurityUtils.getUserId(),"update_time",LocalDateTime.now(ZONE),"update_by",SecurityUtils.getUsername()));
         event(enrollmentId,"COMPLETE","1","1","P".equals(e.get("settlementMethod")) ? "课包正式消耗"+e.get("lessonCredits")+"次额度" : "单次付费课程完成，不扣课包");
@@ -197,7 +227,15 @@ public class OneToOneEnrollmentService {
     public List<Map<String,Object>> history(Long id,boolean teacher) {
         var e = db.one("SELECT e.parent_id,s.teacher_id FROM edu_enrollment e JOIN edu_course_schedule s ON s.schedule_id=e.schedule_id WHERE e.enrollment_id=?",id);
         check(SecurityUtils.getUserId().equals(id(e,teacher ? "teacherId" : "parentId")),"无权查看其他人的操作历史");
-        return db.rows("SELECT action,actor_name,reason,previous_status,next_status,create_time FROM edu_enrollment_event WHERE enrollment_id=? ORDER BY event_id",id);
+        return events(id);
+    }
+    public List<Map<String,Object>> adminHistory(Long id) {
+        administrator();
+        db.one("SELECT e.enrollment_id FROM edu_enrollment e JOIN edu_course_schedule s ON s.schedule_id=e.schedule_id WHERE e.enrollment_id=? AND e.class_date IS NOT NULL AND e.del_flag='0' AND s.class_mode='2' AND s.del_flag='0'",id);
+        return events(id);
+    }
+    private List<Map<String,Object>> events(Long id) {
+        return db.rows("SELECT action,actor_id,actor_name,reason,previous_status,next_status,create_time FROM edu_enrollment_event WHERE enrollment_id=? ORDER BY event_id",id);
     }
     private void event(Long id,String action,String before,String after,String reason) {
         var values = new LinkedHashMap<String,Object>(); values.put("enrollment_id",id); values.put("action",action); values.put("actor_id",SecurityUtils.getUserId());

@@ -112,7 +112,7 @@
           <el-form-item label="授课形式">
             <el-select v-model="form.classMode" :disabled="!form.scheduleId && dims.isTeacher && !dims.isAdmin" style="width:100%">
               <el-option label="班课" value="1" />
-              <el-option label="一对一" value="2" />
+              <el-option label="一对一（请使用一对一管理）" value="2" :disabled="dims.isAdmin" />
             </el-select>
           </el-form-item>
         </el-col>
@@ -233,13 +233,9 @@ export default {
       this.form.classroomName = c ? c.classroomName : ''
       this.form.campusName = c ? c.campusName : ''
     },
-    /** 用户手动改教室：同步校区；若原是一对一（无固定教室），改为班课 */
+    /** 两种授课形式均使用真实教室；选教室不能偷偷改变授课形式。 */
     onClassroomChange(id) {
       this.syncClassroomMeta()
-      if (id !== null && id !== undefined && id !== '' && this.form.classMode === '2') {
-        this.form.classMode = '1'
-        this.form.lessonLocation = null
-      }
     },
     open() {
       this.form = this.buildEmptyForm()

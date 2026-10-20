@@ -128,6 +128,7 @@ class TuitionMysqlTest {
                     Integer.class)
             > 0;
     runMigration("20261010_tuition_offline_two_stage.sql");
+    runMigration("20261020_coupon_course_scope.sql");
     if (session) runMigration("20261012_tuition_session_unified.sql");
   }
 

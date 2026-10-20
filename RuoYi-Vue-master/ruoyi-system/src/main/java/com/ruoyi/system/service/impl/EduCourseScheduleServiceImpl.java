@@ -86,7 +86,7 @@ public class EduCourseScheduleServiceImpl implements IEduCourseScheduleService {
         schedule.setEnrolledCount(0L);
         lockResources(List.of(schedule));
         validate(schedule);
-        if ("2".equals(schedule.getClassMode())) { availability.validateSingle(schedule); schedule.setLessonLocation(""); }
+        if ("2".equals(schedule.getClassMode())) { availability.validateSingle(schedule); schedule.setLessonLocation(""); availability.check(schedule); }
         checkConflicts(schedule);
         schedule.setCreateBy(SecurityUtils.getUsername());
         schedule.setCreateTime(DateUtils.getNowDate());
@@ -131,6 +131,8 @@ public class EduCourseScheduleServiceImpl implements IEduCourseScheduleService {
                 && Objects.equals(current.getPeriodName(), effective.getPeriodName()),
                 "已有签到历史，不能直接改变教师、教室、授课形式或排课时间；请使用调课管理");
         }
+        // 一对一只发布真实空闲时段；不能沿用班课的“教室冲突仅提示”策略。
+        if ("2".equals(effective.getClassMode())) availability.check(effective);
         checkConflicts(effective);
         // 不用前端旧值覆盖报名事务维护的人数；创建信息和删除标志也不能普通编辑。
         input.setEnrolledCount(null); input.setDelFlag(null); input.setScheduleCode(null);
@@ -336,7 +338,8 @@ public class EduCourseScheduleServiceImpl implements IEduCourseScheduleService {
     }
 
     private void requireNoActiveEnrollments(EduCourseSchedule course, boolean forUpdate) {
-        if (forUpdate && allowUpdateEnrolled()) {
+        // 一对一预约按具体日期占位，不能通过班课导入测试开关绕开预约保护。
+        if (forUpdate && !"2".equals(course.getClassMode()) && allowUpdateEnrolled()) {
             log.warn("【测试开关已开启】跳过报名保护，允许覆盖更新已有报名的排课：{} {}（schedule_id={}）",
                     course.getCourseClassName(), course.getTeacherName(), course.getScheduleId());
             return;

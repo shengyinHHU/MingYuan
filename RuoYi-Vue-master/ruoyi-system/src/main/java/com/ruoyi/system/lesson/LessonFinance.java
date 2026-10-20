@@ -15,11 +15,17 @@ public class LessonFinance {
     require(TransactionSynchronizationManager.isActualTransactionActive(), "课次核对必须在财务事务内");
     require(db.rows("SELECT user_id FROM sys_user WHERE user_id=? AND status='0' AND del_flag='0'", actor).size()==1, "操作账号无效");
     var e=db.one("SELECT * FROM edu_enrollment WHERE enrollment_id=? FOR UPDATE", enrollment);
+    require(!com.ruoyi.system.finance.CreditPackageService.isPackage(e),"课包余额须按购买订单核对，不能套用课程退课或退费");
     require(!"LESSON_PACKAGE".equals(e.get("billType")), "旧课包账单须先核对迁移，不能启用旧预约账本");
     require(!"P".equals(e.get("settlementMethod")), "课包报名通过课次账户结算，不能登记现金收退款");
     return e;
   }
-  public void activate(long enrollment, long actor) { cashBill(enrollment, actor); }
+  public void activate(long enrollment, long actor) {
+    var e=db.one("SELECT * FROM edu_enrollment WHERE enrollment_id=? FOR UPDATE",enrollment);
+    if(com.ruoyi.system.finance.CreditPackageService.isPackage(e)){
+      new com.ruoyi.system.finance.CreditPackageService(db,new com.ruoyi.system.finance.CouponService(db)).credit(enrollment,actor);
+    }else cashBill(enrollment, actor);
+  }
   public void freeze(long enrollment, long refund, long actor) { cashBill(enrollment, actor); }
   public void unfreeze(long enrollment, long actor) { cashBill(enrollment, actor); }
   public void close(long enrollment, long refund, long actor) { cashBill(enrollment, actor); }

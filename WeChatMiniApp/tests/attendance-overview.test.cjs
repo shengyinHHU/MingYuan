@@ -5,12 +5,15 @@ const child={studentKey:'S:1',studentName:'同名学生',parentPhone:'1234567890
 const grid={course,dates:['2030-10-12','2030-10-19'],rows:[child,{...child,studentKey:'S:2',cells:[{text:'请假',status:'3',review:'1',recorded:true},child.cells[1]]}],stats:{attended:1,leave:1},occurrenceCount:2}
 function harness(request,role='admin'){
  const storage={token:'admin-session',roles:[role]},routes=[];const wx={getStorageSync:k=>storage[k],navigateTo:o=>routes.push(o.url),stopPullDownRefresh(){},showToast(){}}
- const module={exports:{}};vm.runInNewContext(fs.readFileSync(path.join(root,'utils/sign-review.js'),'utf8'),{module,wx,Set})
+ const module={exports:{}};vm.runInNewContext(fs.readFileSync(path.join(root,'utils/sign-review.js'),'utf8'),{module,wx,Set,require:id=>id==='./access'?{staff:()=>['admin','education'].some(r=>storage.roles.includes(r))}:{request}})
  let definition;vm.runInNewContext(fs.readFileSync(path.join(root,'pages/sign-review/sign-review.js'),'utf8'),{Page:p=>definition=p,require:id=>id.endsWith('/attendance-overview')?visual:id.endsWith('/sign-review')?module.exports:{request},wx,console})
  const p={...definition,data:structuredClone(definition.data),_visible:true};p.setData=o=>Object.assign(p.data,o);return {p,storage,routes}
 }
 test('student attendance opens overview by default and full teacher names remain in course options',async()=>{
  const calls=[];const {p}=harness(o=>{calls.push(o);return Promise.resolve({data:o.url.endsWith('/courses')?[course]:grid})});assert.equal(p.data.mode,'overview');await p.loadCourses();assert.match(p.data.courses[0].label,/刘老师全名/);assert.equal(p.data.courseId,'10');assert.equal(p.data.students.length,2);assert.equal(p.data.students[0].studentKey,'S:1');assert.equal(p.data.students[1].studentKey,'S:2');assert.equal(calls[1].data.scheduleId,'10')
+})
+test('education shares the complete read-only attendance overview while teacher and parent cannot load it',async()=>{
+ for(const role of ['education','teacher','parent']){const calls=[];const {p}=harness(o=>{calls.push(o);return Promise.resolve({data:o.url.endsWith('/courses')?[course]:grid})},role);await p.loadCourses();assert.equal(p.data.overviewReady,role==='education');assert.equal(calls.length,role==='education'?2:0)}
 })
 test('teacher statistics labels do not treat missing attendance as absence or invent a completed review',()=>{
  const r=visual.row(child);assert.equal(r.cells[0].reviewText,'待复核');assert.equal(r.cells[1].text,'—');assert.equal(r.cells[1].reviewText,'');assert.equal(r.phoneHint,'家长尾号 8901');assert.equal(visual.filter([r],'6789').length,1);assert.equal(visual.filter([r],'不同姓名').length,0)

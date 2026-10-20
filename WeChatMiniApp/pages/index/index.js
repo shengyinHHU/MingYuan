@@ -77,6 +77,7 @@ const roleProfiles = {
       { key:'referral', title: '优惠券管理', icon: '券', tone: 'violet', route: '/pages/admin-referral/admin-referral' },
       { title: '教师管理', icon: '师', tone: 'indigo', route: '/pages/admin-teachers/admin-teachers' },
       { title: '收费财务', icon: '财', tone: 'gold', route: '/pages/admin-tuition/admin-tuition' },
+      { title: '退费管理', icon: '退', tone: 'orange', route: '/pages/admin-tuition-refunds/admin-tuition-refunds' },
       { title: '薪资核算', icon: '薪', tone: 'red' },
       { title: '运营分析', icon: '析', tone: 'violet' },
       { title: '资料商城', icon: '资', tone: 'indigo', route: '/pages/material/material' },
@@ -93,8 +94,8 @@ const roleProfiles = {
 
 // Education is a real authenticated role, never a development login option.
 roleProfiles.education = {
-  name: '教务', tag: '全校区教务管理', eyebrow: '教务端', title: '教学协调、收费与退费初审',
-  stats: [], actions: roleProfiles.admin.actions.filter(a => ['教室管理', '学生档案', '收费财务'].includes(a.title)), agendaTitle: '教务工作说明', schedule: []
+  name: '教务', tag: '全校区教务管理', eyebrow: '教务端', title: '课程出勤、收费与退费初审',
+  stats: [], actions: roleProfiles.admin.actions.filter(a => ['教室管理', '学生档案', '收费财务', '退费管理', '学生出勤'].includes(a.title)), agendaTitle: '教务工作说明', schedule: []
 }
 
 function normalizeRole(roleKey) {
@@ -318,6 +319,7 @@ Page({
     const financeAllowed = access.staff() && access.can('system:tuition:list')
     this._teacherLoadVersion = (this._teacherLoadVersion || 0) + 1
     this.setData({ teacherDataMessage: '',currentChild:null,parentChildren:[],childLoading:false,childError:'',showChildPicker:false,parentScheduleError:'', roleLocked: workspaces.length < 2, developmentLoginEnabled: access.developmentTool() && !!wx.getStorageSync('devSessionVersion'), ...buildRoleState(role, workspaces) })
+    if(role==='education')this.loadSignReviewPending()
     if(role==='parent' || role==='admin') { this.loadAccountPending();if(role==='admin'){this.loadReferralPending();this.loadSignReviewPending()};this._accountTimer=setInterval(()=>{this.loadAccountPending();if(this.data.currentRole==='admin'){this.loadReferralPending();this.loadSignReviewPending()}},30000) }
 
     const actions = this.data.quickActions.filter(a => a.route !== '/pages/admin-tuition/admin-tuition')
@@ -351,13 +353,14 @@ Page({
   },
 
   async loadSignReviewPending() {
-    if(this._signReviewLoading||this._unloaded||!this._visible||this.data.currentRole!=='admin'||getRoleFromStorage()!=='admin')return
+    const role=this.data.currentRole
+    if(this._signReviewLoading||this._unloaded||!this._visible||!['admin','education'].includes(role)||getRoleFromStorage()!==role)return
     const token=wx.getStorageSync('token'),roleVersion=this._roleLoadVersion,version=this._signReviewVersion=(this._signReviewVersion||0)+1
     this._signReviewLoading=true
     try {
-      const r=await request({url:'/miniapp/admin/sign/list',timeout:15000})
-      if(this._unloaded||!this._visible||version!==this._signReviewVersion||roleVersion!==this._roleLoadVersion||this.data.currentRole!=='admin'||getRoleFromStorage()!=='admin'||wx.getStorageSync('token')!==token)return
-      const count=new Set((r.data||[]).filter(x=>String(x.reviewStatus||'0')==='0').map(x=>`${x.scheduleId}:${String(x.classDate).slice(0,10)}`)).size
+      const r=await request({url:'/miniapp/education/sign/list',timeout:15000})
+      if(this._unloaded||!this._visible||version!==this._signReviewVersion||roleVersion!==this._roleLoadVersion||this.data.currentRole!==role||getRoleFromStorage()!==role||wx.getStorageSync('token')!==token)return
+      const count=new Set((r.data||[]).filter(x=>String(x.reviewStatus||'0')!=='1').map(x=>`${x.scheduleId}:${String(x.classDate).slice(0,10)}`)).size
       this.setData({quickActions:this.data.quickActions.map(a=>a.key==='studentSignReview'?{...a,badgeText:courseState.badgeText(count)}:a)})
     }catch(e){}finally{if(version===this._signReviewVersion)this._signReviewLoading=false}
   },

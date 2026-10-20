@@ -14,6 +14,8 @@ import com.ruoyi.system.domain.EduClassSignIn;
  */
 public interface IEduClassSignInService
 {
+    Map<String, Object> reject(MiniAppSignReviewBody body, Long adminId, String adminName);
+    Map<String, Object> correct(MiniAppSignReviewBody body, Long adminId, String adminName);
     /**
      * 教师的排课列表（含最近一次签到汇总）
      */
@@ -45,7 +47,7 @@ public interface IEduClassSignInService
     public Map<String,Object> attendanceStudent(Long scheduleId,String studentKey,boolean allCourses,String from,String to,int pageNum);
 
     /**
-     * 单管理员确认复核或退回更正；确认完成后锁定，原确认请求幂等。
+     * 教务或管理员单人审核确认；按已查看的点名表版本确认，完成后不覆盖原审核事实。
      *
      * @return 确认信息（confirmedCount/reviewStatus）
      */

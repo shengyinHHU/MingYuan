@@ -40,6 +40,7 @@
         <el-button type="primary" icon="el-icon-search" size="mini" @click="handleQuery">查询</el-button>
         <el-button icon="el-icon-refresh" size="mini" @click="resetQuery">重置</el-button>
         <el-button icon="el-icon-full-screen" size="mini" @click="toggleFullScreen">全屏</el-button>
+        <el-button type="primary" plain icon="el-icon-date" size="mini" v-hasRole="['admin']" @click="openSingle()">一对一管理</el-button>
         <el-button type="success" icon="el-icon-upload2" size="mini" @click="openImport" v-hasPermi="['system:courseschedule:add']">课表导入</el-button>
         <el-button type="warning" icon="el-icon-sort" size="mini" @click="openSwap" v-hasPermi="['system:courseschedule:edit']">交换教室列</el-button>
       </el-form-item>
@@ -163,6 +164,7 @@
     </div>
 
     <!-- 新增/编辑 弹窗 -->
+    <OneToOneManager ref="oneToOne" :dims="dims" @changed="handleQuery" />
     <TimetableDialog
       ref="dialog"
       :dims="dims"
@@ -447,6 +449,7 @@
 <script>
 import TimetableCell from './TimetableCell.vue'
 import TimetableDialog from './TimetableDialog.vue'
+import OneToOneManager from '../schedule/OneToOneManager.vue'
 import { isPlaceholder, scheduleIssues, issueTip } from './timetableIssue'
 import {
   getTimetableDimensions,
@@ -463,7 +466,7 @@ import {
 
 export default {
   name: 'CourseTimetable',
-  components: { TimetableCell, TimetableDialog },
+  components: { TimetableCell, TimetableDialog, OneToOneManager },
   data() {
     return {
       loading: false,
@@ -1076,7 +1079,12 @@ export default {
       return this.dims.isTeacher && String(sch.teacherId) === String(this.dims.currentUserId)
     },
     // ============ 交互 ============
+    openSingle(row = {}, tab = 'slots') {
+      if (!this.dims.isAdmin) { this.$message.warning('仅管理员可在网页统一管理一对一'); return }
+      return this.$refs.oneToOne.open(row, tab)
+    },
     onEdit(sch) {
+      if (this.dims.isAdmin && sch.classMode === '2') { this.openSingle(sch, 'courses'); return }
       if (!this.canEditSchedule(sch)) {
         this.$message.info('仅管理员或负责教师可编辑此排课')
         return
@@ -1201,6 +1209,7 @@ export default {
       }
     },
     async onRemove(sch) {
+      if (this.dims.isAdmin && sch.classMode === '2') { this.openSingle(sch, 'courses'); return }
       if (!this.canEditSchedule(sch)) {
         this.$message.info('仅管理员或负责教师可删除此排课')
         return

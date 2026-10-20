@@ -71,6 +71,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     <select id="selectEduEnrollmentList" parameterType="EduEnrollment" resultMap="EduEnrollmentResult">
         <include refid="selectEduEnrollmentVo"/>
         <where>
+            e.schedule_id is not null
             <if test="params.teacherUserId != null">
                 and s.teacher_id = #{params.teacherUserId} and s.del_flag = '0'
             </if>
@@ -98,7 +99,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 
     <select id="selectEduEnrollmentByEnrollmentId" parameterType="Long" resultMap="EduEnrollmentResult">
         <include refid="selectEduEnrollmentVo"/>
-        where e.enrollment_id = #{enrollmentId}
+        where e.enrollment_id = #{enrollmentId} and e.schedule_id is not null
     </select>
 
     <insert id="insertEduEnrollment" parameterType="EduEnrollment" useGeneratedKeys="true" keyProperty="enrollmentId">

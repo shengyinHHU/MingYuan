@@ -38,12 +38,12 @@ const click = role => ({ currentTarget: { dataset: { role } } })
 test('student attendance badge rejects late responses after switching workspace with the same token', async () => {
   const finishes = []; let delayed = false
   const h = harness('index', ['admin', 'parent'], ['*:*:*'], o => {
-    if (o.url === '/miniapp/admin/sign/list') return delayed
+    if (o.url === '/miniapp/education/sign/list') return delayed
       ? new Promise(resolve => { finishes.push(resolve) })
       : { data: [{ scheduleId: '1', classDate: '2030-10-15', reviewStatus: '0' }, { scheduleId: '1', classDate: '2030-10-15', reviewStatus: '0' }, { scheduleId: '2', classDate: '2030-10-15', reviewStatus: '2' }] }
   })
   h.p.onLoad(); h.p._visible = true; await h.p.applyLoginRole(); await Promise.resolve()
-  assert.equal(h.p.data.quickActions.find(a => a.key === 'studentSignReview').badgeText, '1')
+  assert.equal(h.p.data.quickActions.find(a => a.key === 'studentSignReview').badgeText, '2')
   delayed = true; const pending = h.p.loadSignReviewPending(); assert.equal(finishes.length, 1)
   await h.p.switchRole(click('parent')); finishes.forEach(finish => finish({ data: [{ scheduleId: '9', classDate: '2030-10-15', reviewStatus: '0' }] })); await pending
   assert.equal(h.store.get('token'), 'original-token')
@@ -62,6 +62,8 @@ test('each assigned role sees only its own workspace; education confirms tuition
       assert.equal(routes.includes('/pages/admin-transactions/admin-transactions'), false)
     }
     if (role === 'teacher') assert.ok(routes.includes('/pages/teacher-students/teacher-students'))
+    assert.equal(routes.includes('/pages/admin-tuition-refunds/admin-tuition-refunds'), ['admin', 'education'].includes(role))
+    assert.equal(routes.includes('/pages/sign-review/sign-review'), ['admin', 'education'].includes(role))
     assert.equal(h.calls.some(o => o.url === '/miniapp/login'), false)
     h.p.onUnload()
   }
@@ -78,7 +80,8 @@ test('multi-role switching keeps the token, refuses an unassigned role and clear
 })
 test('staff menu permissions are respected and a missing role never falls back to parent', async () => {
   const h = harness('index', ['education'], []); h.p.onLoad(); await h.p.applyLoginRole()
-  assert.equal(h.p.data.quickActions.length, 0)
+  // Attendance review is role-authorized, like the existing miniapp check-in review; finance still requires menu permissions.
+  assert.deepEqual(Array.from(h.p.data.quickActions, a => a.route), ['/pages/sign-review/sign-review'])
   h.state.roles = []; await h.p.applyLoginRole()
   assert.equal(h.p.data.currentRole, ''); assert.equal(h.p.data.roles.length, 0)
   assert.equal(h.calls.some(o => o.url.startsWith('/miniapp/parent')), false)
