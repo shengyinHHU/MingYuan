@@ -1,6 +1,6 @@
 <view class="page">
   <view class="search-bar">
-    <input class="search-input" placeholder="搜索教师姓名" value="{{keyword}}" confirm-type="search" bindinput="onKeyword"/>
+    <input class="search-input" placeholder="搜索姓名/昵称/学科" value="{{keyword}}" confirm-type="search" bindinput="onKeyword"/>
   </view>
 
   <view wx:if="{{loading}}" class="tip">加载中…</view>
@@ -10,6 +10,7 @@
     <view class="row" wx:for="{{list}}" wx:key="teacherId" data-id="{{item.teacherId}}" bindtap="openDetail">
       <view class="row-main">
         <view class="row-name">{{item.teacherName}}</view>
+        <view class="row-sub" wx:if="{{item.showNick}}">昵称：{{item.nickName}}</view>
         <view class="row-sub">任教科目：{{item.subjectText}}</view>
         <view class="row-sub">带课 {{item.lessonCount}} 节　基本工资：{{item.baseSalary != null ? item.baseSalary : '未设置'}}</view>
       </view>
@@ -27,6 +28,8 @@
         <text class="sheet-title">{{detail.teacherName}}</text>
         <text class="sheet-close" bindtap="closeDetail">关闭</text>
       </view>
+      <view class="info"><text class="info-k">姓名</text><text class="info-v">{{detail.teacherName}}</text></view>
+      <view class="info" wx:if="{{detail.showNick}}"><text class="info-k">昵称</text><text class="info-v">{{detail.nickName}}</text></view>
       <view class="info"><text class="info-k">登录账号</text><text class="info-v">{{detail.userName || (detailLoading ? '加载中…' : '—')}}</text></view>
       <view class="info"><text class="info-k">手机号</text><text class="info-v">{{detail.phonenumber || (detailLoading ? '加载中…' : '—')}}</text></view>
       <view class="info"><text class="info-k">角色</text><text class="info-v">{{detail.roles || (detailLoading ? '加载中…' : '—')}}</text></view>

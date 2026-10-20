@@ -43,6 +43,22 @@ public class MiniAppAdminSignController extends BaseController
             SecurityUtils.getLoginUser().getUser().getNickName()));
     }
 
+    @PreAuthorize("@ss.hasAnyRoles('admin,education')")
+    @GetMapping("/courses")
+    public AjaxResult courses(@RequestParam(defaultValue="") String keyword) { return success(signInService.attendanceCourses(keyword)); }
+
+    @PreAuthorize("@ss.hasAnyRoles('admin,education')")
+    @GetMapping("/overview")
+    public AjaxResult overview(@RequestParam Long scheduleId,@RequestParam(required=false) String from,@RequestParam(required=false) String to) {
+        return success(signInService.attendanceOverview(scheduleId,from,to));
+    }
+
+    @PreAuthorize("@ss.hasAnyRoles('admin,education')")
+    @GetMapping("/student-summary")
+    public AjaxResult student(@RequestParam Long scheduleId,@RequestParam String studentKey,@RequestParam(defaultValue="false") boolean allCourses,@RequestParam(required=false) String from,@RequestParam(required=false) String to,@RequestParam(defaultValue="1") int pageNum) {
+        return success(signInService.attendanceStudent(scheduleId,studentKey,allCourses,from,to,pageNum));
+    }
+
     /**
      * 签到列表（按课次聚合，可按日期过滤）
      */
@@ -72,8 +88,11 @@ public class MiniAppAdminSignController extends BaseController
     @PostMapping("/review")
     public AjaxResult review(@RequestBody MiniAppSignReviewBody body)
     {
-        Map<String, Object> result = signInService.review(body, SecurityUtils.getUserId(),
-                SecurityUtils.getLoginUser().getUser().getNickName());
+        com.ruoyi.common.core.domain.entity.SysUser reviewer = SecurityUtils.getLoginUser().getUser();
+        // 复核人姓名统一记真名（user_name），空则退回昵称
+        String reviewerName = com.ruoyi.common.utils.StringUtils.isNotEmpty(reviewer.getUserName())
+                ? reviewer.getUserName() : reviewer.getNickName();
+        Map<String, Object> result = signInService.review(body, SecurityUtils.getUserId(), reviewerName);
         AjaxResult ajax = AjaxResult.success();
         ajax.putAll(result);
         return ajax;

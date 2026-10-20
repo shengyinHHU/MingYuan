@@ -224,7 +224,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="timeSlot    != null and timeSlot    != ''"> and s.time_slot    = #{timeSlot}</if>
             <if test="gradeName   != null and gradeName   != ''"> and s.grade_name   = #{gradeName}</if>
             <if test="subjectName != null and subjectName != ''"> and s.subject_name = #{subjectName}</if>
-            <if test="teacherName != null and teacherName != ''"> and s.teacher_name = #{teacherName}</if>
+            <!-- 教师筛选一律按 teacher_id（Controller 已把旧参数 teacherName 解析成 teacherUserId）。
+                 不要再加 teacher_name 条件：教师重名时会静默查出别人的课。 -->
+            <if test="params.teacherUserId != null">and s.teacher_id = #{params.teacherUserId}</if>
             <if test="classType   != null and classType   != ''"> and s.class_type   = #{classType}</if>
             <!-- 用 classroom 表按校区过滤 -->
             <if test="remark != null and remark != ''"> and c.campus_name = #{remark}</if>

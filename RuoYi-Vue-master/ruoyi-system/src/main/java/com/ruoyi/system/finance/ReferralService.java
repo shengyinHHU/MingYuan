@@ -92,7 +92,9 @@ public class ReferralService {
     throw new com.ruoyi.common.exception.ServiceException("推荐关系过深，请联系管理员核查");
   }
   private String maskedName(long parent) {
-    var u=db.one("SELECT nick_name,user_name FROM sys_user WHERE user_id=?",parent);String name=str(u,"nickName");if(name.isEmpty())name=str(u,"userName");return name.isEmpty()?"家长":name.substring(0,1)+"**";
+    // 口径同 FinanceRules.parentNameSql：真名优先，避免把「王文晶」这类老师昵称当成家长名脱敏显示
+    var u=db.one("SELECT "+FinanceRules.parentNameSql("u")+" parent_name FROM sys_user u WHERE u.user_id=?",parent);
+    String name=str(u,"parentName");return name.isEmpty()?"家长":name.substring(0,1)+"**";
   }
   public Map<String,Object> home(long parent) {
     parent(parent);
@@ -200,14 +202,17 @@ public class ReferralService {
     }catch(Exception e){LOG.warn("推荐补偿暂不可用 type={}",e.getClass().getSimpleName());}
   }
   private static final String RELATIONS=" FROM edu_referral_binding b JOIN sys_user n ON n.user_id=b.invitee_id JOIN sys_user o ON o.user_id=b.referrer_id ";
+  /** 邀请人/被邀请人的展示名，口径同 FinanceRules.parentNameSql（真名优先，非中文名退回中文昵称）。 */
+  private static final String PEOPLE_NAMES=
+      FinanceRules.parentNameSql("n")+" invitee_name,"+FinanceRules.parentNameSql("o")+" referrer_name";
   public Map<String,Object> list(long actor,boolean admin,Map<String,String> q) {
     if(admin)coupons.admin(actor);else parent(actor);
     String kind=q.getOrDefault("kind","bindings"),select,from,order;
     switch(kind) {
-      case "bindings" -> {select="b.*,n.nick_name invitee_name,o.nick_name referrer_name,IF(r.record_id IS NULL,'WAITING',r.review_status) recommendation_status";from=RELATIONS+" LEFT JOIN edu_referral_record r ON r.binding_id=b.binding_id ";order="b.update_time DESC,b.binding_id DESC";}
-      case "records" -> {select="r.*,b.invitee_id,b.referrer_id,n.nick_name invitee_name,o.nick_name referrer_name";from=RELATIONS+" JOIN edu_referral_record r ON r.binding_id=b.binding_id ";order="r.update_time DESC,r.record_id DESC";}
-      case "rewards" -> {select="w.*,c.update_time,b.binding_id,b.invitee_id,b.referrer_id,n.nick_name invitee_name,o.nick_name referrer_name,c.user_coupon_id,c.coupon_status,t.coupon_name,t.discount_amount";from=RELATIONS+" JOIN edu_referral_record r ON r.binding_id=b.binding_id JOIN edu_referral_reward w ON w.record_id=r.record_id JOIN edu_user_coupon c ON c.referral_reward_id=w.reward_id JOIN edu_coupon_template t ON t.template_id=w.template_id ";order="c.update_time DESC,w.reward_id DESC";}
-      case "anomalies" -> {require(admin,"FORBIDDEN: 仅管理员可查看异常");select="a.*,b.binding_id,b.invitee_id,b.referrer_id,n.nick_name invitee_name,o.nick_name referrer_name";from=RELATIONS+" JOIN edu_referral_record r ON r.binding_id=b.binding_id JOIN edu_referral_anomaly a ON a.record_id=r.record_id ";order="a.update_time DESC,a.anomaly_id DESC";}
+      case "bindings" -> {select="b.*,"+PEOPLE_NAMES+",IF(r.record_id IS NULL,'WAITING',r.review_status) recommendation_status";from=RELATIONS+" LEFT JOIN edu_referral_record r ON r.binding_id=b.binding_id ";order="b.update_time DESC,b.binding_id DESC";}
+      case "records" -> {select="r.*,b.invitee_id,b.referrer_id,"+PEOPLE_NAMES+"";from=RELATIONS+" JOIN edu_referral_record r ON r.binding_id=b.binding_id ";order="r.update_time DESC,r.record_id DESC";}
+      case "rewards" -> {select="w.*,c.update_time,b.binding_id,b.invitee_id,b.referrer_id,"+PEOPLE_NAMES+",c.user_coupon_id,c.coupon_status,t.coupon_name,t.discount_amount";from=RELATIONS+" JOIN edu_referral_record r ON r.binding_id=b.binding_id JOIN edu_referral_reward w ON w.record_id=r.record_id JOIN edu_user_coupon c ON c.referral_reward_id=w.reward_id JOIN edu_coupon_template t ON t.template_id=w.template_id ";order="c.update_time DESC,w.reward_id DESC";}
+      case "anomalies" -> {require(admin,"FORBIDDEN: 仅管理员可查看异常");select="a.*,b.binding_id,b.invitee_id,b.referrer_id,"+PEOPLE_NAMES+"";from=RELATIONS+" JOIN edu_referral_record r ON r.binding_id=b.binding_id JOIN edu_referral_anomaly a ON a.record_id=r.record_id ";order="a.update_time DESC,a.anomaly_id DESC";}
       default -> throw new com.ruoyi.common.exception.ServiceException("查询类别无效");
     }
     if(admin)select+=",n.phonenumber invitee_phone,o.phonenumber referrer_phone"+(kind.equals("rewards")?",(SELECT phonenumber FROM sys_user recipient WHERE recipient.user_id=w.parent_id) parent_phone":"");

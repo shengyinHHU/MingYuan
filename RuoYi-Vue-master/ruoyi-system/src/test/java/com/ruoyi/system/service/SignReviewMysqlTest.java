@@ -42,7 +42,10 @@ class SignReviewMysqlTest {
         }));
         inject("classLeaves",new ClassLeaveService(){@Override public Set<Long> approved(Long id,String date){return Set.of();}});
         inject("singleDb",new com.ruoyi.system.shop.ShopRepository(ds));
-        jdbc.execute("CREATE TABLE edu_enrollment(enrollment_id BIGINT PRIMARY KEY,schedule_id BIGINT,class_date DATE,lesson_completed_time DATETIME)");
+        jdbc.execute("CREATE TABLE edu_enrollment(enrollment_id BIGINT PRIMARY KEY,schedule_id BIGINT,class_date DATE,lesson_completed_time DATETIME,student_id BIGINT,parent_id BIGINT,student_name VARCHAR(30),del_flag CHAR(1) DEFAULT '0')");
+        jdbc.execute("CREATE TABLE edu_student(student_id BIGINT PRIMARY KEY,parent_id BIGINT,student_name VARCHAR(30))");
+        jdbc.execute("CREATE TABLE sys_user(user_id BIGINT PRIMARY KEY,user_name VARCHAR(30),nick_name VARCHAR(30),phonenumber VARCHAR(11))");
+        jdbc.update("INSERT INTO sys_user VALUES(10,'教师真名','教师昵称',NULL),(30,'家长','家长昵称','11111111111')");
         jdbc.execute("CREATE TABLE edu_teacher_salary_record(record_id BIGINT PRIMARY KEY,teacher_id BIGINT,salary_month VARCHAR(7),confirm_status CHAR(1),del_flag CHAR(1))");
     }
     void inject(String name,Object value)throws Exception{var f=EduClassSignInServiceImpl.class.getDeclaredField(name);f.setAccessible(true);f.set(service,value);}
@@ -91,6 +94,47 @@ class SignReviewMysqlTest {
         assertEquals(5,jdbc.queryForObject("SELECT COUNT(*) FROM edu_class_sign_in WHERE review_status='2' AND create_by='teacher-test'",Integer.class));
         assertThrows(ServiceException.class,()->service.correct(b,20L,"教务甲"));
     }
+    @Test void mergedWebVersionAndMiniappHashShareOneEducationCorrectionWorkflow() {
+        var web=body(null);web.setSubmissionVersion(null);web.setReviewVersion(0L);web.setAction("RETURN");web.setReason("核实多位学员");
+        assertEquals("2",service.review(web,20L,"教务甲").get("reviewStatus"));assertEquals(true,detail().get("locked"));
+        assertThrows(ServiceException.class,()->service.review(web,20L,"教务甲"));
+        ScheduleCrudTest.principal(10L,"teacher");assertThrows(ServiceException.class,()->service.correct(batch(List.of(correction("学员1","6","不能越权"))),10L,"教师"));
+        ScheduleCrudTest.principal(20L,"education");
+        service.correct(batch(List.of(correction("学员1","6","第一位未到课"),correction("学员2","3","第二位请假"))),20L,"教务甲");
+        var approval=body(null);approval.setSubmissionVersion(null);approval.setReviewVersion(2L);approval.setAction("APPROVE");
+        assertEquals("1",service.review(approval,20L,"教务甲").get("reviewStatus"));
+        assertEquals(3L,((Number)((Map<?,?>)detail().get("review")).get("reviewVersion")).longValue());
+        assertTrue(jdbc.queryForObject("SELECT CAST(review_history AS CHAR) FROM edu_class_sign_in WHERE student_name='学员1'",String.class).contains("第一位未到课"));
+        assertTrue(jdbc.queryForObject("SELECT CAST(review_history AS CHAR) FROM edu_class_sign_in WHERE student_name='学员2'",String.class).contains("第二位请假"));
+        assertEquals(5,jdbc.queryForObject("SELECT COUNT(*) FROM edu_class_sign_in WHERE review_status='1' AND review2_admin_id IS NULL",Integer.class));
+    }
+    @Test void teacherResubmissionKeepsSignIdsAndRejectsOldVersionBeforeEducationReview() {
+        var ids=jdbc.queryForList("SELECT sign_in_id FROM edu_class_sign_in WHERE student_name IN ('学员1','学员2') ORDER BY sign_in_id",Long.class);
+        var submit=new com.ruoyi.common.core.domain.model.MiniAppSignSubmitBody();submit.setScheduleId(1L);submit.setClassDate("2026-10-19");submit.setReviewVersion(0L);
+        var a=new com.ruoyi.common.core.domain.model.MiniAppSignSubmitBody.Detail();a.setStudentName("学员1");a.setSourceType("1");a.setSignStatus("1");
+        var b=new com.ruoyi.common.core.domain.model.MiniAppSignSubmitBody.Detail();b.setStudentName("学员2");b.setSourceType("1");b.setSignStatus("3");submit.setDetails(List.of(a,b));
+        ScheduleCrudTest.principal(10L,"teacher");service.submitSignIn(submit,"teacher-test");
+        assertEquals(ids,jdbc.queryForList("SELECT sign_in_id FROM edu_class_sign_in WHERE del_flag='0' ORDER BY sign_in_id",Long.class));
+        assertEquals(3,jdbc.queryForObject("SELECT COUNT(*) FROM edu_class_sign_in WHERE del_flag='2'",Integer.class));
+        assertThrows(ServiceException.class,()->service.submitSignIn(submit,"teacher-test"));
+        submit.setReviewVersion(1L);a.setSignStatus("6");service.submitSignIn(submit,"teacher-test");
+        assertEquals(ids,jdbc.queryForList("SELECT sign_in_id FROM edu_class_sign_in WHERE del_flag='0' ORDER BY sign_in_id",Long.class));
+        ScheduleCrudTest.principal(20L,"education");service.review(body(detail().get("submissionVersion")),20L,"教务甲");
+        assertEquals(2,jdbc.queryForObject("SELECT COUNT(*) FROM edu_class_sign_in WHERE del_flag='0' AND review_status='1'",Integer.class));
+    }
+    @Test void educationOverviewKeepsMainStatisticsAndIncludesExplicitAbsence() {
+        jdbc.update("DELETE FROM edu_student");jdbc.update("INSERT INTO edu_student VALUES(1,30,'当前孩子姓名')");
+        jdbc.update("INSERT INTO edu_enrollment(enrollment_id,schedule_id,student_id,parent_id,student_name) VALUES(100,1,1,30,'报名快照姓名')");
+        jdbc.update("UPDATE edu_class_sign_in SET enrollment_id=100,sign_status='6' WHERE student_name='学员1'");
+        var before=jdbc.queryForList("SELECT * FROM edu_class_sign_in ORDER BY sign_in_id");
+        var overview=service.attendanceOverview(1L,null,null);var stats=(Map<?,?>)overview.get("stats");assertEquals(1L,stats.get("absent"));assertEquals(2L,stats.get("attended"));
+        assertEquals(List.of("2026-10-19"),overview.get("dates"));
+        var student=service.attendanceStudent(1L,"S:1",true,null,null,1);assertEquals(1,student.get("total"));
+        assertEquals("当前孩子姓名",((Map<?,?>)student.get("student")).get("studentName"));
+        assertEquals(before,jdbc.queryForList("SELECT * FROM edu_class_sign_in ORDER BY sign_in_id"));
+        ScheduleCrudTest.principal(30L,"parent");assertThrows(ServiceException.class,()->service.attendanceOverview(1L,null,null));
+        ScheduleCrudTest.principal(10L,"teacher");assertThrows(ServiceException.class,()->service.attendanceStudent(1L,"S:1",true,null,null,1));
+    }
     @Test void invalidStudentOrDuplicateIdentityRejectsTheWholeBatchBeforeAnyWrite() {
         change("reject","多人核实",null,null);
         var first=correction("学员1","6","核实");
@@ -123,7 +167,7 @@ class SignReviewMysqlTest {
         assertThrows(ServiceException.class,()->change("correct","错误状态",jdbc.queryForObject("SELECT MIN(sign_in_id) FROM edu_class_sign_in",Long.class),"9"));
     }
     @Test void consumedOrSettledSheetsCannotBeRejectedOrCorrected() {
-        jdbc.update("INSERT INTO edu_enrollment VALUES(1,1,'2026-10-19',NOW())");
+        jdbc.update("INSERT INTO edu_enrollment(enrollment_id,schedule_id,class_date,lesson_completed_time) VALUES(1,1,'2026-10-19',NOW())");
         assertTrue(assertThrows(ServiceException.class,()->change("reject","核实",null,null)).getMessage().contains("消课"));
         jdbc.update("DELETE FROM edu_enrollment");
         change("reject","核实",null,null);
@@ -163,7 +207,7 @@ class SignReviewMysqlTest {
     @Test void oneConfirmationCompletesEveryRowAndRetryPreservesOriginalAuditor(){
         var b=body(detail().get("submissionVersion"));assertEquals("1",service.review(b,20L,"教务甲").get("reviewStatus"));
         assertEquals(5,jdbc.queryForObject("SELECT COUNT(*) FROM edu_class_sign_in WHERE review_status='1' AND review1_admin_id=20 AND review2_admin_id IS NULL",Integer.class));
-        service.review(b,21L,"教务乙");assertEquals(5,jdbc.queryForObject("SELECT COUNT(*) FROM edu_class_sign_in WHERE review1_admin_id=20 AND review2_admin_id IS NULL",Integer.class));
+        ScheduleCrudTest.principal(21L,"education");service.review(b,21L,"教务乙");assertEquals(5,jdbc.queryForObject("SELECT COUNT(*) FROM edu_class_sign_in WHERE review1_admin_id=20 AND review2_admin_id IS NULL",Integer.class));
     }
     @Test void countsAndVersionComeFromTheSubmittedRows(){
         var d=detail();var stats=(Map<?,?>)d.get("stats");assertNotNull(stats);assertEquals(5,((Number)stats.get("totalCount")).intValue());assertEquals(3L,stats.get("actualCount"));assertEquals(1L,stats.get("leave"));assertEquals(1L,stats.get("recorded"));assertFalse(String.valueOf(d.get("submissionVersion")).isBlank());
@@ -193,5 +237,7 @@ class SignReviewMysqlTest {
             assertEquals(5,jdbc.queryForObject("SELECT COUNT(*) FROM edu_class_sign_in WHERE review_status='1'",Integer.class));
         } finally {org.springframework.security.core.context.SecurityContextHolder.clearContext();}
     }
+    @BeforeEach void reviewer(){ScheduleCrudTest.principal(20L,"education");}
+    @AfterEach void clearReviewer(){org.springframework.security.core.context.SecurityContextHolder.clearContext();}
     @AfterAll void cleanup()throws Exception{if(jdbc!=null&&schema.matches("codex_sign_review_test_[0-9a-f]{12}"))try(var c=DriverManager.getConnection("jdbc:mysql://127.0.0.1:3306/","root","")){c.createStatement().execute("DROP DATABASE "+schema);}}
 }

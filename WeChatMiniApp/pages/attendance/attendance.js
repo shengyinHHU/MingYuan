@@ -91,7 +91,8 @@ Page(childContext.page({
         indexNo: index + 1,
         timeText: this.buildTimeText(item),
         placeText: this.joinText([item.campusName, item.classroomName]),
-        statusText: this.statusText(item.attendanceStatus)+(item.reviewStatus==='0'?'（待复核）':item.reviewStatus==='2'?'（审核异常，待更正）':''),
+        statusText: this.statusText(item.attendanceStatus),
+        reviewText: item.reviewStatus == null ? '' : item.reviewStatus==='1' ? '教务已确认' : item.reviewStatus==='2' ? '审核异常，教务核查中' : '教师已登记',
         statusClass: done ? 'done' : ''
       }
     })

@@ -52,6 +52,7 @@ CREATE TABLE `edu_class_sign_in` (
   `sign_status` char(1) NOT NULL DEFAULT '1' COMMENT '签到结果（1到课 2录播 3请假 4试听到课 5调课到课 6未到课）',
   `review_status` char(1) DEFAULT '0' COMMENT '复核状态（0待复核 1复核完成 2审核异常）',
   `review_reason` varchar(500) DEFAULT NULL COMMENT '最近一次课次审核异常原因',
+  `review_version` bigint NOT NULL DEFAULT 0 COMMENT '课次修改版本；兼容网页与小程序防止旧提交覆盖',
   `review_history` json DEFAULT NULL COMMENT '本行异常及出勤更正的追加式操作历史',
   `review1_admin_id` bigint DEFAULT NULL COMMENT '第1位确认管理员用户ID',
   `review1_admin_name` varchar(30) DEFAULT NULL COMMENT '第1位确认管理员姓名',

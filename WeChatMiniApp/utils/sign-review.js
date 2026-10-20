@@ -13,4 +13,5 @@ function images(value) {
   return String(value || '').split(',').filter(Boolean).map(p => p.startsWith('http') ? p : getApp().globalData.baseUrl + p)
 }
 function confirm(content) { return new Promise((resolve, reject) => wx.showModal({ title: '教务审核确认', content, success: r => resolve(r.confirm), fail: () => reject(new Error('无法打开确认窗口，请重试')) })) }
-module.exports = { request, base, authorize, images, confirm }
+function isStaff() { return !!wx.getStorageSync('token') && access.staff() }
+module.exports = { request, base, authorize, images, confirm, isStaff }

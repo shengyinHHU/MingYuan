@@ -45,7 +45,8 @@ public class TuitionReceiptService {
           + " u.user_id=e.parent_id ";
   private static final String COLUMNS =
       "SELECT"
-          + " r.*,e.enrollment_id,e.enrollment_code,e.student_name,e.contact_phone,p.finance_mode,p.payment_no,u.nick_name"
+          + " r.*,e.enrollment_id,e.enrollment_code,e.student_name,e.contact_phone,p.finance_mode,p.payment_no,"
+          + FinanceRules.parentNameSql("u")
           + " AS parent_name";
 
   public Map<String, Object> list(long actor, boolean admin, Map<String, String> q) {

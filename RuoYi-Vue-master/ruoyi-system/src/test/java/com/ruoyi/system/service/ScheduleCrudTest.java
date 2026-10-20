@@ -87,7 +87,8 @@ public class ScheduleCrudTest {
     @Test void newCourseBindsIdAndProtectsCounters() {
         EduCourseSchedule input = course(); input.setTeacherName("forged"); input.setCreateBy("forged"); input.setEnrolledCount(99L);
         assertEquals(1, service.insertEduCourseSchedule(input));
-        assertEquals(21L, captured.getTeacherId()); assertEquals("Teacher A", captured.getTeacherName());
+        // main已统一姓名来源：user_name为真名，nick_name只作后备，不信任客户端伪造姓名。
+        assertEquals(21L, captured.getTeacherId()); assertEquals("teacher21", captured.getTeacherName());
         assertEquals("teacher21", captured.getCreateBy()); assertEquals(0L, captured.getEnrolledCount()); assertEquals("0", captured.getDelFlag());
         assertEquals(List.of("room:1", "teacher:21"), db.locks);
     }

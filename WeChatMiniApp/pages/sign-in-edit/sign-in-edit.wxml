@@ -14,6 +14,7 @@
 
   <view class="banner half" wx:if="{{review.reviewStatus === '2'}}">审核异常：{{review.reviewReason}}。请联系教务或管理员更正出勤；原始点名记录已保留。</view>
   <view class="banner done" wx:elif="{{locked}}">该课次已有审核确认记录，点名已锁定，不可修改；旧版半完成记录由教务归档。</view>
+  <view class="detail-reload" bindtap="loadDetail">重新加载当前课次</view>
 
   <view class="stats" wx:if="{{stats && stats.total > 0}}">
     <view class="stat main"><text class="num">{{stats.actual}}</text><text class="label">实到</text></view>

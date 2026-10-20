@@ -42,6 +42,9 @@ public interface IEduClassSignInService
      * 管理端：按课次聚合的签到列表
      */
     public List<EduClassSignIn> selectReviewList(String classDate);
+    public List<Map<String,Object>> attendanceCourses(String keyword);
+    public Map<String,Object> attendanceOverview(Long scheduleId,String from,String to);
+    public Map<String,Object> attendanceStudent(Long scheduleId,String studentKey,boolean allCourses,String from,String to,int pageNum);
 
     /**
      * 教务或管理员单人审核确认；按已查看的点名表版本确认，完成后不覆盖原审核事实。

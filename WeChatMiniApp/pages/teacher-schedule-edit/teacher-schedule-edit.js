@@ -56,7 +56,7 @@ Page({
         courseClassName: course.courseClassName || '', recruitStatus: course.recruitStatus || '0',
         status: course.status || '0', remark: course.remark || ''
       }
-      this.setData({ form, simpleMode:String(form.classMode) === '2', editing:!!this._id, teacherName:this._dims.currentUserNick || '当前教师',teacherLevelText:({elite:'精英教师',senior:'资深教师'})[(profile.data || {}).teacherLevel] || '后台未配置',subjectConfigured:!!(profile.data || {}).teacherSubject,enrolledCount:course.enrolledCount || 0 })
+      this.setData({ form, simpleMode:String(form.classMode) === '2', editing:!!this._id, teacherName:this._dims.currentUserName || this._dims.currentUserNick || '当前教师',teacherLevelText:({elite:'精英教师',senior:'资深教师'})[(profile.data || {}).teacherLevel] || '后台未配置',subjectConfigured:!!(profile.data || {}).teacherSubject,enrolledCount:course.enrolledCount || 0 })
       this.updatePickers()
       this.updatePreview()
     } catch (error) {

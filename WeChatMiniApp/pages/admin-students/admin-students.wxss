@@ -23,3 +23,8 @@
 .info{display:flex;justify-content:space-between;padding:18rpx 0;border-bottom:1rpx solid #f0f2f6;font-size:28rpx}
 .info-k{color:#8a95a3}
 .info-v{color:#1c2530;font-weight:600;text-align:right;max-width:60%}
+.section-title{margin:28rpx 0 12rpx;font-size:28rpx;font-weight:700;color:#1c2530}
+.course{background:#f7f9fc;border-radius:16rpx;padding:20rpx 22rpx;margin-bottom:14rpx}
+.course-head{display:flex;align-items:center;justify-content:space-between;gap:12rpx}
+.course-name{font-size:28rpx;font-weight:600;color:#1c2530;flex:1;word-break:break-all}
+.course-sub{margin-top:8rpx;font-size:23rpx;color:#8a95a3}

@@ -1,7 +1,7 @@
 .page {
   min-height: 100vh;
   background: #f4f6fa;
-  padding-bottom: 40rpx;
+  padding-bottom: calc(180rpx + env(safe-area-inset-bottom));
 }
 .student-card { background: #fff; border-radius: 16rpx; margin-bottom: 16rpx; padding-bottom: 12rpx; }
 .student-card .student-row { margin-bottom: 0; }
@@ -210,13 +210,20 @@
 
 .action-bar {
   display: flex;
-  padding: 24rpx 32rpx;
+  position:fixed;
+  left:0;right:0;bottom:0;
+  background:#fff;
+  border-top:1rpx solid #edf0f5;
+  padding: 20rpx 24rpx calc(20rpx + env(safe-area-inset-bottom));
 }
 
 .action {
   flex: 1;
   text-align: center;
-  padding: 24rpx 0;
+  padding: 0;
+  height:84rpx;
+  line-height:84rpx;
+  margin:0;
   border-radius: 999rpx;
   font-size: 28rpx;
   font-weight: 600;

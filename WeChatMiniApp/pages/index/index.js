@@ -45,7 +45,7 @@ const roleProfiles = {
       { key: 'teacherSinglePending', label: '一对一事务', value: '—', suffix: '项', linkText: '去处理', route: '/pages/teacher-single-transactions/teacher-single-transactions?tab=bookings' }
     ],
     actions: [
-      { title: '学生出勤', icon: '签', tone: 'blue', route: '/pages/sign-in/sign-in' },
+      { key:'teacherAttendance', title: '学生出勤', icon: '签', tone: 'blue', route: '/pages/sign-in/sign-in' },
       { key: 'teacherCourses', title: '我的课程', icon: '课', tone: 'orange', route: '/pages/teacher-single-transactions/teacher-single-transactions' },
       { key: 'teacherLeave', title: '请假审核', icon: '假', tone: 'violet', route: '/pages/teacher-leave/teacher-leave' },
       { title: '班级学员', icon: '班', tone: 'green', route: '/pages/teacher-students/teacher-students' },
@@ -67,8 +67,8 @@ const roleProfiles = {
       { label: '续费率', value: '83', suffix: '%' }
     ],
     actions: [
+      { key:'studentSignReview', title:'学生出勤', icon:'勤', tone:'cyan', route:'/pages/sign-review/sign-review' },
       { title: '打卡复核', icon: '核', tone: 'blue', route: '/pages/admin-checkin-review/admin-checkin-review' },
-      { title: '出勤审核', icon: '勤', tone: 'blue', route: '/pages/sign-review/sign-review' },
       { title: '课程报名', icon: '招', tone: 'blue', route: '/pages/admin-enrollment/admin-enrollment' },
       { title: '排课管理', icon: '排', tone: 'orange' },
       { title: '教室管理', icon: '室', tone: 'cyan', route: '/pages/admin-classrooms/admin-classrooms' },
@@ -95,7 +95,7 @@ const roleProfiles = {
 // Education is a real authenticated role, never a development login option.
 roleProfiles.education = {
   name: '教务', tag: '全校区教务管理', eyebrow: '教务端', title: '课程出勤、收费与退费初审',
-  stats: [], actions: roleProfiles.admin.actions.filter(a => ['教室管理', '学生档案', '收费财务', '退费管理', '出勤审核'].includes(a.title)), agendaTitle: '教务工作说明', schedule: []
+  stats: [], actions: roleProfiles.admin.actions.filter(a => ['教室管理', '学生档案', '收费财务', '退费管理', '学生出勤'].includes(a.title)), agendaTitle: '教务工作说明', schedule: []
 }
 
 function normalizeRole(roleKey) {
@@ -319,7 +319,9 @@ Page({
     const financeAllowed = access.staff() && access.can('system:tuition:list')
     this._teacherLoadVersion = (this._teacherLoadVersion || 0) + 1
     this.setData({ teacherDataMessage: '',currentChild:null,parentChildren:[],childLoading:false,childError:'',showChildPicker:false,parentScheduleError:'', roleLocked: workspaces.length < 2, developmentLoginEnabled: access.developmentTool() && !!wx.getStorageSync('devSessionVersion'), ...buildRoleState(role, workspaces) })
-    if(role==='parent' || role==='admin') { this.loadAccountPending();if(role==='admin')this.loadReferralPending();this._accountTimer=setInterval(()=>{this.loadAccountPending();if(this.data.currentRole==='admin')this.loadReferralPending()},30000) }
+    if(role==='education')this.loadSignReviewPending()
+    if(role==='parent' || role==='admin') { this.loadAccountPending();if(role==='admin'){this.loadReferralPending();this.loadSignReviewPending()};this._accountTimer=setInterval(()=>{this.loadAccountPending();if(this.data.currentRole==='admin'){this.loadReferralPending();this.loadSignReviewPending()}},30000) }
+
     const actions = this.data.quickActions.filter(a => a.route !== '/pages/admin-tuition/admin-tuition')
     if (financeAllowed && ['admin', 'education'].includes(role)) actions.push({ title: '收费财务', icon: '财', tone: 'gold', route: '/pages/admin-tuition/admin-tuition' })
     this.setData({ quickActions: access.actions(actions, role) })
@@ -350,6 +352,19 @@ Page({
     finally {if(requestVersion===this._leavePendingVersion)this._leavePendingLoading=false}
   },
 
+  async loadSignReviewPending() {
+    const role=this.data.currentRole
+    if(this._signReviewLoading||this._unloaded||!this._visible||!['admin','education'].includes(role)||getRoleFromStorage()!==role)return
+    const token=wx.getStorageSync('token'),roleVersion=this._roleLoadVersion,version=this._signReviewVersion=(this._signReviewVersion||0)+1
+    this._signReviewLoading=true
+    try {
+      const r=await request({url:'/miniapp/education/sign/list',timeout:15000})
+      if(this._unloaded||!this._visible||version!==this._signReviewVersion||roleVersion!==this._roleLoadVersion||this.data.currentRole!==role||getRoleFromStorage()!==role||wx.getStorageSync('token')!==token)return
+      const count=new Set((r.data||[]).filter(x=>String(x.reviewStatus||'0')!=='1').map(x=>`${x.scheduleId}:${String(x.classDate).slice(0,10)}`)).size
+      this.setData({quickActions:this.data.quickActions.map(a=>a.key==='studentSignReview'?{...a,badgeText:courseState.badgeText(count)}:a)})
+    }catch(e){}finally{if(version===this._signReviewVersion)this._signReviewLoading=false}
+  },
+
   async loadReferralPending() {
     if(this._referralPendingLoading || this._unloaded || !this._visible || this.data.currentRole!=='admin' || getRoleFromStorage()!=='admin')return
     const token=wx.getStorageSync('token'),version=this._roleLoadVersion,requestVersion=this._referralPendingVersion=(this._referralPendingVersion||0)+1
@@ -370,7 +385,7 @@ Page({
   startCoursePendingRefresh() {
     if (!this._visible || this._unloaded || this.data.currentRole !== 'teacher') return
     clearInterval(this._coursePendingTimer)
-    this._coursePendingTimer = setInterval(()=>{this.loadCoursePending();this.loadLeavePending()},30000)
+    this._coursePendingTimer = setInterval(()=>{this.loadCoursePending();this.loadLeavePending();this.loadTeacherData()},30000)
   },
   stopCoursePendingRefresh() {
     clearInterval(this._coursePendingTimer)
@@ -380,6 +395,8 @@ Page({
     this._coursePendingOwnerToken = null
     this._leavePendingVersion = (this._leavePendingVersion || 0) + 1
     this._leavePendingLoading = false
+    this._signReviewVersion=(this._signReviewVersion||0)+1
+    this._signReviewLoading=false
     this._referralPendingVersion = (this._referralPendingVersion || 0) + 1
     this._referralPendingLoading = false
   },
@@ -418,6 +435,7 @@ Page({
     }
     this.setData({
       stats: roleProfiles.teacher.stats.map(stat => ({ ...stat, value: statValues[stat.key] })),
+      quickActions: this.data.quickActions.map(a => a.key==='teacherAttendance' && classes ? {...a,badgeText:courseState.badgeText(classes.reduce((n,c)=>n+(c.corrections||[]).length,0))} : a),
       schedule: (classes || []).slice(0, 3).map((item) => ({
         time: item.timeSlot || '—',
         name: item.courseClassName || '未命名班级',

@@ -35,7 +35,8 @@ Page({
   onLoad(query) {
     this._unloaded = false
     this.setData({
-      scheduleId: Number(query.scheduleId),
+      scheduleId: String(query.scheduleId || ''),
+      classDate: /^\d{4}-\d{2}-\d{2}$/.test(query.classDate || '') ? query.classDate : todayStr(),
       course: decodeURIComponent(query.course || ''),
       room: decodeURIComponent(query.room || ''),
       timeText: decodeURIComponent(query.time || '')
@@ -212,6 +213,7 @@ Page({
         data: {
           scheduleId,
           classDate,
+          reviewVersion: this.data.review?.reviewVersion || 0,
           details: rows.map((r) => ({
             enrollmentId: r.enrollmentId,
             studentName: r.studentName,

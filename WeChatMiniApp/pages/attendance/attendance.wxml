@@ -40,6 +40,7 @@
         <view class="detail-main">
           <view class="detail-time">{{item.timeText}}</view>
           <view class="detail-meta">{{item.placeText}}</view>
+          <view class="detail-meta" wx:if="{{item.reviewText}}">{{item.reviewText}}</view>
         </view>
         <view class="status {{item.statusClass}}">{{item.statusText}}</view>
       </view>

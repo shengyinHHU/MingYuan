@@ -53,9 +53,10 @@ Page({
   },
 
   openSign(e) {
-    const { id } = e.currentTarget.dataset
+    const { id, date } = e.currentTarget.dataset
     const item = this.data.list.find((row) => String(row.scheduleId) === String(id))
     if (!item) return
-    wx.navigateTo({ url: `/pages/sign-in-edit/sign-in-edit?scheduleId=${encodeURIComponent(id)}&course=${encodeURIComponent(item.course)}&room=${encodeURIComponent(item.room)}&time=${encodeURIComponent(item.timeSlot || '')}` })
+    if(date && !(item.corrections || []).some(c => c.classDate === date))return
+    wx.navigateTo({ url: `/pages/sign-in-edit/sign-in-edit?scheduleId=${encodeURIComponent(id)}${date ? '&classDate='+encodeURIComponent(date) : ''}&course=${encodeURIComponent(item.course)}&room=${encodeURIComponent(item.room)}&time=${encodeURIComponent(item.timeSlot || '')}` })
   }
 })

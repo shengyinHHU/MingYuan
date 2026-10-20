@@ -124,3 +124,27 @@ test('leaving or switching login during the confirmation dialog never posts stal
     change(h); modal.success({ confirm: true }); await work; assert.equal(h.calls.some(o => o.method === 'POST'), false)
   }
 })
+test('list date changes reject stale responses and failures offer retry without an empty result', async () => {
+  const pending = [], h = harness('sign-review', ['education'], o => o.url.endsWith('/list') ? new Promise(resolve => pending.push(resolve)) : undefined)
+  h.p._active = true; h.p._visit = 1; h.p._token = 'a'
+  const first = h.p.loadList(); await new Promise(r => setImmediate(r))
+  h.p.setData({ filterDate: '2026-10-18' }); const second = h.p.loadList(); await new Promise(r => setImmediate(r))
+  pending[1]({ data: [{ scheduleId: '2', classDate: '2026-10-18', reviewStatus: '2' }] }); await second
+  pending[0]({ data: [{ scheduleId: '1', classDate: '2026-10-19', reviewStatus: '0' }] }); await first
+  assert.equal(h.p.data.list[0].scheduleId, '2'); assert.match(h.p.data.list[0].reviewText, /审核异常/)
+  const failed = harness('sign-review', ['education'], o => { if (o.url.endsWith('/list')) throw Error('连接失败') })
+  await failed.p.onShow(); assert.equal(failed.p.data.error, '连接失败'); assert.equal(failed.p.data.showEmpty, false)
+})
+test('teacher exception sheets keep the exact occurrence and stay locked for staff correction', async () => {
+  const h = harness('sign-in-edit', ['teacher']), d = structuredClone(sheet)
+  d.review = { reviewStatus: '2', reviewReason: '出勤有误', reviewVersion: 7 }; h.setSheet(d)
+  h.p.onLoad({ scheduleId: '9007199254740999', classDate: '2026-10-18' }); await new Promise(r => setImmediate(r))
+  assert.equal(h.p.data.locked, true); assert.equal(h.p.data.scheduleId, '9007199254740999'); assert.equal(h.p.data.classDate, '2026-10-18')
+  const source = fs.readFileSync(path.join(root, 'pages/sign-in-edit/sign-in-edit.js'), 'utf8')
+  assert.match(source, /reviewVersion: this.data.review\?\.reviewVersion \|\| 0/)
+})
+test('parent attendance keeps attendance facts separate from the staff review status', () => {
+  const { p } = harness('attendance', ['parent'])
+  const row = p.decorateDetails([{ attendanceStatus: '1', reviewStatus: '2' }])[0]
+  assert.equal(row.statusText, '已上课'); assert.equal(row.reviewText, '审核异常，教务核查中')
+})
