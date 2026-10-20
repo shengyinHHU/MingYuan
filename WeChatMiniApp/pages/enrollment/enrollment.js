@@ -9,7 +9,7 @@ Page(childContext.page({
     submitting: false,
     schedules: [],
     teacherGroups: [], teacherOptions: [], selectedTeacherKeys: [], selectedTeachers: [],
-    teacherKeyword: '', showTeacherPicker: false,
+    teacherKeyword: '', showTeacherPicker: false, allVisibleTeachersSelected: false,
     enrollments: [],
     showScheduleEmpty: false,
     showEnrollmentEmpty: false,
@@ -24,7 +24,7 @@ Page(childContext.page({
     subjectIndex: 0,
     gradeIndex: 0,
     selectedSchedule: null,
-    lessonAccounts: [], lessonAccountOptions: [], lessonAccountIndex:0, selectedChildId:null, newChild:true, childMissing:false, settlementMethod:'C', accountsError:'', accountsLoading:false,
+    lessonAccounts: [], creditAccount:null, lessonAccountOptions: [], lessonAccountIndex:0, selectedChildId:null, newChild:true, childMissing:false, settlementMethod:'C', accountsError:'', accountsLoading:false,
     form: {
       studentName: '',
       contactPhone: ''
@@ -42,8 +42,9 @@ Page(childContext.page({
   onShow() {
     if (this._scheduleDirty && this.current()) {
       this._scheduleDirty = false
-      this.loadPage()
+      return this.loadPage()
     }
+    if (this._hasLoadedAccounts && this.current()) return this.loadLessonAccounts()
   },
 
   onUnload() { this._unloaded = true },
@@ -86,15 +87,23 @@ Page(childContext.page({
   async loadLessonAccounts() {
     if(!this.current()) return
     const version=this._accountVersion=(this._accountVersion || 0)+1
-    this.setData({accountsLoading:true,accountsError:''})
+    this.setData({accountsLoading:true,accountsError:'',creditAccount:null})
     try {
       const res=await request({url:'/miniapp/parent/lesson-accounts'})
       if(!this.current() || version!==this._accountVersion) return
       const accounts=res.data || [],index=accounts.findIndex(a=>String(a.accountId)===String(this.data.selectedChildId))
+      const selected=this.data.scopeAccountId || this.data.selectedChildId
+      this.setData({creditAccount:selected?accounts.find(a=>String(a.accountId)===String(selected)) || null:accounts[0] || null})
       this.setData({lessonAccounts:accounts,lessonAccountOptions:accounts.map(a=>`${a.studentName} · ${a.gradeName} · 可用额度 ${a.availableCredits} · #${a.accountId}`).concat('＋ 添加孩子信息'),lessonAccountIndex:index>=0?index:accounts.length,childMissing:!!this.data.selectedChildId && index<0})
       if(index>=0)this.setData({'form.studentName':accounts[index].studentName})
     } catch(error) { if(this.current() && version===this._accountVersion) this.setData({accountsError:'孩子资料暂时无法查询，请重试'}) }
-    finally { if(this.current() && version===this._accountVersion) this.setData({accountsLoading:false}) }
+    finally { if(this.current() && version===this._accountVersion) {this._hasLoadedAccounts=true;this.setData({accountsLoading:false})} }
+  },
+  purchasePackage() {
+    if(!this.current() || this.data.submitting || this.data.showSheet || this.data.accountsLoading || this.data.accountsError) return
+    const account=this.data.creditAccount
+    if(!account || !/^[1-9]\d*$/.test(String(account.accountId)) || this.data.scopeAccountId && String(account.accountId)!==this.data.scopeAccountId) return
+    wx.navigateTo({url:'/pages/lesson-packages/lesson-packages?accountId='+encodeURIComponent(account.accountId)})
   },
   chooseSettlement(e) {
     if(!this.current() || this.data.submitting || !this.data.selectedSchedule || !this.data.selectedSchedule.classDate) return
@@ -139,12 +148,15 @@ Page(childContext.page({
   applyFilters() {
     const subject = this.data.subjectIndex > 0 && this.data.subjects[this.data.subjectIndex - 1]
     const grade = this.data.gradeIndex > 0 && this.data.grades[this.data.gradeIndex - 1]
-    const keys = this.data.selectedTeacherKeys
-    const schedules = (this._allSchedules || []).filter(course =>
+    const eligible = (this._allSchedules || []).filter(course =>
       this.matchesCourseType(course) &&
       (!subject || course.subjectName === subject.dictLabel) &&
-      (!grade || course.gradeName === grade.dictLabel) &&
-      (!keys.length || keys.includes(course.teacherKey)))
+      (!grade || course.gradeName === grade.dictLabel))
+    const eligibleKeys = new Set(eligible.map(course => course.teacherKey))
+    this._eligibleTeachers = (this._teachers || []).filter(t => eligibleKeys.has(t.key))
+    const keys = this.data.selectedTeacherKeys.filter(key => eligibleKeys.has(key))
+    this.setData({ selectedTeacherKeys: keys })
+    const schedules = eligible.filter(course => !keys.length || keys.includes(course.teacherKey))
     const groups = new Map()
     schedules.forEach(course => {
       if (!groups.has(course.teacherKey)) groups.set(course.teacherKey, { key: course.teacherKey, label: (this._teachers || []).find(t => t.key === course.teacherKey).label, courses: [] })
@@ -167,9 +179,11 @@ Page(childContext.page({
 
   updateTeacherOptions() {
     const keyword = this.data.teacherKeyword.trim().toLowerCase(), keys = this.data.selectedTeacherKeys
-    const teachers = this._teachers || []
+    const teachers = this._eligibleTeachers || []
+    const teacherOptions = teachers.filter(t => !keyword || t.name.toLowerCase().includes(keyword)).map(t => ({ ...t, selected: keys.includes(t.key) }))
     this.setData({
-      teacherOptions: teachers.filter(t => !keyword || t.name.toLowerCase().includes(keyword)).map(t => ({ ...t, selected: keys.includes(t.key) })),
+      teacherOptions,
+      allVisibleTeachersSelected: teacherOptions.length > 0 && teacherOptions.every(t => t.selected),
       selectedTeachers: teachers.filter(t => keys.includes(t.key))
     })
   },
@@ -182,15 +196,36 @@ Page(childContext.page({
     this.setData({ expandedCourseIds: expanded.includes(id) ? expanded.filter(value => value !== id) : expanded.concat(id) })
     this.applyFilters()
   },
-  searchTeacher(e) { this.setData({ teacherKeyword: e.detail.value }); this.updateTeacherOptions() },
-  toggleTeacher(e) {
-    const key = e.currentTarget.dataset.key
-    if (!(this._teachers || []).some(t => t.key === key)) return
-    const keys = this.data.selectedTeacherKeys
-    this.setData({ selectedTeacherKeys: keys.includes(key) ? keys.filter(k => k !== key) : keys.concat(key) })
+  searchTeacher(e) {
+    if (!this.current() || this.data.loading || this.data.submitting || this.data.showSheet) return
+    this.setData({ teacherKeyword: e.detail.value }); this.updateTeacherOptions()
+  },
+  chooseTeachers(e) {
+    if (!this.current() || this.data.loading || this.data.submitting || this.data.showSheet || !Array.isArray(e.detail.value)) return
+    const visible = new Set(this.data.teacherOptions.map(t => t.key))
+    const selected = e.detail.value.filter(key => visible.has(key))
+    // A checkbox-group reports only rendered checkboxes; retain selections hidden by search.
+    const hidden = this.data.selectedTeacherKeys.filter(key => !visible.has(key))
+    this.setData({ selectedTeacherKeys: Array.from(new Set(hidden.concat(selected))) })
     this.applyFilters()
   },
-  clearTeachers() { this.setData({ selectedTeacherKeys: [], teacherKeyword: '' }); this.applyFilters() },
+  selectAllTeachers() {
+    if (!this.current() || this.data.loading || this.data.submitting || this.data.showSheet) return
+    this.setData({ selectedTeacherKeys: Array.from(new Set(this.data.selectedTeacherKeys.concat(this.data.teacherOptions.map(t => t.key)))) })
+    this.applyFilters()
+  },
+  toggleTeacher(e) {
+    if (!this.current() || this.data.loading || this.data.submitting || this.data.showSheet) return
+    const key = e.currentTarget.dataset.key
+    const keys = this.data.selectedTeacherKeys
+    if (!keys.includes(key)) return
+    this.setData({ selectedTeacherKeys: keys.filter(k => k !== key) })
+    this.applyFilters()
+  },
+  clearTeachers() {
+    if (!this.current() || this.data.loading || this.data.submitting || this.data.showSheet) return
+    this.setData({ selectedTeacherKeys: [], teacherKeyword: '' }); this.applyFilters()
+  },
 
   async loadEnrollments() {
     const res = await request({ url: '/miniapp/parent/enrollments',...(this.data.scopeAccountId?{data:{accountId:this.data.scopeAccountId}}:{}) })

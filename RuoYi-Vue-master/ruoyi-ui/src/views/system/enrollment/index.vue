@@ -74,6 +74,7 @@
     </el-form>
 
     <el-row :gutter="10" class="mb8">
+      <el-col :span="1.5"><el-button type="primary" plain size="mini" icon="el-icon-date" v-hasRole="['admin']" @click="openSingle()">一对一预约管理</el-button></el-col>
       <el-col :span="1.5">
         <el-button
           type="primary"
@@ -187,7 +188,7 @@
             icon="el-icon-edit"
             @click="handleUpdate(scope.row)"
             v-hasPermi="['system:enrollment:edit']"
-          >修改</el-button>
+          >{{ scope.row.classDate ? '预约管理' : '修改' }}</el-button>
           <el-button
             size="mini"
             type="text"
@@ -278,17 +279,22 @@
         <el-button @click="cancel">取 消</el-button>
       </div>
     </el-dialog>
+    <OneToOneManager ref="oneToOne" :dims="dims" @changed="getList" />
   </div>
 </template>
 
 <script>
 import { listEnrollment, getEnrollment, cancelEnrollment, addEnrollment, updateEnrollment } from "@/api/system/enrollment"
 import { personalDetail } from "@/api/system/transaction"
+import { getTimetableDimensions } from '@/api/system/timetable'
+import OneToOneManager from '../schedule/OneToOneManager.vue'
 
 export default {
   name: "Enrollment",
+  components: { OneToOneManager },
   data() {
     return {
+      dims: { teachers: [], grades: [], isAdmin: false },
       childChoices: [], childChoice: 'new', childrenLoading:false, childError:'', childVersion:0, childrenParent:null,
       // 遮罩层
       loading: true,
@@ -350,6 +356,12 @@ export default {
     this.getList()
   },
   methods: {
+    async openSingle(row = {}) {
+      const response = await getTimetableDimensions()
+      this.dims = response.data || this.dims
+      if (!this.dims.isAdmin) { this.$modal.msgError('仅管理员可在网页统一管理一对一'); return }
+      return this.$refs.oneToOne.open(row, 'bookings')
+    },
     /** 查询课程报名列表 */
     getList() {
       this.loading = true
@@ -419,6 +431,7 @@ export default {
       this.reset()
       const enrollmentId = row.enrollmentId || this.ids
       getEnrollment(enrollmentId).then(response => {
+        if (response.data.classDate) { this.openSingle(response.data); return }
         this.form = response.data
         this.open = true
         this.title = "修改课程报名"

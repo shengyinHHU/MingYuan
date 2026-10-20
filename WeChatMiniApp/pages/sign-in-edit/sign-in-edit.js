@@ -6,7 +6,7 @@ const STATUS_OPTIONS = {
   '2': [{ key: '4', label: '试听到课' }, { key: '3', label: '请假' }],
   '3': [{ key: '5', label: '调课到课' }, { key: '3', label: '请假' }]
 }
-const STATUS_LABELS = { '1': '到课', '2': '录播', '3': '请假', '4': '试听到课', '5': '调课到课' }
+const STATUS_LABELS = { '1': '到课', '2': '录播', '3': '请假', '4': '试听到课', '5': '调课到课', '6': '未到课' }
 const SOURCE_LABELS = { '1': '报名', '2': '试听', '3': '调课' }
 
 function todayStr() {
@@ -60,7 +60,7 @@ Page({
       const data = detail.data || {}
       const review = data.review || {}
       const details = data.details || []
-      const reviewed = String(review.reviewStatus) === '1' || !!review.review1AdminId || !!review.review2AdminId
+      const reviewed = ['1', '2'].includes(String(review.reviewStatus)) || !!review.review1AdminId || !!review.review2AdminId
       const approvedLeave = new Set((reviewed ? [] : data.approvedLeaveEnrollmentIds || []).map(String))
       let rows
       if (details.length) {
@@ -223,7 +223,7 @@ Page({
       })
       if (this._unloaded || wx.getStorageSync('token') !== this._loadedToken) return
       this.setData({ ready: false })
-      wx.showToast({ title: `提交成功，实到 ${res.actualCount} 人`, icon: 'none' })
+      wx.showToast({ title: `已提交教务审核，实到 ${res.actualCount} 人`, icon: 'none' })
       setTimeout(() => {
         if (!this._unloaded && wx.getStorageSync('token') === this._loadedToken) wx.navigateBack()
       }, 900)

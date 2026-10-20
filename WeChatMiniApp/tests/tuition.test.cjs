@@ -21,6 +21,12 @@ function page(name) {
   return p
 }
 const bill = { enrollmentId: '9007199254740995', billingStatus: 'OPEN', financeMode: 'MOCK', mockAllowed: true, originalAmount: '1000.00', discountAmount: '100.00', payableAmount: '900.00', receivedAmount: '0.00', refundedAmount: '0.00', netAmount: '0.00', dueAmount: '900.00', refundableAmount: '0.00', financialVersion: 2, payments: [], refunds: [], receipts: [], coupons: [] }
+
+test('credit package cancellation uses order API and never exposes course refund route',async()=>{
+ storage=new Map();const routes=[];env(o=>ok(o,{...bill,billType:'CREDIT_PACKAGE',canApplyRefund:true,packageSnapshot:{packageCount:2,credits:30}}));wx.navigateTo=o=>routes.push(o.url)
+ const p=page('tuition-detail');p.onLoad({id:bill.enrollmentId,accountId:'22'});await p.onShow();assert.equal(p.data.detail.canRefund,false);p.refunds();assert.equal(routes.length,0)
+ await p.cancelEnrollment();const cancel=calls.find(c=>c.method==='POST');assert.ok(cancel);assert.ok(cancel.url.endsWith('/lesson-packages/orders/'+bill.enrollmentId+'/cancel'));assert.equal(cancel.data.accountId,'22');assert.equal(calls.some(c=>c.method==='DELETE'),false)
+})
 function helper() { assert.ok(fs.existsSync(path.join(root, 'utils/tuition.js')), 'tuition helper is implemented'); return require('../utils/tuition') }
 
 test('child billing, receipt and refund navigation preserves scope; coupons stay parent-wide', async () => {
@@ -46,6 +52,13 @@ test('teacher cannot read admin bills and missing operation permission prevents 
   env(o => ok(o, {}), 'teacher'); const p = page('admin-tuition'); p.onLoad({}); await p.onShow(); assert.equal(calls.length, 0)
   env(o => o.url.endsWith('/getInfo') ? o.success({ statusCode: 200, data: { code: 200, roles: ['admin'], permissions: ['system:tuition:list', 'system:tuition:query'] } }) : ok(o, bill), 'admin')
   const a = page('admin-tuition'); a.onLoad({ id: bill.enrollmentId }); await a.onShow(); a.setData({ price: '1.00' }); await a.savePrice(); assert.equal(calls.some(c => c.method === 'PUT'), false)
+})
+test('staff cannot reopen or submit manual pricing for catalog package purchases', async () => {
+  storage = new Map()
+  env(o => o.url.endsWith('/getInfo') ? o.success({ statusCode: 200, data: { code: 200, roles: ['admin'], permissions: ['*:*:*'] } }) : ok(o, { ...bill, billType: 'CREDIT_PACKAGE', financeMode: 'REAL', mockAllowed: false }), 'admin')
+  const p = page('admin-tuition'); p.onLoad({ id: bill.enrollmentId }); await p.onShow()
+  const step = p.data.billingStep; p.editPrice(); assert.equal(p.data.billingStep, step)
+  await p.savePrice(); assert.equal(calls.some(c => c.method === 'PUT'), false)
 })
 test('receipt only opens authenticated successful PDF and blocks a JSON error download', async () => {
   env(o => ok(o, {})); let downloaded, opened = 0, pdf = false

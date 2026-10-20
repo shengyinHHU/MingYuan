@@ -12,6 +12,16 @@ const kid={accountId:'9007199254740993',studentName:'同名学生',gradeName:'�
 const rows={rows:[{recordKey:'E:9',enrollmentId:'9',courseClassName:'课程甲',payStatus:'未支付',billingStatus:'OPEN',actionable:true}],total:1}
 const click=(key,value)=>({currentTarget:{dataset:{[key]:value}}})
 
+test('only fees include credit packages and purchase entry carries the selected child',async()=>{
+ const calls=[];const{p,routes}=harness('detail',o=>{calls.push(plain(o));return Promise.resolve({data:o.url.includes('/children/')?{child:kid}:rows})});p.data.accountId=kid.accountId
+ await p.load();assert.equal(calls.at(-1).data.includePackages,undefined)
+ p.data.section='fees';await p.load();assert.equal(calls.at(-1).data.includePackages,true)
+ assert.equal(typeof p.purchasePackage,'function');p.purchasePackage();assert.equal(routes.at(-1),'/pages/lesson-packages/lesson-packages?accountId='+kid.accountId)
+})
+test('package fee records use package progress instead of displaying empty class times',()=>{
+ const{helper}=harness('list',()=>{});const row=helper.record({billType:'CREDIT_PACKAGE',enrollmentId:'9',payStatus:'未支付',billingStatus:'OPEN'},'enrollments');assert.equal(row.timeText,'一对一课包 · 线下确认收款后入账')
+})
+
 function feature(name,request){
  let definition;const routes=[],store={token:'parent-a',roles:['parent'],userInfo:{}}
  const wx={getStorageSync:k=>store[k],navigateTo:o=>routes.push(o.url),showToast(){},stopPullDownRefresh(){}}

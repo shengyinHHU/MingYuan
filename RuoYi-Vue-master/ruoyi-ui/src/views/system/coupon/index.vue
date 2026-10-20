@@ -62,7 +62,7 @@
             <template slot-scope="s">{{ money(s.row.minSpendAmount) }}</template>
           </el-table-column>
           <el-table-column label="课程范围" width="130">
-            <template slot-scope="s">{{ courseName(s.row.scopeScheduleId) }}</template>
+            <template slot-scope="s">{{ courseScopeText(s.row) }}</template>
           </el-table-column>
           <el-table-column label="适用学科" min-width="160"><template slot-scope="s">{{subjectText(s.row)}}</template></el-table-column>
           <el-table-column label="有效时间" width="180">
@@ -259,8 +259,10 @@
           <el-form-item label="满多少元可用" v-if="couponKind==='THRESHOLD'">
             <el-input v-model="form.minSpendAmount" :disabled="form.issuedQuantity > 0" />
           </el-form-item>
-          <el-form-item label="适用课程">
-            <el-select v-model="form.scopeScheduleId" filterable clearable :disabled="form.issuedQuantity>0" placeholder="全部课程"><el-option v-for="course in courseOptions" :key="course.scheduleId" :value="course.scheduleId" :label="course.label"/></el-select>
+          <el-form-item label="适用课程类型">
+            <div v-if="form.issuedQuantity>0 && (!form.courseScope || form.courseScope==='LEGACY')">{{courseScopeText(form)}}（已发券，保留原限制）</div>
+            <el-checkbox-group v-else v-model="form.courseTypes" :disabled="form.issuedQuantity>0"><el-checkbox label="ONE_TO_ONE">一对一</el-checkbox><el-checkbox label="CLASS">大班课</el-checkbox></el-checkbox-group>
+            <div style="color:#909399;font-size:12px">可同时选择两类；一对一课包仅支持不限学科的券。</div>
           </el-form-item>
           <el-form-item label="适用学科"><el-checkbox v-model="allSubjects" :disabled="form.issuedQuantity>0" @change="toggleAllSubjects">全选（不限学科）</el-checkbox><el-checkbox-group v-model="form.subjectNames" :disabled="form.issuedQuantity>0" @change="subjectsChanged"><el-checkbox v-for="subject in subjectOptions" :key="subject" :label="subject">{{subject}}</el-checkbox></el-checkbox-group><div class="el-form-item__error" v-if="!allSubjects&&!form.subjectNames.length">请选择至少一个学科，或全选</div></el-form-item>
           <el-form-item label="生效时间">
@@ -343,22 +345,10 @@
           />
         </el-form-item>
         <el-form-item label="报名年级">
-          <el-input
-            v-model="parentQuery.gradeName"
-            maxlength="20"
-            clearable
-            placeholder="如：五年级"
-            @input="parentFiltersChanged"
-          />
+          <el-select v-model="parentQuery.gradeName" filterable clearable placeholder="全部年级" @change="parentFiltersChanged"><el-option v-for="grade in dict.type.edu_grade" :key="grade.value" :label="grade.label" :value="grade.label" /></el-select>
         </el-form-item>
         <el-form-item label="学科">
-          <el-input
-            v-model="parentQuery.subjectName"
-            maxlength="20"
-            clearable
-            placeholder="如：英语"
-            @input="parentFiltersChanged"
-          />
+          <el-select v-model="parentQuery.subjectName" filterable clearable placeholder="全部学科" @change="parentFiltersChanged"><el-option v-for="subject in subjectOptions" :key="subject" :label="subject" :value="subject" /></el-select>
         </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="searchParents">查询</el-button>
@@ -490,6 +480,7 @@ import {
 } from '@/utils/tuitionFinance'
 export default {
   name: 'Coupon',
+  dicts: ['edu_grade'],
   components:{ReferralRewards},
   props:{initialTab:{type:String,default:'templates'}},
   computed:{canReferral(){const p=this.$store&&this.$store.getters&&this.$store.getters.permissions||[];return p.includes('*:*:*')||p.includes('edu:referral:manage')}},
@@ -548,6 +539,7 @@ export default {
     subjectNames(row){try{const s=row.subjectNames;return Array.isArray(s)?s:s?JSON.parse(s):[]}catch(e){return[]}},
     subjectText(row){return this.subjectNames(row).join('、')||'不限学科'},
     courseName(id){const c=this.courseOptions.find(c=>String(c.scheduleId)===String(id));return id?(c?c.label:'原指定课程'):'全部课程'},
+    courseScopeText(row){return ({ONE_TO_ONE:'一对一专用',CLASS:'大班课专用',ALL:'一对一、大班课通用'})[row.courseScope] || (row.scopeScheduleId?'历史指定课程（'+row.scopeScheduleId+'）':'历史通用规则')},
     couponSummary(row){return Number(row.minSpendAmount)>0?'满 '+money(row.minSpendAmount)+' 减 '+money(row.discountAmount):'无门槛减 '+money(row.discountAmount)},
     toggleAllSubjects(value){this.form.subjectNames=value?this.subjectOptions.slice():[]},
     subjectsChanged(values){this.allSubjects=this.subjectOptions.length>0&&values.length===this.subjectOptions.length},
@@ -623,6 +615,7 @@ export default {
             issuedQuantity: 0,
           }
       const subjects=this.subjectNames(this.form);this.allSubjects=!subjects.length;this.form.subjectNames=subjects.length?subjects:this.subjectOptions.slice();this.couponKind=Number(this.form.minSpendAmount)>0?'THRESHOLD':'NONE'
+      this.form={...this.form,courseTypes:['ONE_TO_ONE','CLASS'].includes(this.form.courseScope)?[this.form.courseScope]:['ONE_TO_ONE','CLASS']}
       this.formError = '';this.loadOptions()
       this.templateOpen = true
     },
@@ -637,6 +630,7 @@ export default {
           const validUntil = required(this.form.validUntil, '到期时间')
           if (validUntil <= validFrom) throw new Error('到期时间必须晚于生效时间')
           if(!this.allSubjects&&!this.form.subjectNames.length)throw new Error('请选择适用学科，或全选')
+          if(!this.form.courseTypes || !this.form.courseTypes.length)throw new Error('请选择一对一或大班课')
           if(this.couponKind==='THRESHOLD'&&Number(this.form.minSpendAmount)<=0)throw new Error('满减门槛必须大于0')
           body = {
             ...body,
@@ -645,9 +639,8 @@ export default {
             description: this.form.description || '',
             discountAmount: amount(this.form.discountAmount, true),
             minSpendAmount: this.couponKind==='NONE'?'0.00':amount(this.form.minSpendAmount),
-            scopeScheduleId: this.form.scopeScheduleId
-              ? String(this.form.scopeScheduleId).trim()
-              : null,
+            scopeScheduleId:null,
+            courseScope:this.form.courseTypes.length===2?'ALL':this.form.courseTypes[0],
             validFrom,
             validUntil,
             totalQuantity: this.form.totalQuantity,

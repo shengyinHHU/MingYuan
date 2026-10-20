@@ -10,45 +10,20 @@
           @keyup.enter.native="handleQuery"
         />
       </el-form-item>
-      <el-form-item label="教室ID" prop="classroomId" v-show="showAdvancedFilters">
-        <el-input
-          v-model="queryParams.classroomId"
-          placeholder="请输入教室ID"
-          clearable
-          @keyup.enter.native="handleQuery"
-        />
+      <el-form-item label="教室" prop="classroomId" v-show="showAdvancedFilters">
+        <el-select v-model="queryParams.classroomId" filterable clearable placeholder="全部教室" @change="handleQuery"><el-option v-for="item in dims.classroomList" :key="item.classroomId" :label="item.campusName + ' · ' + item.classroomName" :value="item.classroomId" /></el-select>
       </el-form-item>
       <el-form-item label="课程年份" prop="courseYear" v-show="showAdvancedFilters">
-        <el-input
-          v-model="queryParams.courseYear"
-          placeholder="请输入课程年份"
-          clearable
-          @keyup.enter.native="handleQuery"
-        />
+        <el-date-picker v-model="queryParams.courseYear" type="year" value-format="yyyy" placeholder="请选择年份" clearable @change="handleQuery" />
       </el-form-item>
       <el-form-item label="学期" prop="termName" v-show="showAdvancedFilters">
-        <el-input
-          v-model="queryParams.termName"
-          placeholder="请输入学期"
-          clearable
-          @keyup.enter.native="handleQuery"
-        />
+        <el-select v-model="queryParams.termName" filterable clearable placeholder="全部学期" @change="handleQuery"><el-option v-for="item in dims.terms" :key="item.value" :label="item.label" :value="item.value" /></el-select>
       </el-form-item>
       <el-form-item label="期次或上课日" prop="periodName">
-        <el-input
-          v-model="queryParams.periodName"
-          placeholder="请输入期次或上课日"
-          clearable
-          @keyup.enter.native="handleQuery"
-        />
+        <el-select v-model="queryParams.periodName" filterable clearable placeholder="全部期次或上课日" @change="handleQuery"><el-option v-for="item in periodOptions(queryParams.termName)" :key="item.value" :label="item.label" :value="item.value" /></el-select>
       </el-form-item>
       <el-form-item label="时段" prop="timeSlot" v-show="showAdvancedFilters">
-        <el-input
-          v-model="queryParams.timeSlot"
-          placeholder="请输入时段"
-          clearable
-          @keyup.enter.native="handleQuery"
-        />
+        <el-select v-model="queryParams.timeSlot" filterable clearable placeholder="全部时段" @change="handleQuery"><el-option v-for="item in timeSlotOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select>
       </el-form-item>
       <el-form-item label="开始时间" prop="startTime" v-show="showAdvancedFilters">
         <el-time-picker clearable
@@ -65,28 +40,13 @@
         </el-time-picker>
       </el-form-item>
       <el-form-item label="年级" prop="gradeName">
-        <el-input
-          v-model="queryParams.gradeName"
-          placeholder="请输入年级"
-          clearable
-          @keyup.enter.native="handleQuery"
-        />
+        <el-select v-model="queryParams.gradeName" filterable clearable placeholder="全部年级" @change="handleQuery"><el-option v-for="item in dims.grades" :key="item.value" :label="item.label" :value="item.value" /></el-select>
       </el-form-item>
       <el-form-item label="科目" prop="subjectName">
-        <el-input
-          v-model="queryParams.subjectName"
-          placeholder="请输入科目"
-          clearable
-          @keyup.enter.native="handleQuery"
-        />
+        <el-select v-model="queryParams.subjectName" filterable clearable placeholder="全部学科" @change="handleQuery"><el-option v-for="item in dims.subjects" :key="item.value" :label="item.label" :value="item.value" /></el-select>
       </el-form-item>
       <el-form-item label="教师姓名" prop="teacherName">
-        <el-input
-          v-model="queryParams.teacherName"
-          placeholder="请输入教师姓名"
-          clearable
-          @keyup.enter.native="handleQuery"
-        />
+        <el-select v-model="queryParams.teacherName" filterable clearable placeholder="全部教师" @change="handleQuery"><el-option v-for="item in dims.teachers" :key="item.userId" :label="item.nickName + '（' + item.userName + '）'" :value="item.nickName" /></el-select>
       </el-form-item>
       <el-form-item label="已报名人数" prop="enrolledCount" v-show="showAdvancedFilters">
         <el-input
@@ -136,6 +96,7 @@
     </el-form>
 
     <el-row :gutter="10" class="mb8">
+      <el-col :span="1.5"><el-button type="primary" plain icon="el-icon-date" size="mini" v-hasRole="['admin']" @click="openSingle()">一对一管理</el-button></el-col>
       <el-col :span="1.5">
         <el-button
           type="primary"
@@ -234,8 +195,9 @@
             icon="el-icon-edit"
             @click="handleUpdate(scope.row)"
             v-hasPermi="['system:schedule:edit']"
-          >修改</el-button>
+          >{{ scope.row.classMode === '2' ? '管理' : '修改' }}</el-button>
           <el-button
+            v-if="scope.row.classMode !== '2'"
             size="mini"
             type="text"
             icon="el-icon-delete"
@@ -273,22 +235,22 @@
           </el-col>
           <el-col :span="24">
             <el-form-item label="课程年份" prop="courseYear">
-              <el-input v-model="form.courseYear" placeholder="请输入课程年份" />
+              <el-date-picker v-model="form.courseYear" type="year" value-format="yyyy" placeholder="请选择年份" />
             </el-form-item>
           </el-col>
           <el-col :span="24">
             <el-form-item label="学期" prop="termName">
-              <el-input v-model="form.termName" placeholder="请输入学期" />
+              <el-select v-model="form.termName" filterable placeholder="请选择学期" style="width:100%"><el-option v-for="item in dims.terms" :key="item.value" :label="item.label" :value="item.value" /></el-select>
             </el-form-item>
           </el-col>
           <el-col :span="24">
             <el-form-item label="期次或上课日" prop="periodName">
-              <el-input v-model="form.periodName" placeholder="请输入期次或上课日" />
+              <el-select v-model="form.periodName" filterable placeholder="请选择期次或上课日" style="width:100%"><el-option v-for="item in periodOptions(form.termName)" :key="item.value" :label="item.label" :value="item.value" /></el-select>
             </el-form-item>
           </el-col>
           <el-col :span="24">
             <el-form-item label="时段" prop="timeSlot">
-              <el-input v-model="form.timeSlot" placeholder="请输入时段" />
+              <el-select v-model="form.timeSlot" filterable placeholder="请选择时段" style="width:100%" @change="onTimeSlotChange"><el-option v-for="item in timeSlotOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select>
             </el-form-item>
           </el-col>
           <el-col :span="24">
@@ -311,12 +273,12 @@
           </el-col>
           <el-col :span="24">
             <el-form-item label="年级" prop="gradeName">
-              <el-input v-model="form.gradeName" placeholder="请输入年级" />
+              <el-select v-model="form.gradeName" filterable placeholder="请选择年级" style="width:100%"><el-option v-for="item in dims.grades" :key="item.value" :label="item.label" :value="item.value" /></el-select>
             </el-form-item>
           </el-col>
           <el-col :span="24">
             <el-form-item label="科目" prop="subjectName">
-              <el-input v-model="form.subjectName" placeholder="请输入科目" />
+              <el-select v-model="form.subjectName" filterable placeholder="请选择学科" style="width:100%"><el-option v-for="item in dims.subjects" :key="item.value" :label="item.label" :value="item.value" /></el-select>
             </el-form-item>
           </el-col>
           <el-col :span="24">
@@ -328,7 +290,7 @@
             <el-form-item label="授课形式" prop="classMode">
               <el-select v-model="form.classMode" placeholder="请选择授课形式" :disabled="!form.scheduleId && dims.isTeacher && !dims.isAdmin">
                 <el-option label="班课" value="1" />
-                <el-option label="一对一" value="2" />
+                <el-option label="一对一（请使用一对一管理）" value="2" :disabled="dims.isAdmin" />
               </el-select>
             </el-form-item>
           </el-col>
@@ -379,21 +341,24 @@
         <el-button @click="cancel">取 消</el-button>
       </div>
     </el-dialog>
+    <OneToOneManager ref="oneToOne" :dims="dims" @changed="getList" />
   </div>
 </template>
 
 <script>
 import { listSchedule, getSchedule, delSchedule, addSchedule, updateSchedule } from "@/api/system/schedule"
 import { getTimetableDimensions } from "@/api/system/timetable"
+import OneToOneManager from './OneToOneManager.vue'
 
 export default {
   name: "Schedule",
+  components: { OneToOneManager },
   data() {
     return {
       // 遮罩层
       loading: true,
       submitting: false,
-      dims: { classroomList: [], teachers: [], isTeacher: false, isAdmin: false },
+      dims: { classroomList: [], teachers: [], terms: [], periods: [], periodMap: {}, timeSlots: [], grades: [], subjects: [], classTypes: [], isTeacher: false, isAdmin: false },
       // 选中数组
       ids: [],
       // 非单个禁用
@@ -456,10 +421,10 @@ export default {
           { required: true, message: "时段不能为空", trigger: "blur" }
         ],
         gradeName: [
-          { required: true, message: "年级不能为空", trigger: "blur" }
+          { required: true, message: "请选择年级", trigger: "change" }
         ],
         subjectName: [
-          { required: true, message: "科目不能为空", trigger: "blur" }
+          { required: true, message: "请选择学科", trigger: "change" }
         ],
         courseClassName: [
           { required: true, message: "课程班名称不能为空", trigger: "blur" }
@@ -467,11 +432,29 @@ export default {
       }
     }
   },
+  computed: {
+    timeSlotOptions() {
+      const values = [...(this.dims.timeSlots || []).map(item => item.value), this.form.timeSlot].filter(Boolean)
+      return [...new Set(values)].map(value => ({ label: value, value }))
+    }
+  },
   created() {
     this.getList()
     getTimetableDimensions().then(response => { this.dims = response.data || this.dims }).catch(() => {})
   },
   methods: {
+    openSingle(row = {}, tab = 'slots') {
+      if (!this.dims.isAdmin) { this.$modal.msgError('仅管理员可在网页统一管理一对一'); return }
+      return this.$refs.oneToOne.open(row, tab)
+    },
+    periodOptions(term) {
+      const values = [...((this.dims.periodMap || {})[term] || []), ...(this.dims.periods || []).map(item => item.value)]
+      return [...new Set(values)].map(value => ({ label: value, value }))
+    },
+    onTimeSlotChange(value) {
+      const parts = String(value || "").match(/^(\d{1,2}:\d{2})-(\d{1,2}:\d{2})$/)
+      if (parts) { this.form.startTime = parts[1].padStart(5, "0") + ":00"; this.form.endTime = parts[2].padStart(5, "0") + ":00" }
+    },
     /** 查询课程排课列表 */
     getList() {
       this.loading = true
@@ -491,7 +474,7 @@ export default {
         scheduleId: null,
         scheduleCode: null,
         classroomId: null, lessonLocation: null,
-        courseYear: new Date().getFullYear(),
+        courseYear: String(new Date().getFullYear()),
         termName: null,
         periodName: null,
         timeSlot: null,
@@ -548,7 +531,9 @@ export default {
       this.reset()
       const scheduleId = row.scheduleId || this.ids[0]
       getSchedule(scheduleId).then(response => {
+        if (response.data.classMode === '2' && this.dims.isAdmin) { this.openSingle(response.data, 'courses'); return }
         this.form = response.data
+        this.form.courseYear = this.form.courseYear == null ? null : String(this.form.courseYear)
         this.open = true
         this.title = "修改课程排课"
       })
@@ -561,7 +546,6 @@ export default {
         this.submitting = true
         try {
           const payload = { ...this.form }
-          if (payload.classMode === '2') payload.classroomId = null
           delete payload.enrolledCount
           delete payload.delFlag
           if (payload.scheduleId) await updateSchedule(payload)
@@ -574,6 +558,8 @@ export default {
     },
     /** 删除按钮操作 */
     handleDelete(row) {
+      const selected = row.scheduleId ? [row] : this.scheduleList.filter(s => this.ids.includes(s.scheduleId))
+      if (selected.some(s => s.classMode === '2')) { this.$modal.msgWarning('一对一请在“一对一管理”中撤回，预约和考勤历史将保留'); return }
       const scheduleIds = row.scheduleId || this.ids
       this.$modal.confirm('是否确认删除课程排课编号为"' + scheduleIds + '"的数据项？').then(function() {
         return delSchedule(scheduleIds)

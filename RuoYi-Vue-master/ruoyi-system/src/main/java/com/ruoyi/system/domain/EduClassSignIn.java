@@ -34,11 +34,17 @@ public class EduClassSignIn extends BaseEntity
     /** 学员来源（1报名 2试听 3调课） */
     private String sourceType;
 
-    /** 签到结果（1到课 2录播 3请假 4试听到课 5调课到课） */
+    /** 签到结果（1到课 2录播 3请假 4试听到课 5调课到课 6未到课） */
     private String signStatus;
 
-    /** 复核状态（0待复核 1复核完成） */
+    /** 复核状态（0待复核 1复核完成 2审核异常） */
     private String reviewStatus;
+    private String reviewReason;
+    private String reviewHistory;
+    public String getReviewReason() { return reviewReason; }
+    public void setReviewReason(String value) { reviewReason = value; }
+    public String getReviewHistory() { return reviewHistory; }
+    public void setReviewHistory(String value) { reviewHistory = value; }
 
     /** 第1位确认管理员用户ID */
     private Long review1AdminId;

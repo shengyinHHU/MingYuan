@@ -4,6 +4,18 @@ function harness(request,timers={setTimeout,clearTimeout}){const storage={token:
  function read(file){const module={exports:{}};vm.runInNewContext(fs.readFileSync(path.join(root,'utils',file),'utf8'),{module,require:id=>id==='./request'?{request}:display,wx,console,...timers,setInterval:()=>0,clearInterval(){}});return module.exports}
  const base=read('referral.js').page(true),def=read('coupon-management.js').page(base),p={...def,data:clone(def.data),_alive:true,_visible:true,_token:'admin',_version:1};p.setData=values=>{for(const[k,v]of Object.entries(values)){const names=k.split('.');let o=p.data;for(const name of names.slice(0,-1))o=o[name];o[names.at(-1)]=v}};return{p,storage,wx,notices};}
 const pick=value=>({detail:{value}}),click=id=>({currentTarget:{dataset:{id}}});
+test('coupon type labels preserve historical schedule restrictions and distinguish the two purchase paths',()=>{
+ assert.equal(display.scopeText({courseScope:'ONE_TO_ONE'}),'一对一专用')
+ assert.equal(display.scopeText({courseScope:'CLASS'}),'大班课专用')
+ assert.equal(display.scopeText({courseScope:'ALL'}),'一对一、大班课通用')
+ assert.match(display.scopeText({courseScope:'LEGACY',scopeScheduleId:'91'}),/91/)
+})
+test('miniapp template saves a course type instead of a schedule and issued rules stay frozen',async()=>{
+ const calls=[],{p}=harness(o=>{calls.push(o);return Promise.resolve({data:{}})});p.load=async()=>{}
+ p.editCoupon();p.setData({'templateForm.couponName':'一对一券','templateForm.discountAmount':'100','templateForm.totalQuantity':10});p.templateCourse(pick(0));await p.saveCoupon()
+ assert.equal(calls[0].data.courseScope,'ONE_TO_ONE');assert.equal(calls[0].data.scopeScheduleId,null)
+ p.setData({'templateForm.issuedQuantity':1});p.templateCourse(pick(1));assert.equal(p.data.courseIndex,0)
+})
 function draft(p){p.data.grantTemplate=display.template({templateId:'9',couponName:'数学券',discountAmount:'50',minSpendAmount:'100',subjectNames:['数学'],totalQuantity:10,issuedQuantity:0,templateRulesHash:'frozen-rules'});p.data.ordinarySelected=['9007199254740993'];p.data.ordinaryPeople=[{parentId:'9007199254740993',parentName:'家长',parentPhone:'11111111111'}];p.data.ordinaryReason='核对发放';p.data.ordinaryPreview={count:1,people:p.data.ordinaryPeople};p._ordinaryKey='batch-fixed';}
 const reply=o=>Promise.resolve(o.url.endsWith('/counts')?{data:{pending:2,anomalies:3}}:o.url.endsWith('/options')?{data:{subjects:[],schedules:[]}}:{rows:[],total:0});
 test('coupon scope display distinguishes single, multiple and all subjects',()=>{assert.equal(display.subjectText({subjectNames:['数学']}),'数学');assert.equal(display.subjectText({subjectNames:'["数学","化学"]'}),'数学、化学');assert.equal(display.subjectText({subjectNames:null}),'不限学科');assert.equal(display.summary({minSpendAmount:'0',discountAmount:'50'}),'无门槛减 50');assert.equal(display.summary({minSpendAmount:'100',discountAmount:'50'}),'满 100 减 50')});

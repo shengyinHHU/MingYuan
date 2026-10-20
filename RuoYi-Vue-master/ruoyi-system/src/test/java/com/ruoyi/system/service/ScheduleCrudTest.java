@@ -47,6 +47,12 @@ public class ScheduleCrudTest {
         }));
     }
     @AfterEach void cleanup() { SecurityContextHolder.clearContext(); }
+    @Test void enrolledSingleCannotBypassProtectionUsingImportTestSwitch() throws Exception {
+        principal(1,"admin"); current.setClassMode("2"); db.activeEnrollments=1;
+        inject(service,"configService",proxy(ISysConfigService.class,(p,m,a)->"true"));
+        var patch=new EduCourseSchedule();patch.setScheduleId(10L);patch.setCourseClassName("不允许覆盖");
+        assertThrows(ServiceException.class,()->service.updateEduCourseSchedule(patch));assertNull(captured);
+    }
     @Test void teacherReadAndWriteIsolation() {
         EduCourseSchedule query = new EduCourseSchedule(); query.getParams().put("teacherUserId", 22L);
         service.selectEduCourseScheduleList(query); assertEquals(21L, captured.getParams().get("teacherUserId"));

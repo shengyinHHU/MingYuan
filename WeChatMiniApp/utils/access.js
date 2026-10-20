@@ -23,6 +23,7 @@ const routePermissions = {
   '/pages/admin-classrooms/admin-classrooms': 'system:classroom:list',
   '/pages/admin-transactions/admin-transactions': 'edu:transaction:manage',
   '/pages/admin-tuition/admin-tuition': 'system:tuition:list',
+  '/pages/admin-tuition-refunds/admin-tuition-refunds': 'system:tuitionRefund:list',
   '/pages/admin-referral/admin-referral': 'system:coupon:list',
   '/pages/admin-teachers/admin-teachers': 'system:salaryConfig:list',
   '/pages/material-upload/material-upload': 'system:material:list'

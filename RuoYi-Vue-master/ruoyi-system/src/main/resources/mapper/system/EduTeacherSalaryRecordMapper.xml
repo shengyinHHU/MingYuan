@@ -166,7 +166,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                sum(case when r.sign_status in ('1','4','5') then 1 else 0 end) as attendedRows
         from edu_class_sign_in r
         inner join edu_course_schedule s on s.schedule_id = r.schedule_id and s.del_flag = '0'
-        where r.del_flag = '0' and s.teacher_id is not null
+        where r.del_flag = '0' and r.review_status = '1' and s.teacher_id is not null
           and date_format(r.class_date, '%Y-%m') = #{salaryMonth}
         group by s.teacher_id, r.schedule_id, r.class_date, s.class_mode, stage, s.start_time, s.end_time
     </select>

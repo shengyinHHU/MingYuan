@@ -216,7 +216,9 @@ public class TuitionService {
   /** Lock schedule first for every mutation, including callbacks and cancellation. */
   private Map<String, Object> lockEnrollment(long enrollment, long actor, boolean admin) {
     var e = enrollment(enrollment, actor, admin, false);
-    if (!"LESSON_PACKAGE".equals(e.get("billType")))
+    if (CreditPackageService.isPackage(e))
+      db.one("SELECT account_id FROM edu_student_lesson_account WHERE account_id=? AND parent_id=? FOR UPDATE",e.get("lessonAccountId"),e.get("parentId"));
+    else if (!"LESSON_PACKAGE".equals(e.get("billType")))
       db.one(
           "SELECT schedule_id FROM edu_course_schedule WHERE schedule_id=? FOR UPDATE",
           e.get("scheduleId"));
@@ -320,7 +322,7 @@ public class TuitionService {
     }
     e.put(
         "canApplyRefund",
-        "OPEN".equals(e.get("billingStatus"))
+        !CreditPackageService.isPackage(e) && "OPEN".equals(e.get("billingStatus"))
             && (!Set.of("已取消", "2", "已拒绝", "3").contains(str(e, "enrollmentStatus")) || cancelledSingle(e))
             && e.get("refundableAmount") != null
             && money(e.get("refundableAmount")).signum() > 0
@@ -384,7 +386,7 @@ public class TuitionService {
                 "parentName",
                 "u.nick_name",
                 "courseClassName",
-                "s.course_class_name",
+                "COALESCE(e.fee_title_snapshot,s.course_class_name)",
                 "campusName",
                 "c.campus_name")
             .entrySet())
@@ -418,6 +420,7 @@ public class TuitionService {
     actor(actor, admin);
     enrollment(enrollment, actor, admin, false);
     var e = amounts(db.one(BILL_SELECT + BILL_FROM + " WHERE e.enrollment_id=?", enrollment));
+    if(CreditPackageService.isPackage(e))e.put("packageSnapshot",CreditPackageService.snapshot(e));
     e.put(
         "payments",
         db.rows(
@@ -494,6 +497,7 @@ public class TuitionService {
     return tx(
         () -> {
           var e = lockEnrollment(enrollment, actor, true);
+          require(!CreditPackageService.isPackage(e),"课包按年级和包数自动计价，不能人工改价；请取消未收款订单后重新购买");
           require(!"P".equals(e.get("settlementMethod")), "课包报名通过课次账户结算，不能登记单次现金收款");
           version(e, b);
           require(
@@ -560,10 +564,11 @@ public class TuitionService {
     require(
         "OPEN".equals(e.get("billingStatus")) && e.get("originalAmount") != null,
         "BILL_NOT_PRICED: 请等待核价或历史核验");
-    BigDecimal discount =
-        str(b, "userCouponId").isEmpty()
+    Long coupon=selectedCoupon(e,b);
+    BigDecimal discount = CreditPackageService.bulkDiscount(e).add(
+        coupon==null
             ? money("0")
-            : coupons.discount(id(b.get("userCouponId")), e, false);
+            : coupons.discount(coupon, e, false));
     return values(
         "originalAmount",
         e.get("originalAmount"),
@@ -574,13 +579,21 @@ public class TuitionService {
         "financialVersion",
         e.get("financialVersion"),
         "userCouponId",
-        str(b, "userCouponId").isEmpty() ? null : str(b, "userCouponId"),
+        coupon==null ? null : coupon.toString(),
         "coupons",
         coupons.available(e));
   }
 
+  private Long selectedCoupon(Map<String,Object> e,Map<String,Object> b){
+    if(CreditPackageService.isPackage(e)){
+      require(str(b,"userCouponId").isEmpty() || str(b,"userCouponId").equals(str(e,"userCouponId")),"课包优惠券随订单锁定，不能在收款时更换");
+      return e.get("userCouponId")==null?null:id(e.get("userCouponId"));
+    }
+    return str(b,"userCouponId").isEmpty()?null:id(b.get("userCouponId"));
+  }
+
   private Map<String, Object> snapshot(Map<String, Object> e) {
-    return values(
+    var snap=values(
         "enrollmentId",
         e.get("enrollmentId"),
         "enrollmentCode",
@@ -603,6 +616,8 @@ public class TuitionService {
         e.get("financeMode"),
         "userCouponId",
         e.get("userCouponId"));
+    if(CreditPackageService.isPackage(e)){snap.put("billType",CreditPackageService.TYPE);snap.put("packageSnapshot",CreditPackageService.snapshot(e));}
+    return snap;
   }
 
   private String evidence(Map<String, Object> b, long actor, String type, long business) {
@@ -659,8 +674,8 @@ public class TuitionService {
                           enrollment)
                       .isEmpty(),
                   "PAYMENT_ALREADY_EXISTS: 已有有效缴费记录");
-              Long coupon = str(b, "userCouponId").isEmpty() ? null : id(b.get("userCouponId"));
-              BigDecimal discount = coupon == null ? money("0") : coupons.discount(coupon, e, true),
+              Long coupon = selectedCoupon(e,b);
+              BigDecimal discount = CreditPackageService.bulkDiscount(e).add(coupon == null ? money("0") : coupons.discount(coupon, e, true)),
                   amount = money(e.get("originalAmount")).subtract(discount);
               require(
                   amount.compareTo(money(b.get("expectedPayableAmount"))) == 0,
@@ -755,7 +770,7 @@ public class TuitionService {
                       "user_coupon_id",
                       coupon),
                   actor);
-              if (coupon != null)
+              if (coupon != null && !CreditPackageService.isPackage(e))
                 require(
                     db.jdbc()
                             .update(
@@ -976,6 +991,7 @@ public class TuitionService {
         values("payment_status", "CLOSED", "failure_reason", reason),
         actor);
     var e = enrollment(enrollment, actor, true, true);
+    if(CreditPackageService.isPackage(e))return; // 关闭一次待核验收款不取消课包，也不释放订单锁券或清空折扣。
     if (e.get("userCouponId") != null)
       db.jdbc()
           .update(
@@ -1064,6 +1080,7 @@ public class TuitionService {
                   .isEmpty(),
               "REFUND_IN_PROGRESS: 当前已有在途退款");
           var e = enrollment(id(p.get("enrollmentId")), actor, admin, true);
+          require(!CreditPackageService.isPackage(e),"课包余额退费须先核对逐单剩余次数，暂不能套用课程退费；请联系管理员");
           require(
               "OPEN".equals(e.get("billingStatus"))
                   && (!Set.of("2", "已取消", "3", "已拒绝").contains(str(e, "enrollmentStatus"))
@@ -1629,6 +1646,7 @@ public class TuitionService {
     return tx(
         () -> {
           var e = lockEnrollment(enrollment, actor, admin);
+          require(!CreditPackageService.isPackage(e), "请从课包订单取消入口操作");
           if (Set.of("2", "已取消").contains(str(e, "enrollmentStatus")))
             return bill(enrollment, actor, admin);
           require(e.get("classDate") == null, "一对一请提交取消申请，由教师处理；财务不能代替教师取消预约");
@@ -1662,7 +1680,9 @@ public class TuitionService {
     tx(() -> {
       var e = lockEnrollment(enrollment, teacher, true);
       require(e.get("classDate") != null, "不是具体日期的一对一报名");
-      require(!db.rows("SELECT s.schedule_id FROM edu_course_schedule s JOIN sys_user u ON u.user_id=s.teacher_id "
+      boolean administrator = com.ruoyi.common.utils.SecurityUtils.getUserId().equals(teacher)
+          && (com.ruoyi.common.utils.SecurityUtils.isAdmin() || com.ruoyi.common.utils.SecurityUtils.hasRole("admin"));
+      require(administrator || !db.rows("SELECT s.schedule_id FROM edu_course_schedule s JOIN sys_user u ON u.user_id=s.teacher_id "
           + "WHERE s.schedule_id=? AND s.teacher_id=? AND u.status='0' AND u.del_flag='0' "
           + "AND EXISTS(SELECT 1 FROM sys_user_role ur JOIN sys_role r ON r.role_id=ur.role_id "
           + "WHERE ur.user_id=u.user_id AND r.role_key='teacher' AND r.status='0' AND r.del_flag='0')",

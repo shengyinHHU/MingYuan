@@ -44,6 +44,7 @@ export function canCollect(bill) {
 export function canPrice(bill) {
   return (
     !!bill &&
+    bill.billType !== 'CREDIT_PACKAGE' &&
     ['OPEN', 'PENDING_PRICE'].includes(bill.billingStatus) &&
     !(bill.payments || []).some((p) => !['FAILED', 'CLOSED'].includes(p.paymentStatus))
   )

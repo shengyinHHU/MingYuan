@@ -71,6 +71,7 @@ public class ClassLeaveMysqlTest extends LessonCreditMysqlTest {
         assertEquals(2L,db.jdbc().queryForObject("SELECT COUNT(*) FROM edu_class_sign_in WHERE schedule_id=? AND class_date=?",Long.class,course,date.toString()));
         sign.setDetails(List.of(d,d));assertThrows(ServiceException.class,()->tx(()->signs.submitSignIn(sign,"teacher-test")));sign.setDetails(List.of(d,d2));
         var review=new MiniAppSignReviewBody();review.setScheduleId(course);review.setClassDate(date.toString());
+        review.setSubmissionVersion((String)signs.selectDetail(course,date.toString()).get("submissionVersion"));
         tx(()->signs.review(review,1L,"管理员甲"));assertEquals(Set.of(),signs.selectDetail(course,date.toString()).get("approvedLeaveEnrollmentIds"));
         assertThrows(ServiceException.class,()->tx(()->signs.submitSignIn(sign,"teacher-test")));
         tx(()->signs.review(review,2L,"管理员乙"));assertThrows(ServiceException.class,()->tx(()->signs.submitSignIn(sign,"teacher-test")));

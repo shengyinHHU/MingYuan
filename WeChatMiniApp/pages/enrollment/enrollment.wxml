@@ -8,6 +8,18 @@
     <view class="course-type-tab {{courseTypeIndex === index ? 'selected' : ''}}" wx:for="{{courseTypeOptions}}" wx:key="*this" data-index="{{index}}" bindtap="chooseCourseType">{{item === '班课' ? '班课报名' : '一对一预约'}}</view>
   </view>
 
+  <view class="booking-wallet" wx:if="{{courseTypeIndex === 1}}">
+    <view class="wallet-heading"><view><view class="wallet-eyebrow">我的一对一课包</view><view class="wallet-child">{{creditAccount ? creditAccount.studentName + ' · ' + creditAccount.gradeName : '孩子专属课次账户'}}</view></view><view class="wallet-mark">1 : 1</view></view>
+    <view class="wallet-state" wx:if="{{accountsLoading}}">正在同步课次余额…</view>
+    <view class="wallet-state wallet-error" wx:elif="{{accountsError}}" bindtap="loadLessonAccounts">{{accountsError}} · 点击重试</view>
+    <block wx:elif="{{creditAccount}}">
+      <view class="wallet-stats"><view class="wallet-primary"><view class="wallet-value">{{creditAccount.availableCredits}}<text> 次</text></view><view class="wallet-label">可用课次</view></view><view class="wallet-secondary"><view class="wallet-small-value">{{creditAccount.reservedCredits}}</view><view class="wallet-label">预约占用</view></view><view class="wallet-secondary"><view class="wallet-small-value">{{creditAccount.consumedCredits}}</view><view class="wallet-label">已消耗</view></view></view>
+      <view class="wallet-actions"><view class="wallet-history" data-id="{{creditAccount.accountId}}" bindtap="creditHistory">课次记录 ›</view><button class="wallet-buy" bindtap="purchasePackage" disabled="{{submitting || showSheet}}">购买课包 ＋</button></view>
+    </block>
+    <view class="wallet-state" wx:else>请先选择或完善孩子信息<view class="wallet-history" bindtap="manageChildren">管理孩子信息 ›</view></view>
+    <view class="wallet-footnote">每节2小时 · 精英教师扣1次 · 资深教师扣2次</view>
+  </view>
+
   <view class="filter-bar">
     <picker class="filter-picker" bindchange="onSubjectChange" value="{{subjectIndex}}" range="{{subjectOptions}}">
       <view class="filter-text">{{subjectOptions[subjectIndex]}}</view>
@@ -19,13 +31,14 @@
   </view>
 
   <view class="teacher-filter">
-    <view class="teacher-filter-title" bindtap="toggleTeacherPicker">按教师查找 · {{selectedTeachers.length ? '已选 ' + selectedTeachers.length + ' 位' : '全部教师'}}　{{showTeacherPicker ? '收起' : '展开'}}</view>
+    <view class="teacher-filter-title" bindtap="toggleTeacherPicker">按教师查找 · {{selectedTeachers.length ? '已选 ' + selectedTeachers.length + ' 位' : '不限教师'}}　{{showTeacherPicker ? '收起' : '展开'}}</view>
     <view class="teacher-tags"><view wx:for="{{selectedTeachers}}" wx:key="key" class="teacher-tag" data-key="{{item.key}}" bindtap="toggleTeacher">{{item.label}} ×</view></view>
     <view wx:if="{{showTeacherPicker}}">
-      <input class="teacher-search" value="{{teacherKeyword}}" bindinput="searchTeacher" placeholder="输入教师姓名查找，可选择多位教师" />
-      <view class="teacher-clear" bindtap="clearTeachers">全部教师／清空选择</view>
+      <input class="teacher-search" value="{{teacherKeyword}}" bindinput="searchTeacher" placeholder="输入教师姓名查找，可勾选多位教师" disabled="{{loading || submitting || showSheet}}" />
+      <view class="teacher-filter-actions"><button size="mini" bindtap="selectAllTeachers" disabled="{{loading || submitting || showSheet || !teacherOptions.length || allVisibleTeachersSelected}}">{{allVisibleTeachersSelected ? '已全选当前列表' : '全选当前列表'}}</button><button size="mini" bindtap="clearTeachers" disabled="{{loading || submitting || showSheet}}">清空筛选（不限教师）</button></view>
+      <view class="meta teacher-filter-hint">可同时勾选多位教师；全选只针对当前列表，搜索不会清除其他已选教师。未选教师时显示全部符合条件的课程。</view>
       <scroll-view scroll-y class="teacher-options">
-        <view class="teacher-option {{item.selected ? 'selected' : ''}}" wx:for="{{teacherOptions}}" wx:key="key" data-key="{{item.key}}" bindtap="toggleTeacher"><text>{{item.selected ? '☑' : '☐'}}　{{item.label}}</text></view>
+        <checkbox-group bindchange="chooseTeachers"><label class="teacher-option {{item.selected ? 'selected' : ''}}" wx:for="{{teacherOptions}}" wx:key="key"><checkbox value="{{item.key}}" checked="{{item.selected}}" color="#0f58a8" disabled="{{loading || submitting || showSheet}}"/><text>{{item.label}}</text></label></checkbox-group>
         <view wx:if="{{!teacherOptions.length}}" class="meta">未找到匹配的教师</view>
       </scroll-view>
     </view>
@@ -68,11 +81,6 @@
 
   <view class="section">
     <view class="section-title">{{courseTypeIndex === 1 ? '我的一对一报名' : '我的班课报名'}}</view>
-    <view wx:if="{{courseTypeIndex === 1}}" class="credit-summary">
-      <view class="meta" wx:if="{{accountsLoading}}">课包余额加载中…</view>
-      <view class="meta" wx:if="{{accountsError}}" bindtap="loadLessonAccounts">{{accountsError}} · 点击重试</view>
-      <view wx:for="{{lessonAccounts}}" wx:key="accountId" class="credit-account" data-id="{{item.accountId}}" bindtap="creditHistory"><view>{{item.studentName}} · {{item.gradeName}}<text class="credit-available">可用 {{item.availableCredits}} 次</text></view><view class="meta">剩余 {{item.remainingCredits}} · 暂占 {{item.reservedCredits}} · 已消耗 {{item.consumedCredits}}　查看记录 ›</view></view>
-    </view>
     <view class="empty" wx:if="{{showEnrollmentEmpty}}">{{courseTypeIndex === 1 ? '暂无一对一报名记录' : '暂无班课报名记录'}}</view>
     <view class="enroll-card" wx:for="{{enrollments}}" wx:key="enrollmentId">
       <view>

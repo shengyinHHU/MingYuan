@@ -86,7 +86,7 @@ public class ClassLeaveService {
     }
     private boolean reviewed(Long scheduleId, String classDate) {
         return !db.rows("SELECT sign_in_id FROM edu_class_sign_in WHERE schedule_id=? AND class_date=? AND del_flag='0'"
-            + " AND (review_status='1' OR review1_admin_id IS NOT NULL OR review2_admin_id IS NOT NULL) LIMIT 1",
+            + " AND (review_status IN ('1','2') OR review1_admin_id IS NOT NULL OR review2_admin_id IS NOT NULL) LIMIT 1",
             scheduleId,classDate).isEmpty();
     }
 

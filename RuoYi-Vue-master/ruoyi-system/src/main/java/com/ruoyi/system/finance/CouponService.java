@@ -76,9 +76,15 @@ public class CouponService {
     require(names.size()<=30,"适用学科过多");return List.copyOf(names);
   }
   private static Map<String,Object> decorate(Map<String,Object> row){row.put("subjectNames",subjects(row.get("subjectNames")));row.put("templateRulesHash",rulesHash(row));return row;}
-  private static String rulesHash(Map<String,Object> row){var rules=new TreeMap<String,Object>();for(String field:List.of("templateId","couponName","description","discountAmount","minSpendAmount","scopeScheduleId","validFrom","validUntil"))rules.put(field,str(row,field));rules.put("subjectNames",subjects(row.get("subjectNames")));return hash(rules);}
+  private static String rulesHash(Map<String,Object> row){var rules=new TreeMap<String,Object>();for(String field:List.of("templateId","couponName","description","discountAmount","minSpendAmount","scopeScheduleId","courseScope","validFrom","validUntil"))rules.put(field,str(row,field));rules.put("subjectNames",subjects(row.get("subjectNames")));return hash(rules);}
   @SuppressWarnings("unchecked") private static void decoratePage(Map<String,Object> result){((List<Map<String,Object>>)result.get("rows")).forEach(CouponService::decorate);}
   private static final String SUBJECT_MATCH=" AND (t.subject_names IS NULL OR JSON_LENGTH(t.subject_names)=0 OR JSON_CONTAINS(t.subject_names,JSON_QUOTE((SELECT cs.subject_name FROM edu_course_schedule cs WHERE cs.schedule_id=?))))";
+  private static final String COURSE_MATCH=" AND (t.course_scope IN ('LEGACY','ALL') OR t.course_scope=?)";
+  private String billScope(Map<String,Object> bill){
+    if(CreditPackageService.isPackage(bill))return "ONE_TO_ONE";
+    if(bill.get("scheduleId")==null)return "UNKNOWN";
+    return "2".equals(str(db.one("SELECT class_mode FROM edu_course_schedule WHERE schedule_id=?",bill.get("scheduleId")),"classMode"))?"ONE_TO_ONE":"CLASS";
+  }
   public Map<String,Object> options(long actor) {
     admin(actor);
     return Map.of("subjects",db.rows("SELECT dict_label subject_name FROM sys_dict_data WHERE dict_type='edu_subject' AND status='0' ORDER BY dict_sort,dict_code"),
@@ -109,6 +115,8 @@ public class CouponService {
               require(until.after(from), "失效时间必须晚于生效时间");
               int total = integer(merged.get("totalQuantity"), 1, Integer.MAX_VALUE);
               String status = str(merged, "templateStatus");
+              String courseScope=str(merged,"courseScope");if(courseScope.isEmpty())courseScope="LEGACY";
+              require(Set.of("LEGACY","ONE_TO_ONE","CLASS","ALL").contains(courseScope),"请选择有效的适用课程类型");
               var selectedSubjects=subjects(merged.get("subjectNames"));
               int issued=old.isEmpty()?0:integer(old.get("issuedQuantity"),0,Integer.MAX_VALUE);
               if(issued==0)for(String subject:selectedSubjects)require(db.jdbc().queryForObject("SELECT COUNT(*) FROM sys_dict_data WHERE dict_type='edu_subject' AND status='0' AND dict_label=?",Integer.class,subject)>0,"请选择有效的授课学科");
@@ -117,6 +125,7 @@ public class CouponService {
                   str(merged, "scopeScheduleId").isEmpty()
                       ? null
                       : id(merged.get("scopeScheduleId"));
+              if(!"LEGACY".equals(courseScope)){require(str(b,"scopeScheduleId").isEmpty(),"新优惠券按课程类型适用，不能再限定某门课程");scope=null;}
               if (scope != null)
                 db.one("SELECT schedule_id FROM edu_course_schedule WHERE schedule_id=?", scope);
               if(issued==0 && scope!=null && !selectedSubjects.isEmpty())require(selectedSubjects.contains(str(db.one("SELECT subject_name FROM edu_course_schedule WHERE schedule_id=?",scope),"subjectName")),"指定课程不在所选学科范围内");
@@ -134,6 +143,8 @@ public class CouponService {
                       selectedSubjects.isEmpty()?null:JSON.toJSONString(selectedSubjects),
                       "scope_schedule_id",
                       scope,
+                      "course_scope",
+                      courseScope,
                       "valid_from",
                       from,
                       "valid_until",
@@ -160,6 +171,7 @@ public class CouponService {
                           && discount.compareTo(money(old.get("discountAmount"))) == 0
                           && min.compareTo(money(old.get("minSpendAmount"))) == 0
                           && selectedSubjects.equals(subjects(old.get("subjectNames")))
+                          && courseScope.equals(str(old,"courseScope"))
                           && Objects.equals(
                               scope == null ? "" : scope.toString(), str(old, "scopeScheduleId"))
                           && from.equals(time(old.get("validFrom")))
@@ -352,7 +364,7 @@ public class CouponService {
 
   static final String COUPONS =
       "SELECT"
-          + " c.*,t.coupon_name,t.description,t.discount_amount,t.min_spend_amount,t.scope_schedule_id,t.subject_names,u.phonenumber parent_phone,u.nick_name"
+          + " c.*,t.coupon_name,t.description,t.discount_amount,t.min_spend_amount,t.scope_schedule_id,t.course_scope,t.subject_names,u.phonenumber parent_phone,u.nick_name"
           + " parent_name,CASE WHEN c.coupon_status='AVAILABLE' AND c.valid_until<=NOW(3) THEN"
           + " 'EXPIRED' WHEN c.coupon_status='AVAILABLE' AND c.valid_from>NOW(3) THEN 'NOT_STARTED'"
           + " ELSE c.coupon_status END display_status FROM edu_user_coupon c JOIN"
@@ -405,9 +417,10 @@ public class CouponService {
               + " c.valid_until>NOW(3) AND t.min_spend_amount<=? AND (t.scope_schedule_id IS NULL"
               + " OR t.scope_schedule_id=?)";
       a.add(e.get("parentId"));
-      a.add(e.get("originalAmount"));
+      a.add(CreditPackageService.couponBase(e).get("originalAmount"));
       a.add(e.get("scheduleId"));
       where+=SUBJECT_MATCH;a.add(e.get("scheduleId"));
+      where+=COURSE_MATCH;a.add(billScope(e));
     }
     if (!str(q, "templateId").isBlank()) {
       where += " AND c.template_id=?";
@@ -431,37 +444,47 @@ public class CouponService {
 
   public List<Map<String, Object>> available(Map<String, Object> bill) {
     if (bill.get("originalAmount") == null) return List.of();
+    if(CreditPackageService.isPackage(bill) && bill.get("enrollmentId")!=null){
+      if(bill.get("userCouponId")==null)return List.of();
+      var fixed=db.rows(COUPONS+" WHERE c.user_coupon_id=? AND c.parent_id=?",bill.get("userCouponId"),bill.get("parentId"));fixed.forEach(CouponService::decorate);return fixed;
+    }
+    bill=CreditPackageService.couponBase(bill);
     var result=db.rows(
         COUPONS
             + " WHERE c.parent_id=? AND c.coupon_status='AVAILABLE' AND c.valid_from<=? AND"
             + " c.valid_until>? AND t.min_spend_amount<=? AND (t.scope_schedule_id IS NULL OR"
-            + " t.scope_schedule_id=?)"+SUBJECT_MATCH+" ORDER BY c.user_coupon_id",
+            + " t.scope_schedule_id=?)"+SUBJECT_MATCH+COURSE_MATCH+" ORDER BY c.user_coupon_id",
         bill.get("parentId"),
         now(),
         now(),
         bill.get("originalAmount"),
-        bill.get("scheduleId"),bill.get("scheduleId"));
+        bill.get("scheduleId"),bill.get("scheduleId"),billScope(bill));
     result.forEach(CouponService::decorate);return result;
   }
 
   public BigDecimal discount(long coupon, Map<String, Object> e, boolean lock) {
+    boolean purchase=CreditPackageService.isPackage(e);
+    e=CreditPackageService.couponBase(e);
     var c =
         db.one(
-            "SELECT c.*,t.discount_amount,t.min_spend_amount,t.scope_schedule_id,t.subject_names FROM"
+            "SELECT c.*,t.discount_amount,t.min_spend_amount,t.scope_schedule_id,t.course_scope,t.subject_names FROM"
                 + " edu_user_coupon c JOIN edu_coupon_template t ON t.template_id=c.template_id"
                 + " WHERE c.user_coupon_id=?"
                 + (lock ? " FOR UPDATE" : ""),
             coupon);
+    boolean held=purchase && e.get("enrollmentId")!=null && "LOCKED".equals(c.get("couponStatus"))
+        && str(e,"enrollmentId").equals(str(c,"lockedEnrollmentId")) && str(e,"userCouponId").equals(str(c,"userCouponId"));
     require(
         str(c, "parentId").equals(str(e, "parentId"))
-            && "AVAILABLE".equals(c.get("couponStatus"))
-            && !time(c.get("validFrom")).after(now())
-            && time(c.get("validUntil")).after(now())
+            && (held || ("AVAILABLE".equals(c.get("couponStatus"))
+                && !time(c.get("validFrom")).after(now()) && time(c.get("validUntil")).after(now())))
             && money(e.get("originalAmount")).compareTo(money(c.get("minSpendAmount"))) >= 0
             && (c.get("scopeScheduleId") == null
                 || str(c, "scopeScheduleId").equals(str(e, "scheduleId"))),
         "COUPON_NOT_AVAILABLE: 优惠券不属于当前家长、不可用或不适用本课程");
     var selectedSubjects=subjects(c.get("subjectNames"));
+    require(Set.of("LEGACY","ALL",billScope(e)).contains(str(c,"courseScope")),"COUPON_COURSE_TYPE_MISMATCH: 优惠券不适用于本课程类型");
+    require(!purchase || (selectedSubjects.isEmpty() && c.get("scopeScheduleId")==null),"通用课包仅支持无指定课程、无学科限制的优惠券");
     if(!selectedSubjects.isEmpty())require(selectedSubjects.contains(str(db.one("SELECT subject_name FROM edu_course_schedule WHERE schedule_id=?",e.get("scheduleId")),"subjectName")),"COUPON_SUBJECT_MISMATCH: 优惠券不适用于本课程学科");
     return money(c.get("discountAmount")).min(money(e.get("originalAmount")));
   }

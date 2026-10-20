@@ -68,6 +68,7 @@ const roleProfiles = {
     ],
     actions: [
       { title: '打卡复核', icon: '核', tone: 'blue', route: '/pages/admin-checkin-review/admin-checkin-review' },
+      { title: '出勤审核', icon: '勤', tone: 'blue', route: '/pages/sign-review/sign-review' },
       { title: '课程报名', icon: '招', tone: 'blue', route: '/pages/admin-enrollment/admin-enrollment' },
       { title: '排课管理', icon: '排', tone: 'orange' },
       { title: '教室管理', icon: '室', tone: 'cyan', route: '/pages/admin-classrooms/admin-classrooms' },
@@ -76,6 +77,7 @@ const roleProfiles = {
       { key:'referral', title: '优惠券管理', icon: '券', tone: 'violet', route: '/pages/admin-referral/admin-referral' },
       { title: '教师管理', icon: '师', tone: 'indigo', route: '/pages/admin-teachers/admin-teachers' },
       { title: '收费财务', icon: '财', tone: 'gold', route: '/pages/admin-tuition/admin-tuition' },
+      { title: '退费管理', icon: '退', tone: 'orange', route: '/pages/admin-tuition-refunds/admin-tuition-refunds' },
       { title: '薪资核算', icon: '薪', tone: 'red' },
       { title: '运营分析', icon: '析', tone: 'violet' },
       { title: '资料商城', icon: '资', tone: 'indigo', route: '/pages/material/material' },
@@ -92,8 +94,8 @@ const roleProfiles = {
 
 // Education is a real authenticated role, never a development login option.
 roleProfiles.education = {
-  name: '教务', tag: '全校区教务管理', eyebrow: '教务端', title: '教学协调、收费与退费初审',
-  stats: [], actions: roleProfiles.admin.actions.filter(a => ['教室管理', '学生档案', '收费财务'].includes(a.title)), agendaTitle: '教务工作说明', schedule: []
+  name: '教务', tag: '全校区教务管理', eyebrow: '教务端', title: '课程出勤、收费与退费初审',
+  stats: [], actions: roleProfiles.admin.actions.filter(a => ['教室管理', '学生档案', '收费财务', '退费管理', '出勤审核'].includes(a.title)), agendaTitle: '教务工作说明', schedule: []
 }
 
 function normalizeRole(roleKey) {

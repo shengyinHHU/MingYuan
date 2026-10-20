@@ -1,7 +1,8 @@
 <view class="page">
   <view class="header">
-    <view class="header-title">签到复核</view>
-    <view class="header-subtitle">核查到课人数 · 上传课堂图片 · 双人确认</view>
+    <view class="header-title">出勤审核</view>
+    <view class="header-subtitle">教师提交点名 → 教务核对教师与出勤 → 一次确认归档</view>
+    <view class="header-subtitle">当前范围：待确认 {{pendingCount}} 场 · 已确认 {{confirmedCount}} 场</view>
   </view>
 
   <view class="filter-bar">
@@ -11,8 +12,10 @@
     <view class="filter-reset" bindtap="resetFilter" wx:if="{{filterDate}}">重置</view>
   </view>
 
+  <view class="filter-bar"><view class="filter-reset" wx:for="{{filters}}" wx:key="*this" data-index="{{index}}" bindtap="changeFilter">{{filterIndex === index ? '● ' : ''}}{{item}}</view></view>
+  <view class="empty" wx:if="{{error}}">{{error}}<button size="mini" bindtap="loadList">刷新</button></view>
   <view class="list" wx:if="{{!showEmpty}}">
-    <view class="card" wx:for="{{list}}" wx:key="index"
+    <view class="card" wx:for="{{list}}" wx:key="rowKey"
       data-schedule-id="{{item.scheduleId}}" data-date="{{item.dateText}}"
       data-course="{{item.course}}" data-room="{{item.room}}" bindtap="openDetail">
       <view class="card-top">
@@ -34,7 +37,7 @@
 
   <view class="empty" wx:if="{{showEmpty && !loading}}">
     <view class="empty-icon">🗂️</view>
-    <view class="empty-text">暂无签到记录</view>
+    <view class="empty-text">当前范围暂无课次记录</view>
   </view>
 
   <view class="loading" wx:if="{{loading}}">加载中...</view>
