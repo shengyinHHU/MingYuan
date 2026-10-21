@@ -106,6 +106,10 @@ public class EduCourseSchedule extends BaseEntity
     @Excel(name = "已报名人数")
     private Long enrolledCount;
 
+    /** 报名上限（NULL 或 0 表示不限） */
+    @Excel(name = "报名上限")
+    private Integer enrollLimit;
+
     /** 课时单价（元/人·次） */
     @Excel(name = "课时单价(元)")
     private java.math.BigDecimal unitPrice;
@@ -317,6 +321,16 @@ public class EduCourseSchedule extends BaseEntity
         return enrolledCount;
     }
 
+    public void setEnrollLimit(Integer enrollLimit)
+    {
+        this.enrollLimit = enrollLimit;
+    }
+
+    public Integer getEnrollLimit()
+    {
+        return enrollLimit;
+    }
+
     public void setUnitPrice(java.math.BigDecimal unitPrice)
     {
         this.unitPrice = unitPrice;
@@ -417,6 +431,7 @@ public class EduCourseSchedule extends BaseEntity
             .append("teacherName", getTeacherName())
             .append("classType", getClassType())
             .append("enrolledCount", getEnrolledCount())
+            .append("enrollLimit", getEnrollLimit())
             .append("recruitStatus", getRecruitStatus())
             .append("courseClassName", getCourseClassName())
             .append("sourceSheet", getSourceSheet())
