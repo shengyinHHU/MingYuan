@@ -216,6 +216,10 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
           and enrollment_status in ('0','1','待确认','已确认','报名成功')
     </select>
 
+    <!--
+      报名占位：同时承担「报名上限」校验——影响 0 行即视为不可报名（满员/停招/教室停用）。
+      一对一（class_mode='2'）暂不校验上限；enroll_limit 为空或 <=0 表示不限。
+    -->
     <update id="increaseScheduleEnrollment">
         update edu_course_schedule s
         inner join edu_classroom c on c.classroom_id = s.classroom_id
@@ -227,6 +231,10 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
           and s.status = '0'
           and s.recruit_status = '0'
           and c.status = '0'
+          and (s.class_mode = '2'
+               or s.enroll_limit is null
+               or s.enroll_limit &lt;= 0
+               or ifnull(s.enrolled_count, 0) &lt; s.enroll_limit)
     </update>
 
     <insert id="insertParentEnrollment">

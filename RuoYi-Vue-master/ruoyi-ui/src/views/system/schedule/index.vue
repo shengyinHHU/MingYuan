@@ -176,7 +176,12 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="已报名人数" align="center" prop="enrolledCount" />
+      <el-table-column label="报名 / 上限" align="center" width="110">
+        <template slot-scope="scope">
+          <span>{{ scope.row.enrolledCount || 0 }}</span>
+          <span style="color: #c0c4cc"> / {{ scope.row.enrollLimit > 0 ? scope.row.enrollLimit : '不限' }}</span>
+        </template>
+      </el-table-column>
       <el-table-column label="课时单价" align="center" prop="unitPrice" />
       <el-table-column label="招生状态" align="center"><template slot-scope="scope">{{ { '0': '可报名', '1': '停招', '2': '满班' }[scope.row.recruitStatus] || '未知' }}</template></el-table-column>
       <el-table-column label="排课状态" align="center"><template slot-scope="scope">{{ scope.row.status === '1' ? '停用' : '正常' }}</template></el-table-column>
@@ -300,6 +305,12 @@
             </el-form-item>
           </el-col>
           <el-col :span="24">
+            <el-form-item label="报名上限" prop="enrollLimit">
+              <el-input-number v-model="form.enrollLimit" :min="0" :precision="0" :step="1"
+                controls-position="right" style="width: 100%" placeholder="留空或 0 表示不限" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="24">
             <el-form-item label="课时单价(元)" prop="unitPrice">
               <el-input-number v-model="form.unitPrice" :min="0" :precision="2" :step="50" controls-position="right" style="width: 100%" placeholder="元/人·次，用于财务统计" />
             </el-form-item>
@@ -394,6 +405,7 @@ export default {
         teacherName: null,
         classType: null,
         enrolledCount: null,
+        enrollLimit: null,
         unitPrice: null,
         recruitStatus: null,
         courseClassName: null,
@@ -488,6 +500,7 @@ export default {
         classType: null,
         classMode: this.dims.isTeacher && !this.dims.isAdmin ? '2' : '1',
         enrolledCount: 0,
+        enrollLimit: null,
         unitPrice: null,
         recruitStatus: '0',
         courseClassName: null,

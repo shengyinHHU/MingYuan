@@ -25,6 +25,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="classType"    column="class_type"    />
         <result property="classMode"    column="class_mode"    />
         <result property="enrolledCount"    column="enrolled_count"    />
+        <result property="enrollLimit"    column="enroll_limit"    />
         <result property="unitPrice"    column="unit_price"    />
         <result property="recruitStatus"    column="recruit_status"    />
         <result property="courseClassName"    column="course_class_name"    />
@@ -41,7 +42,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     </resultMap>
 
     <sql id="selectEduCourseScheduleVo">
-        select schedule_id, schedule_code, classroom_id, lesson_location, course_year, term_name, period_name, time_slot, start_time, end_time, start_date, end_date, class_pattern, grade_name, subject_name, teacher_name, teacher_id, class_type, class_mode, enrolled_count, unit_price, recruit_status, course_class_name, source_sheet, source_row, source_col, status, del_flag, create_by, create_time, update_by, update_time, remark from edu_course_schedule
+        select schedule_id, schedule_code, classroom_id, lesson_location, course_year, term_name, period_name, time_slot, start_time, end_time, start_date, end_date, class_pattern, grade_name, subject_name, teacher_name, teacher_id, class_type, class_mode, enrolled_count, enroll_limit, unit_price, recruit_status, course_class_name, source_sheet, source_row, source_col, status, del_flag, create_by, create_time, update_by, update_time, remark from edu_course_schedule
     </sql>
 
     <select id="selectEduCourseScheduleList" parameterType="EduCourseSchedule" resultMap="EduCourseScheduleResult">
@@ -104,6 +105,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="classType != null">class_type,</if>
             <if test="classMode != null and classMode != ''">class_mode,</if>
             <if test="enrolledCount != null">enrolled_count,</if>
+            <if test="enrollLimit != null">enroll_limit,</if>
             <if test="unitPrice != null">unit_price,</if>
             <if test="recruitStatus != null">recruit_status,</if>
             <if test="courseClassName != null and courseClassName != ''">course_class_name,</if>
@@ -138,6 +140,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="classType != null">#{classType},</if>
             <if test="classMode != null and classMode != ''">#{classMode},</if>
             <if test="enrolledCount != null">#{enrolledCount},</if>
+            <if test="enrollLimit != null">#{enrollLimit},</if>
             <if test="unitPrice != null">#{unitPrice},</if>
             <if test="recruitStatus != null">#{recruitStatus},</if>
             <if test="courseClassName != null and courseClassName != ''">#{courseClassName},</if>
@@ -177,6 +180,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="classType != null">class_type = #{classType},</if>
             <if test="classMode != null and classMode != ''">class_mode = #{classMode},</if>
             <if test="enrolledCount != null">enrolled_count = #{enrolledCount},</if>
+            <if test="enrollLimit != null">enroll_limit = #{enrollLimit},</if>
             <if test="unitPrice != null">unit_price = #{unitPrice},</if>
             <if test="recruitStatus != null">recruit_status = #{recruitStatus},</if>
             <if test="courseClassName != null and courseClassName != ''">course_class_name = #{courseClassName},</if>
@@ -210,7 +214,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         SELECT s.schedule_id, s.schedule_code, s.classroom_id, s.lesson_location, s.course_year, s.term_name, s.period_name,
                s.time_slot, s.start_time, s.end_time, s.start_date, s.end_date, s.class_pattern,
                s.grade_name, s.subject_name, s.teacher_name, s.teacher_id,
-               s.class_type, s.class_mode, s.enrolled_count, s.recruit_status, s.course_class_name,
+               s.class_type, s.class_mode, s.enrolled_count, s.enroll_limit, s.recruit_status, s.course_class_name,
                s.status, s.del_flag, s.create_by, s.create_time, s.update_by, s.update_time, s.remark
         FROM edu_course_schedule s
         LEFT JOIN edu_classroom c ON c.classroom_id = s.classroom_id
