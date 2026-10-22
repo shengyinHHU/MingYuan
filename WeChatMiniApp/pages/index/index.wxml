@@ -2,21 +2,14 @@
   <view class="hero">
     <view class="hero-top">
       <image class="logo" src="{{logoUrl}}" mode="widthFix"></image>
-      <view class="tag" bindtap="openChildren">{{tag}}<text wx:if="{{currentRole === 'parent'}}"> ›</text></view>
+      <view wx:if="{{roles.length}}" class="tag role-label" bindtap="openRoleMenu" hover-class="{{roles.length > 1 ? 'role-label-pressed' : 'none'}}">
+        <text>{{roleSwitching ? '切换中…' : currentRoleName}}</text><text class="role-arrow" wx:if="{{roles.length > 1}}">▾</text>
+      </view>
     </view>
 
-    <view class="account-toolbar"><button class="logout-button" size="mini" bindtap="logout">退出登录</button></view>
-
-    <view class="role-switch" wx:if="{{roles.length > 1}}">
-      <view
-        class="role-chip {{item.className}}"
-        wx:for="{{roles}}"
-        wx:key="key"
-        data-role="{{item.key}}"
-        bindtap="switchRole"
-      >
-        {{item.name}}
-      </view>
+    <view class="account-toolbar">
+      <button wx:if="{{currentRole === 'parent' && roles.length}}" class="logout-button" size="mini" bindtap="openChildren">管理孩子信息 ›</button>
+      <button class="logout-button" size="mini" bindtap="logout">退出登录</button>
     </view>
 
     <view class="hero-copy">
