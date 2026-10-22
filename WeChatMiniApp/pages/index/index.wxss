@@ -69,6 +69,7 @@ page {
   z-index: 1;
   display: flex;
   justify-content: flex-end;
+  gap: 16rpx;
   margin-top: 16rpx;
 }
 
@@ -79,36 +80,22 @@ page {
   border-radius: 999rpx;
 }
 
-.role-switch {
-  position: relative;
-  z-index: 1;
+.role-label {
   display: flex;
-  gap: 10rpx;
-  margin-top: 28rpx;
-  padding: 8rpx;
-  overflow-x: auto;
-  border-radius: 18rpx;
-  background: rgba(255, 255, 255, 0.72);
+  align-items: center;
+  gap: 12rpx;
+  min-height: 44rpx;
+  padding: 8rpx 20rpx;
   white-space: nowrap;
 }
 
-.role-chip {
-  flex: 1 1 0;
-  min-width: 0;
-  height: 56rpx;
-  padding: 0 18rpx;
-  border-radius: 14rpx;
-  color: #526175;
-  font-size: 23rpx;
-  line-height: 56rpx;
-  text-align: center;
-  font-weight: 700;
+.role-arrow {
+  color: #3572b5;
+  font-size: 22rpx;
 }
 
-.role-chip.active {
-  background: #0f58a8;
-  color: #ffffff;
-  box-shadow: 0 10rpx 22rpx rgba(15, 88, 168, 0.22);
+.role-label-pressed {
+  background: #dceaff;
 }
 
 .eyebrow {

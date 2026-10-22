@@ -520,6 +520,24 @@ Page({
   },
   addChild(){if(this.data.currentRole==='parent'&&!this.data.roleSwitching&&!this.data.childLoading){this.setData({showChildPicker:false});wx.navigateTo({url:'/pages/parent-account/parent-account?create=1&returnHome=1'})}},
 
+  async openRoleMenu() {
+    if (this._unloaded || this._visible === false || this.data.roleSwitching || this._roleMenuOpen || this.data.roles.length < 2) return
+    const roles = this.data.roles.slice()
+    const token = wx.getStorageSync('token')
+    const version = this._roleLoadVersion
+    this._roleMenuOpen = true
+    try {
+      const choice = await new Promise(resolve => wx.showActionSheet({
+        itemList: roles.map(role => role.name + (role.key === this.data.currentRole ? '（当前）' : '')),
+        success: resolve,
+        fail: () => resolve(null)
+      }))
+      if (!choice || this._unloaded || this._visible === false || !token || token !== wx.getStorageSync('token') || version !== this._roleLoadVersion) return
+      const role = roles[choice.tapIndex]
+      if (role && role.key !== this.data.currentRole) await this.switchRole({ currentTarget: { dataset: { role: role.key } } })
+    } finally { this._roleMenuOpen = false }
+  },
+
   async switchRole(e) {
     if (this._unloaded || this.data.roleSwitching) return
     const role = e.currentTarget.dataset.role

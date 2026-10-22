@@ -35,6 +35,49 @@ function harness(name, roles = ['parent'], permissions = ['*:*:*'], custom) {
 }
 const click = role => ({ currentTarget: { dataset: { role } } })
 
+test('top-right role menu switches only assigned workspaces and remembers the choice', async () => {
+  const h = harness('index', ['admin', 'education', 'teacher'])
+  h.p.onLoad(); h.p._visible = true; await h.p.applyLoginRole()
+  h.wx.showActionSheet = options => {
+    assert.deepEqual(Array.from(options.itemList), ['管理员（当前）', '教务', '教师'])
+    options.success({ tapIndex: 1 })
+  }
+  await h.p.openRoleMenu()
+  assert.equal(h.p.data.currentRole, 'education')
+  assert.equal(h.store.get('miniappWorkspace:41'), 'education')
+  assert.equal(h.store.get('token'), 'original-token')
+  assert.ok(h.p.data.quickActions.some(a => a.route === '/pages/admin-tuition/admin-tuition'))
+  assert.equal(h.p.data.quickActions.some(a => a.route === '/pages/admin-transactions/admin-transactions'), false)
+  await h.p.applyLoginRole(); assert.equal(h.p.data.currentRole, 'education')
+  h.p.onUnload()
+})
+test('role menu is inert for a single role and ignores a choice from an expired session', async () => {
+  const single = harness('index', ['education'])
+  single.p.onLoad(); await single.p.applyLoginRole()
+  single.wx.showActionSheet = () => assert.fail('single role must not open a menu')
+  await single.p.openRoleMenu(); single.p.onUnload()
+  const h = harness('index', ['admin', 'teacher'])
+  h.p.onLoad(); h.p._visible = true; await h.p.applyLoginRole()
+  let sheet
+  h.wx.showActionSheet = options => { sheet = options }
+  const pending = h.p.openRoleMenu()
+  h.store.set('token', 'another-session')
+  sheet.success({ tapIndex: 1 }); await pending
+  assert.equal(h.p.data.currentRole, 'admin')
+  assert.equal(h.store.has('miniappWorkspace:41'), false)
+  h.p.onUnload()
+})
+test('role menu handles cancellation and rechecks roles revoked by the server', async () => {
+  const h = harness('index', ['admin', 'teacher'])
+  h.p.onLoad(); h.p._visible = true; await h.p.applyLoginRole()
+  h.wx.showActionSheet = options => options.fail({ errMsg: 'showActionSheet:fail cancel' })
+  await h.p.openRoleMenu(); assert.equal(h.p.data.currentRole, 'admin')
+  h.wx.showActionSheet = options => { h.state.roles = ['admin']; options.success({ tapIndex: 1 }) }
+  await h.p.openRoleMenu(); assert.equal(h.p.data.currentRole, 'admin')
+  assert.deepEqual(Array.from(h.p.data.roles, r => r.key), ['admin'])
+  h.p.onUnload()
+})
+
 test('student attendance badge rejects late responses after switching workspace with the same token', async () => {
   const finishes = []; let delayed = false
   const h = harness('index', ['admin', 'parent'], ['*:*:*'], o => {
