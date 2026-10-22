@@ -5,15 +5,21 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 <mapper namespace="com.ruoyi.system.mapper.EduFinanceDashboardMapper">
 
     <!-- 课时费：合同=有效报名×排课单价；收入=其中已支付。兼容历史状态值 -->
+    <!-- 课程收入改为按「收款流水」口径：实收金额（SUCCESS 付款）净额扣减已成功退款 -->
     <select id="selectLessonMonthly" resultType="java.util.HashMap">
-        select date_format(e.create_time, '%Y-%m') as month,
-               sum(coalesce(s.unit_price, 0)) as contractAmount,
-               sum(case when e.pay_status in ('1', '已支付') then coalesce(s.unit_price, 0) else 0 end) as confirmedAmount
-        from edu_enrollment e
-        inner join edu_course_schedule s on s.schedule_id = e.schedule_id and s.del_flag = '0'
-        where e.del_flag = '0' and e.enrollment_status not in ('2', '已取消')
-          and e.create_time is not null
-          and date_format(e.create_time, '%Y-%m') between #{begin} and #{end}
+        select date_format(p.paid_time, '%Y-%m') as month,
+               sum(p.amount) as contractAmount,
+               sum(p.amount) - coalesce(sum(r.refund_amount), 0) as confirmedAmount
+        from edu_tuition_payment p
+        left join (
+            select rf.payment_id, sum(rf.approved_amount) as refund_amount
+            from edu_tuition_refund rf
+            where rf.refund_status = 'SUCCESS'
+            group by rf.payment_id
+        ) r on r.payment_id = p.payment_id
+        where p.payment_status = 'SUCCESS'
+          and p.paid_time is not null
+          and date_format(p.paid_time, '%Y-%m') between #{begin} and #{end}
         group by month
     </select>
 
