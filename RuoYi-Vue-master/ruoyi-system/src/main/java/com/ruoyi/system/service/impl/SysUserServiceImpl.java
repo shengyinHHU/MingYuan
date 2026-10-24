@@ -449,15 +449,12 @@ public class SysUserServiceImpl implements ISysUserService
     {
         if (StringUtils.isNotEmpty(roleIds))
         {
-            // 新增用户与角色管理
-            List<SysUserRole> list = new ArrayList<SysUserRole>(roleIds.length);
-            for (Long roleId : roleIds)
-            {
-                SysUserRole ur = new SysUserRole();
-                ur.setUserId(userId);
-                ur.setRoleId(roleId);
-                list.add(ur);
-            }
+            // 系统约定：每个用户只能有一个角色，多传时仅保留第一个
+            List<SysUserRole> list = new ArrayList<SysUserRole>(1);
+            SysUserRole ur = new SysUserRole();
+            ur.setUserId(userId);
+            ur.setRoleId(roleIds[0]);
+            list.add(ur);
             userRoleMapper.batchUserRole(list);
         }
     }

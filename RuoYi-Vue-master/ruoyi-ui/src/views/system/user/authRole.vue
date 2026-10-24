@@ -92,8 +92,15 @@ export default {
         this.$refs.table.toggleRowSelection(row)
       }
     },
-    // 多选框选中数据
+    // 角色选中数据（每人只能有一个角色，多选时保留最后点击的那个）
     handleSelectionChange(selection) {
+      if (selection.length > 1) {
+        const last = selection[selection.length - 1]
+        this.$refs.table.clearSelection()
+        this.$refs.table.toggleRowSelection(last, true)
+        this.roleIds = [last.roleId]
+        return
+      }
       this.roleIds = selection.map((item) => item.roleId)
     },
     // 保存选中的数据编号
