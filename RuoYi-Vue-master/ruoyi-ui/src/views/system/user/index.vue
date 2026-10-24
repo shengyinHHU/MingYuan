@@ -1,6 +1,6 @@
 <template>
   <div class="app-container tree-sidebar-manage-wrap">
-    <tree-panel title="组织机构" :tree-data="deptOptions" search-placeholder="请输入部门名称" storage-key="dept-sidebar-width" :defaultExpandAll="true" @node-click="handleNodeClick" @refresh="getDeptTree" ref="deptTreeRef" />
+    <tree-panel title="角色" title-icon-class="el-icon-user-solid" :tree-data="roleTreeData" search-placeholder="请输入角色名称" storage-key="role-sidebar-width" :defaultExpandAll="true" @node-click="handleNodeClick" @refresh="getRoleTree" ref="roleTreeRef" />
     <div class="tree-sidebar-content">
       <div class="content-inner">
         <el-form :model="queryParams" ref="queryForm" size="small" :inline="true" v-show="showSearch" label-width="68px">
@@ -52,7 +52,7 @@
             </template>
           </el-table-column>
           <el-table-column label="用户昵称" align="center" key="nickName" prop="nickName" v-if="columns.nickName.visible" :show-overflow-tooltip="true" />
-          <el-table-column label="部门" align="center" key="deptName" prop="dept.deptName" v-if="columns.deptName.visible" :show-overflow-tooltip="true" />
+          <el-table-column label="角色" align="center" key="roleNames" prop="roleNames" v-if="columns.roleNames.visible" :show-overflow-tooltip="true" />
           <el-table-column label="手机号码" align="center" key="phonenumber" prop="phonenumber" v-if="columns.phonenumber.visible" width="120" />
           <el-table-column label="状态" align="center" key="status" v-if="columns.status.visible">
             <template slot-scope="scope">
@@ -86,14 +86,9 @@
     <el-dialog :title="title" :visible.sync="open" width="600px" append-to-body>
       <el-form ref="form" :model="form" :rules="rules" label-width="80px">
         <el-row>
-          <el-col :span="12">
+          <el-col :span="24">
             <el-form-item label="用户昵称" prop="nickName">
               <el-input v-model="form.nickName" placeholder="请输入用户昵称" maxlength="30" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="归属部门" prop="deptId">
-              <treeselect v-model="form.deptId" :options="enabledDeptOptions" :show-count="true" placeholder="请选择归属部门" />
             </el-form-item>
           </el-col>
         </el-row>
@@ -140,13 +135,13 @@
         <el-row>
           <el-col :span="24">
             <el-form-item label="角色">
-              <el-select v-model="form.roleIds" multiple placeholder="请选择角色" style="width:100%">
+              <el-select v-model="form.roleId" placeholder="请选择角色（每人仅一个）" style="width:100%">
                 <el-option v-for="item in roleOptions" :key="item.roleId" :label="item.roleName" :value="item.roleId" :disabled="item.status == 1"></el-option>
               </el-select>
             </el-form-item>
           </el-col>
         </el-row>
-        <div v-if="form.userId && roleOptions.some(role => role.roleKey === 'teacher' && (form.roleIds || []).includes(role.roleId))" v-loading="teacherProfileLoading">
+        <div v-if="form.userId && roleOptions.some(role => role.roleKey === 'teacher' && form.roleId === role.roleId)" v-loading="teacherProfileLoading">
           <el-divider>教师授课配置</el-divider>
           <el-form-item label="授课学科"><el-select v-model="teacherProfile.teacherSubject" filterable placeholder="请选择授课学科"><el-option v-for="subject in dict.type.edu_subject" :key="subject.value" :label="subject.label" :value="subject.label" /></el-select></el-form-item>
           <el-form-item label="教师等级"><el-select v-model="teacherProfile.teacherLevel"><el-option label="精英教师" value="elite" /><el-option label="资深教师" value="senior" /></el-select></el-form-item>
@@ -167,9 +162,8 @@
 </template>
 
 <script>
-import { listUser, getUser, delUser, addUser, updateUser, resetUserPwd, changeUserStatus, deptTreeSelect } from "@/api/system/user"
-import Treeselect from "@riophae/vue-treeselect"
-import "@riophae/vue-treeselect/dist/vue-treeselect.css"
+import { listUser, getUser, delUser, addUser, updateUser, resetUserPwd, changeUserStatus } from "@/api/system/user"
+import { optionselect as roleOptionselect } from "@/api/system/role"
 import TreePanel from "@/components/TreePanel"
 import ExcelImportDialog from "@/components/ExcelImportDialog"
 import UserViewDrawer from "./view"
@@ -180,7 +174,7 @@ export default {
   name: "User",
   mixins: [passwordRule],
   dicts: ['sys_normal_disable', 'sys_user_sex', 'edu_subject'],
-  components: { Treeselect, TreePanel, ExcelImportDialog, UserViewDrawer },
+  components: { TreePanel, ExcelImportDialog, UserViewDrawer },
   data() {
     return {
       // 遮罩层
@@ -199,10 +193,8 @@ export default {
       userList: null,
       // 弹出层标题
       title: "",
-      // 所有部门树选项
-      deptOptions: undefined,
-      // 过滤掉已禁用部门树选项
-      enabledDeptOptions: undefined,
+      // 角色侧边栏树（部门暂时废除）
+      roleTreeData: [],
       // 是否显示弹出层
       open: false,
       // 默认密码
@@ -222,14 +214,14 @@ export default {
         userName: undefined,
         phonenumber: undefined,
         status: undefined,
-        deptId: undefined
+        roleId: undefined
       },
       // 列信息
       columns: {
         userId: { label: '用户编号', visible: true },
         userName: { label: '用户名称', visible: true },
         nickName: { label: '用户昵称', visible: true },
-        deptName: { label: '部门', visible: true },
+        roleNames: { label: '角色', visible: true },
         phonenumber: { label: '手机号码', visible: true },
         status: { label: '状态', visible: true },
         createTime: { label: '创建时间', visible: true }
@@ -262,7 +254,7 @@ export default {
   },
   created() {
     this.getList()
-    this.getDeptTree()
+    this.getRoleTree()
     this.getConfigKey("sys.user.initPassword").then(response => {
       this.initPassword = response.msg
     })
@@ -277,28 +269,23 @@ export default {
         this.loading = false
       })
     },
-    /** 查询部门下拉树结构 */
-    getDeptTree() {
-      deptTreeSelect().then(response => {
-        this.deptOptions = response.data
-        this.enabledDeptOptions = this.filterDisabledDept(JSON.parse(JSON.stringify(response.data)))
+    /** 查询角色侧边栏（部门暂时废除，用户管理按角色分类） */
+    getRoleTree() {
+      roleOptionselect().then(response => {
+        const roles = (response.data || []).filter(r => r.status === '0')
+        this.roleTreeData = [{ id: 'all', label: '全部角色' }].concat(
+          roles.map(r => ({ id: r.roleId, label: r.roleName }))
+        )
+        this.$nextTick(() => {
+          if (this.$refs.roleTreeRef) {
+            this.$refs.roleTreeRef.setCurrentKey(this.queryParams.roleId || 'all')
+          }
+        })
       })
     },
-    // 过滤禁用的部门
-    filterDisabledDept(deptList) {
-      return deptList.filter(dept => {
-        if (dept.disabled) {
-          return false
-        }
-        if (dept.children && dept.children.length) {
-          dept.children = this.filterDisabledDept(dept.children)
-        }
-        return true
-      })
-    },
-    // 节点单击事件
+    // 节点单击事件（按角色筛选）
     handleNodeClick(data) {
-      this.queryParams.deptId = data.id
+      this.queryParams.roleId = data.id === 'all' ? undefined : data.id
       this.handleQuery()
     },
     // 用户状态修改
@@ -321,7 +308,6 @@ export default {
     reset() {
       this.form = {
         userId: undefined,
-        deptId: undefined,
         userName: undefined,
         nickName: undefined,
         password: undefined,
@@ -331,7 +317,7 @@ export default {
         status: "0",
         remark: undefined,
         postIds: [],
-        roleIds: []
+        roleId: undefined
       }
       this.resetForm("form")
     },
@@ -344,8 +330,10 @@ export default {
     resetQuery() {
       this.dateRange = []
       this.resetForm("queryForm")
-      this.queryParams.deptId = undefined
-      this.$refs.deptTreeRef.setCurrentKey(null)
+      this.queryParams.roleId = undefined
+      if (this.$refs.roleTreeRef) {
+        this.$refs.roleTreeRef.setCurrentKey('all')
+      }
       this.handleQuery()
     },
     // 多选框选中数据
@@ -385,7 +373,8 @@ export default {
         this.form = response.data
         this.roleOptions = response.roles
         this.$set(this.form, "postIds", response.postIds)
-        this.$set(this.form, "roleIds", response.roleIds)
+        // 每人只保留一个角色（历史多角色数据取第一个）
+        this.$set(this.form, "roleId", (response.roleIds || [])[0])
         this.open = true
         this.title = "修改用户"
         this.form.password = ""
@@ -421,6 +410,8 @@ export default {
     submitForm() {
       this.$refs["form"].validate(valid => {
         if (valid) {
+          // 角色单选，后端仍按 roleIds 数组接收
+          this.$set(this.form, "roleIds", this.form.roleId ? [this.form.roleId] : [])
           if (this.form.userId != undefined) {
             updateUser(this.form).then(() => {
               this.$modal.msgSuccess("修改成功")

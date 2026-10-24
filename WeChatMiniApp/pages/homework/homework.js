@@ -14,7 +14,7 @@ const statusTabs = [
 ]
 
 Page(childContext.page({
-  data: { list: [], shown: [], classTabs: [], activeClass: 'all', statusTabs, activeStatus: 'all', loading: false },
+  data: { list: [], shown: [], groups: [], classTabs: [], activeClass: 'all', statusTabs, activeStatus: 'all', loading: false },
   onLoad(options={}){this.accountId=options.accountId?String(options.accountId):'';this._token=wx.getStorageSync('token');this._alive=true;if(options.status==='todo')this.setData({activeStatus:'todo'})},
   onShow() {this._visible=true;this.loadList()},
   onHide(){this._visible=false;this._version=(this._version||0)+1},
@@ -22,7 +22,7 @@ Page(childContext.page({
   current(){return this._alive!==false&&this._visible!==false&&(!this._token||this._token===wx.getStorageSync('token'))},
   onPullDownRefresh() { this.loadList().finally(() => wx.stopPullDownRefresh()) },
   async loadList() {
-    if(!this.current()){this.setData({list:[],shown:[]});return}
+    if(!this.current()){this.setData({list:[],shown:[],groups:[]});return}
     const version=this._version=(this._version||0)+1
     this.setData({ loading: true })
     try {
@@ -61,16 +61,36 @@ Page(childContext.page({
       const seen = {}
       const classTabs = [{ key: 'all', name: '全部班级' }]
       list.forEach(item => { if (item.classId && !seen[item.classId]) { seen[item.classId] = true; classTabs.push({ key: item.classId, name: item.className }) } })
+      // 同名班级（同一课程名多个排课）标注 ID 便于区分（与教师端一致）
+      const tabNameCount = {}
+      classTabs.forEach(t => { if (t.key !== 'all') tabNameCount[t.name] = (tabNameCount[t.name] || 0) + 1 })
+      classTabs.forEach(t => { if (t.key !== 'all' && tabNameCount[t.name] > 1) t.name = `${t.name}（ID:${t.key}）` })
       const activeClass = classTabs.some(row => row.key === this.data.activeClass) ? this.data.activeClass : 'all'
       this.setData({ list, classTabs, activeClass })
       this.applyFilter()
-    } catch (e) {if(this.current()&&version===this._version){this.setData({list:[],shown:[]});wx.showToast({title:e.message||'加载失败',icon:'none'})}} finally {if(this.current()&&version===this._version)this.setData({loading:false})}
+    } catch (e) {if(this.current()&&version===this._version){this.setData({list:[],shown:[],groups:[]});wx.showToast({title:e.message||'加载失败',icon:'none'})}} finally {if(this.current()&&version===this._version)this.setData({loading:false})}
   },
   applyFilter() {
     const { list, activeClass, activeStatus } = this.data
     let shown = activeClass === 'all' ? list : list.filter(item => item.classId === activeClass)
     if (activeStatus !== 'all') shown = shown.filter(item => item.category === activeStatus)
-    this.setData({ shown })
+    // 按班级分组（参照教师端作业：同一班级聚合，组头显示班级名与作业数）
+    const groupMap = {}
+    const order = []
+    shown.forEach(item => {
+      const id = item.classId || '__unknown__'
+      if (!groupMap[id]) {
+        groupMap[id] = { scheduleId: id, name: item.classId ? (item.className || '未命名班级') : '未命名班级', items: [] }
+        order.push(id)
+      }
+      groupMap[id].items.push(item)
+    })
+    const groups = order.map(id => groupMap[id])
+    // 同名班级追加 ID，避免多个同名班级无法区分
+    const nameCount = {}
+    groups.forEach(g => { nameCount[g.name] = (nameCount[g.name] || 0) + 1 })
+    groups.forEach(g => { g.displayName = nameCount[g.name] > 1 ? `${g.name}（ID:${g.scheduleId}）` : g.name })
+    this.setData({ shown, groups })
   },
   switchClass(e) { this.setData({ activeClass: e.currentTarget.dataset.key }); this.applyFilter() },
   switchStatus(e) { this.setData({ activeStatus: e.currentTarget.dataset.key }); this.applyFilter() },
